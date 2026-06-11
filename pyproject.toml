@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spc"
+version = "0.1.0"
+description = "EDA reproducible del Sistema Predictivo de Comercializacion (Store Sales - Corporacion Favorita)."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Valentin Fernandez" }]
+license = { text = "MIT" }
+dependencies = [
+    "pandas==3.0.3",
+    "numpy==2.4.6",
+    "scipy==1.17.1",
+    "scikit-learn==1.9.0",
+    "matplotlib==3.10.9",
+    "seaborn==0.13.2",
+    "nbformat==5.10.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "ruff==0.9.2",
+    "black==24.10.0",
+    "mypy==1.14.1",
+    "pandas-stubs",
+    "jupyter==1.1.1",
+    "ipykernel==7.3.0",
+]
+
+[project.scripts]
+spc-eda = "spc.pipeline:cli"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]  # el largo de linea lo gestiona black
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["spc"]
+mypy_path = "src"
+ignore_missing_imports = true
+warn_unused_ignores = true
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]

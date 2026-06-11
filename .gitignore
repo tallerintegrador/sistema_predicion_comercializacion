@@ -1,0 +1,32 @@
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Herramientas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Datos crudos (pesados, no versionar)
+data/raw/*
+!data/raw/.gitkeep
+
+# Artefactos generados por el EDA
+data/processed/
+figures/
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
