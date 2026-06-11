@@ -95,9 +95,9 @@ Interpretacion: la asimetria positiva alta y la curtosis elevada confirman una v
 Figuras:
 
 - Por que se hace: la distribucion original muestra escala, ceros y cola derecha de la variable objetivo.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/01_distribucion_sales.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/01_distribucion_sales.png)
 - Por que se hace: `log1p` permite inspeccionar mejor una variable con fuerte asimetria.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/02_distribucion_log_sales.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/02_distribucion_log_sales.png)
 
 Top 10 familias por ventas totales (incluye coeficiente de variacion y % de ceros):
 
@@ -138,7 +138,7 @@ Variables numericas (incluye asimetria):
 Figura:
 
 - Por que se hace: comparar familias muestra si la escala de demanda varia por categoria de producto.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/06_top_familias_ventas.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/06_top_familias_ventas.png)
 
 ## 5. Analisis temporal
 
@@ -163,9 +163,9 @@ Interpretacion: los anios marcados como "Parcial" no cubren el calendario comple
 Figuras:
 
 - Por que se hace: superponer el perfil mensual por anio revela si la estacionalidad se repite y si el nivel crece entre anios.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/13_estacionalidad_anual.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/13_estacionalidad_anual.png)
 - Por que se hace: el heatmap anio x mes condensa estacionalidad mensual y tendencia anual en una sola vista.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/14_heatmap_anio_mes.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/14_heatmap_anio_mes.png)
 
 ### 5.2 Estacionalidad intra-anual y calendario
 
@@ -232,13 +232,13 @@ Interpretacion: los picos en abril (incluido el periodo del terremoto de abril 2
 Figuras:
 
 - Por que se hace: la serie diaria responde si existen tendencia, picos y cambios temporales relevantes.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/03_tendencia_ventas_diarias.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/03_tendencia_ventas_diarias.png)
 - Por que se hace: el indice estacional mensual aisla el patron de calendario sin el ruido del crecimiento anual.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/04_estacionalidad_mensual.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/04_estacionalidad_mensual.png)
 - Por que se hace: el dia de semana mide una estacionalidad operativa frecuente en retail.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/05_estacionalidad_dia_semana.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/05_estacionalidad_dia_semana.png)
 - Por que se hace: comparar tipos de feriado separa efectos heterogeneos del calendario.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/15_efecto_tipo_feriado.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/15_efecto_tipo_feriado.png)
 
 ## 6. Integracion de fuentes
 
@@ -343,19 +343,19 @@ Ranking de senal lineal contra `sales` (correlacion y valor absoluto):
 Figuras:
 
 - Por que se hace: las promociones son una senal comercial directa frente al nivel de ventas.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/07_promocion_vs_sales.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/07_promocion_vs_sales.png)
 - Por que se hace: las transacciones representan flujo de clientes; se valida su relacion con ventas (con linea de tendencia).
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/08_transacciones_vs_sales.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/08_transacciones_vs_sales.png)
 - Por que se hace: el precio del petroleo es una variable macro externa; se colorea por anio porque la correlacion negativa global es en gran parte espuria (tendencia temporal: ventas suben mientras el petroleo baja).
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/09_petroleo_vs_sales.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/09_petroleo_vs_sales.png)
 - Por que se hace: la matriz resume relaciones lineales entre variables numericas integradas.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/10_correlaciones_numericas.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/10_correlaciones_numericas.png)
 - Por que se hace: la penetracion de promociones en el tiempo muestra el cambio de estrategia comercial.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/16_penetracion_promo_mensual.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/16_penetracion_promo_mensual.png)
 - Por que se hace: el boxplot por tipo de tienda compara distribuciones completas, no solo promedios.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/17_dist_log_sales_por_tipo.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/17_dist_log_sales_por_tipo.png)
 - Por que se hace: los clusters de tienda se evaluan como posible variable segmentadora.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/12_sales_promedio_cluster.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/12_sales_promedio_cluster.png)
 
 ## 8. Aptitud para regresion, clasificacion y clustering
 
@@ -386,7 +386,7 @@ Interpretacion: ambas definiciones generan clases desbalanceadas, lo que **justi
 Figura:
 
 - Por que se hace: el balance de clases justifica el tratamiento de desbalance antes de modelar.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/11_balance_clases_demanda.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/11_balance_clases_demanda.png)
 
 ### 8.3 Clustering (segmentar tiendas / familias)
 
@@ -442,9 +442,9 @@ Interpretacion: una silueta positiva indica que las tiendas forman grupos difere
 Figuras:
 
 - Por que se hace: el scatter por segmento muestra como se separan las tiendas en variables interpretables.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/18_segmentacion_tiendas_kmeans.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/18_segmentacion_tiendas_kmeans.png)
 - Por que se hace: la curva de silueta justifica la eleccion del numero de clusters.
-  ![](D:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/19_silueta_k_tiendas.png)
+  ![](d:/UPAO/IX/Taller Integrador I/sistema_prediccion_comercializacion/figures/19_silueta_k_tiendas.png)
 
 ## 9. Conclusiones
 
