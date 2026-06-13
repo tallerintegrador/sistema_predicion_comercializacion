@@ -1,6 +1,6 @@
 # Plan Maestro — SPC: Sistema Predictivo de Comercialización
 
-> Documento vivo. Versión 0.1 (borrador para validación). Una vez aprobado, vive en `docs/plan_maestro.md` y se actualiza al cierre de cada fase, dejando rastro en el registro de decisiones (ADR).
+> Documento vivo. Versión 0.2 (Fase 0, 1 y 2a cerradas). Se actualiza al cierre de cada fase, dejando rastro en el registro de decisiones (ADR).
 
 ---
 
@@ -252,6 +252,7 @@ Cada fase se cierra con una **validación tuya** antes de pasar a la siguiente. 
 - **Objetivo:** entrenar y validar las tres familias de modelos, con métricas registradas.
 - **Sub-fases y entregables:**
   - **2a — Regresión (VENTAS):** objetivo `sales` transformado con **log1p** (el EDA muestra que reduce la asimetría de 7.36 → 0.41); **validación temporal sin fuga de futuro** (corte por fecha / `TimeSeriesSplit`); features de calendario, promoción, transacciones y rezagos. Comparar contra un **baseline** (media móvil / *naïve* estacional).
+    - **[HECHO — 2026-06-13]** Se compararon 2 baselines + 5 regresores (Ridge, RandomForest, HistGradientBoosting, LightGBM, XGBoost). Ganador: **XGBoost** (`regresion_v1`): MAE **64.64** vs mejor baseline 90.84 (**−28.8 %**) y RMSE **233.39** vs 297.31 (**−21.5 %**) en TEST (16 días, escala unidades). Artefacto serializado en `models/`. Detalle en `docs/reporte_regresion_2a.md`; decisión en ADR `docs/decisiones/0002-modelo-regresion-ventas.md`. Intervalos de predicción: pendientes para fase posterior.
   - **2b — Clasificación (ALMACÉN):** objetivo `demanda_alta` (> P75 por familia); **SMOTE aplicado solo en train** (nunca en validación/test); comparar métricas **con y sin** SMOTE.
   - **2c — Clustering (perfilado):** KMeans sobre perfiles de tiendas y familias; reproducir el orden de magnitud del EDA (silueta ≈ **0.61** en tiendas con k=2, ≈ **0.71** en familias); perfiles interpretables.
 - **Criterio de validación:** regresión supera al baseline en MAE/RMSE (en escala original de unidades); clasificación reporta F1/recall/PR-AUC **de la clase minoritaria** y muestra el efecto de SMOTE; clustering reporta silueta y perfiles legibles. Todos los artefactos quedan serializados y versionados con su métrica.
