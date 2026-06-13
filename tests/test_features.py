@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from spc.features.holidays import aggregate_holidays
-from spc.features.integration import build_analytic_dataset
+from spc.data.holidays import aggregate_holidays
+from spc.data.integration import build_analytic_dataset
 
 
 def test_aggregate_holidays_excluye_transferidos(synthetic_data):

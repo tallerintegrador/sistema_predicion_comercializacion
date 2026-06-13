@@ -1,8 +1,10 @@
-"""Integracion de fuentes y construccion del dataset analitico."""
+"""Feature engineering del motor de ML (calendario, rezagos, log1p).
+
+Reservado para la ingenieria de variables reutilizable en el modelado (Fase 2).
+La integracion de fuentes y la construccion del dataset analitico viven en
+`spc.data` (capa de datos), no aqui.
+"""
 
 from __future__ import annotations
 
-from spc.features.holidays import aggregate_holidays
-from spc.features.integration import COLUMN_CATALOG, build_analytic_dataset
-
-__all__ = ["aggregate_holidays", "build_analytic_dataset", "COLUMN_CATALOG"]
+__all__: list[str] = []

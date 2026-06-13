@@ -32,8 +32,8 @@ dev = [
 ]
 
 [project.scripts]
-spc-eda = "spc.pipeline:cli"
-spc-models = "spc.modeling.runner:cli"
+spc-eda = "spc.eda.pipeline:cli"
+spc-models = "spc.models.runner:cli"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
