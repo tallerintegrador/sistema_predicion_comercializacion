@@ -59,6 +59,21 @@ def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, floa
     }
 
 
+def evaluar_en_unidades(
+    y_true_log: np.ndarray, y_pred_log: np.ndarray
+) -> dict[str, float]:
+    """Invierte la transformacion ``log1p`` y evalua en la escala de unidades.
+
+    Requisito de la Fase 2a: el modelo entrena en ``log1p(sales)`` pero **todas
+    las metricas finales se reportan en unidades**. Aqui se aplica ``expm1`` a
+    objetivo y prediccion (recortando negativas a 0, porque las ventas no pueden
+    ser negativas) antes de calcular MAE/RMSE y companhia.
+    """
+    y_true = np.expm1(np.asarray(y_true_log, dtype="float64"))
+    y_pred = np.clip(np.expm1(np.asarray(y_pred_log, dtype="float64")), 0.0, None)
+    return regression_metrics(y_true, y_pred)
+
+
 def classification_metrics(
     y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray | None = None
 ) -> dict[str, float]:

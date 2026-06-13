@@ -40,14 +40,17 @@ def cli(argv: list[str] | None = None) -> None:
     from spc.eda.analysis.clustering import clustering_features
     from spc.models.clasificacion import train_classification_models
     from spc.models.clustering import evaluate_clustering
-    from spc.models.regresion import train_regression_models
+    from spc.models.regresion import entrenar_y_comparar
 
     print("Cargando datos...")
     data = load_data(settings)
     analytic, _, _ = build_analytic_dataset(data, settings)
 
-    print("Entrenando modelos de REGRESION...")
-    reg = train_regression_models(analytic, settings, sample_frac=sample_frac, test_days=args.test_days)
+    print("Entrenando modelos de REGRESION (Fase 2a: baselines + 5 modelos)...")
+    reg = entrenar_y_comparar(
+        analytic, settings,
+        max_train_rows=(None if args.full else 250_000), con_cv=False,
+    )
     print("Entrenando modelos de CLASIFICACION...")
     clf = train_classification_models(analytic, settings, sample_frac=sample_frac, test_days=args.test_days)
     print("Evaluando CLUSTERING...")
@@ -55,9 +58,10 @@ def cli(argv: list[str] | None = None) -> None:
     clust = evaluate_clustering(store_f, family_f, settings)
 
     print("\n" + "=" * 70)
-    print("  METRICAS DE REGRESION")
+    print("  METRICAS DE REGRESION (TEST, en unidades; ganador = menor MAE)")
     print("=" * 70)
-    print(reg["metrics"].to_string())
+    reg_test = reg.metricas[reg.metricas["split"] == "test"].sort_values("MAE")
+    print(reg_test[["modelo", "MAE", "RMSE", "R2"]].to_string(index=False))
 
     print("\n" + "=" * 70)
     print("  METRICAS DE CLASIFICACION")
@@ -70,7 +74,7 @@ def cli(argv: list[str] | None = None) -> None:
     print(clust["metrics"].to_string())
 
     # Guardar CSVs
-    reg["metrics"].to_csv(settings.processed_dir / "metricas_regresion.csv")
+    reg.metricas.to_csv(settings.processed_dir / "metricas_regresion.csv", index=False)
     clf["metrics"].to_csv(settings.processed_dir / "metricas_clasificacion.csv")
     clust["metrics"].to_csv(settings.processed_dir / "metricas_clustering.csv")
     print(f"\nMetricas guardadas en {settings.processed_dir}")
