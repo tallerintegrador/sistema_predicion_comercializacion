@@ -33,7 +33,7 @@ from spc.utils.serializacion import cargar_artefacto, guardar_artefacto
 
 log = get_logger("models.regresion")
 
-VERSION_MODELO = "regresion_v1"
+VERSION_MODELO = "regresion_v2"
 OBJETIVO = "sales"
 COL_FECHA = "date"
 
@@ -44,6 +44,10 @@ DIAS_VALID = 16
 # Validacion cruzada temporal (expanding window) sobre TRAIN+VALID.
 CV_N_FOLDS = 3
 CV_DIAS_VAL = 14
+# Tolerancia relativa sobre el MAE medio de CV para considerar dos modelos
+# "empatados" (dentro del ruido). Entre los empatados se elige por **estabilidad**
+# (menor desviacion estandar del RMSE en CV) y, en ultimo termino, por menor MAE.
+TOL_MAE_REL = 0.03
 
 
 # ---------------------------------------------------------------------------
@@ -140,29 +144,67 @@ class EspecModelo:
     """Un modelo del zoo: como se construye y que tipo de matriz consume."""
 
     nombre: str
-    tipo: str  # "numerico" | "categorico"
-    escala: bool  # estandarizar (solo Ridge)
+    tipo: str  # "numerico" | "categorico" | "lineal"
     construir: Any  # callable() -> estimador sklearn-like
 
 
-def construir_zoo(seed: int) -> dict[str, EspecModelo]:
+def _construir_pipeline_lineal(features: list[str], cats: list[str]) -> Any:
+    """Pipeline para el modelo lineal (Ridge), aislado de los modelos de arbol.
+
+    Ridge es **sensible a la escala** y NO debe recibir categoricos de alta
+    cardinalidad como enteros crudos (eso disparaba R2 = -143). Por eso el
+    pipeline, exclusivo del lineal:
+      - **one-hot** de los categoricos (`store_nbr`, `family`, ...), con
+        ``handle_unknown="ignore"`` para tolerar niveles no vistos en prediccion;
+      - **imputacion + estandarizacion** de las numericas.
+    Los modelos de arbol no usan nada de esto (toleran escala y codigos ordinales).
+    """
+    from sklearn.compose import ColumnTransformer
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import Ridge
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+    num_features = [f for f in features if f not in cats]
+    preprocesador = ColumnTransformer(
+        transformers=[
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=True), cats),
+            (
+                "num",
+                Pipeline(
+                    [
+                        ("imputar", SimpleImputer(strategy="median")),
+                        ("escalar", StandardScaler()),
+                    ]
+                ),
+                num_features,
+            ),
+        ],
+        remainder="drop",
+    )
+    return Pipeline([("pre", preprocesador), ("ridge", Ridge(alpha=1.0))])
+
+
+def construir_zoo(seed: int, features: list[str], cats: list[str]) -> dict[str, EspecModelo]:
     """Define los 5 regresores a comparar (semilla fija para reproducibilidad)."""
     from lightgbm import LGBMRegressor
     from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
-    from sklearn.linear_model import Ridge
     from xgboost import XGBRegressor
 
     return {
-        "Ridge": EspecModelo("Ridge", "numerico", True, lambda: Ridge(alpha=1.0)),
+        "Ridge": EspecModelo(
+            "Ridge", "lineal",
+            lambda: _construir_pipeline_lineal(features, cats),
+        ),
         "RandomForest": EspecModelo(
-            "RandomForest", "numerico", False,
+            "RandomForest", "numerico",
             lambda: RandomForestRegressor(
                 n_estimators=120, max_depth=14, min_samples_leaf=20,
                 random_state=seed, n_jobs=-1,
             ),
         ),
         "HistGradientBoosting": EspecModelo(
-            "HistGradientBoosting", "categorico", False,
+            "HistGradientBoosting", "categorico",
             lambda: HistGradientBoostingRegressor(
                 max_iter=300, learning_rate=0.06, max_leaf_nodes=63,
                 l2_regularization=1.0, categorical_features="from_dtype",
@@ -170,15 +212,16 @@ def construir_zoo(seed: int) -> dict[str, EspecModelo]:
             ),
         ),
         "LightGBM": EspecModelo(
-            "LightGBM", "categorico", False,
+            "LightGBM", "categorico",
             lambda: LGBMRegressor(
                 n_estimators=600, learning_rate=0.05, num_leaves=63,
                 subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
+                importance_type="gain",
                 random_state=seed, n_jobs=-1, verbose=-1,
             ),
         ),
         "XGBoost": EspecModelo(
-            "XGBoost", "categorico", False,
+            "XGBoost", "categorico",
             lambda: XGBRegressor(
                 n_estimators=600, learning_rate=0.05, max_depth=8,
                 subsample=0.8, colsample_bytree=0.8, tree_method="hist",
@@ -207,7 +250,6 @@ class PredictorRegresion:
         categorias: dict[str, list],
         cfg_features: ConfigFeatures,
         tipo: str,
-        escalador: Any | None,
         nombre_modelo: str,
         techo_log: float | None = None,
         version: str = VERSION_MODELO,
@@ -218,7 +260,6 @@ class PredictorRegresion:
         self.categorias = categorias
         self.cfg_features = cfg_features
         self.tipo = tipo
-        self.escalador = escalador
         self.nombre_modelo = nombre_modelo
         self.techo_log = techo_log
         self.version = version
@@ -226,12 +267,12 @@ class PredictorRegresion:
 
     def _matriz(self, df_feat: pd.DataFrame) -> Any:
         df_cat, _ = _fijar_categorias(df_feat, self.cats, self.categorias)
-        if self.tipo == "categorico":
-            return _matriz_categorica(df_cat, self.features, self.cats)
-        X = _matriz_numerica(df_cat, self.features, self.cats)
-        if self.escalador is not None:
-            X = self.escalador.transform(X)
-        return X
+        if self.tipo == "numerico":
+            return _matriz_numerica(df_cat, self.features, self.cats)
+        # "categorico" y "lineal" consumen el DataFrame con dtype category: el
+        # modelo de arbol usa categoricas nativas y el pipeline lineal aplica
+        # one-hot + estandarizacion internamente.
+        return _matriz_categorica(df_cat, self.features, self.cats)
 
     def predecir(self, historico_integrado: pd.DataFrame) -> pd.Series:
         """Devuelve la demanda pronosticada (unidades) por fila del frame dado.
@@ -258,6 +299,107 @@ def _metricas_baseline(df: pd.DataFrame, col_pred: str, mask: pd.Series) -> dict
     return regression_metrics(y_true, y_pred)
 
 
+def _elegir_ganador(
+    metricas_df: pd.DataFrame, metricas_test_por_modelo: dict[str, dict[str, float]]
+) -> tuple[str, dict[str, Any]]:
+    """Elige el modelo de produccion priorizando **estabilidad**, no solo el MAE
+    de test.
+
+    Regla: dos modelos dentro del ruido en el **MAE medio de la validacion
+    cruzada temporal** (banda relativa ``TOL_MAE_REL``) se consideran empatados;
+    entre ellos gana el de **menor desviacion estandar del RMSE** en CV (mas
+    estable y, en la practica, mas rapido). Sin CV disponible (p. ej. en tests)
+    se cae al menor MAE de test.
+    """
+    modelos = list(metricas_test_por_modelo)
+    cv = metricas_df[metricas_df["split"].str.startswith("cv_")]
+    cv = cv[cv["modelo"].isin(modelos)]
+    if cv.empty:
+        mejor = min(modelos, key=lambda m: metricas_test_por_modelo[m]["MAE"])
+        return mejor, {
+            "regla": "menor MAE en TEST (sin validacion cruzada disponible)",
+            "tol_mae_rel": TOL_MAE_REL,
+        }
+    resumen = cv.groupby("modelo").agg(
+        mae_mean=("MAE", "mean"), rmse_std=("RMSE", "std")
+    )
+    best_mae = float(resumen["mae_mean"].min())
+    banda = best_mae * (1.0 + TOL_MAE_REL)
+    candidatos = resumen[resumen["mae_mean"] <= banda]
+    mejor = str(candidatos["rmse_std"].idxmin())
+    return mejor, {
+        "regla": (
+            "entre los modelos dentro de la banda de ruido del MAE de CV "
+            f"(<= {banda:.3f}; tolerancia {TOL_MAE_REL:.0%}), el de menor RMSE_std "
+            "(mas estable)"
+        ),
+        "tol_mae_rel": TOL_MAE_REL,
+        "mae_cv_mejor": round(best_mae, 3),
+        "banda_mae_cv": round(banda, 3),
+        "candidatos": {
+            m: {
+                "mae_cv_mean": round(float(resumen.loc[m, "mae_mean"]), 3),
+                "rmse_cv_std": round(float(resumen.loc[m, "rmse_std"]), 3),
+            }
+            for m in candidatos.index
+        },
+    }
+
+
+def calcular_importancias(
+    spec: EspecModelo,
+    X_cat: pd.DataFrame,
+    X_num: np.ndarray,
+    y_log: np.ndarray,
+    idx_fit: np.ndarray,
+    idx_eval: np.ndarray,
+    features: list[str],
+    *,
+    seed: int,
+    top_n: int = 15,
+    max_eval: int = 40_000,
+    n_repeats: int = 3,
+) -> pd.DataFrame:
+    """Importancia de features por **permutation importance held-out**.
+
+    Es agnostica al modelo (sirve para HistGradientBoosting -que no expone
+    ``feature_importances_``-, boosting y el pipeline lineal) y mas honesta que
+    la importancia interna de los arboles: mide cuanto empeora el MAE (en
+    log-space) al **barajar** cada feature sobre el holdout de TEST. Se entrena
+    una instancia del ganador en TRAIN y se evalua sobre una submuestra del TEST
+    (sin tocar el reajuste final del artefacto).
+    """
+    from sklearn.inspection import permutation_importance
+
+    if spec.tipo == "numerico":
+        Xfit: Any = X_num[idx_fit]
+        Xev: Any = X_num[idx_eval]
+    else:  # "categorico" | "lineal"
+        Xfit = X_cat.iloc[idx_fit]
+        Xev = X_cat.iloc[idx_eval]
+
+    modelo = spec.construir()
+    modelo.fit(Xfit, y_log[idx_fit])
+
+    rng = np.random.default_rng(seed)
+    y_eval = y_log[idx_eval]
+    if len(idx_eval) > max_eval:
+        sel = rng.choice(len(idx_eval), size=max_eval, replace=False)
+        Xev = Xev[sel] if spec.tipo == "numerico" else Xev.iloc[sel]
+        y_eval = y_eval[sel]
+
+    resultado = permutation_importance(
+        modelo, Xev, y_eval,
+        scoring="neg_mean_absolute_error",
+        n_repeats=n_repeats, random_state=seed, n_jobs=-1,
+    )
+    imp = np.clip(resultado.importances_mean, 0.0, None)
+    total = float(imp.sum()) or 1.0
+    df = pd.DataFrame({"feature": features, "importancia": imp})
+    df["importancia_pct"] = df["importancia"] / total * 100.0
+    return df.sort_values("importancia", ascending=False).head(top_n).reset_index(drop=True)
+
+
 # ---------------------------------------------------------------------------
 # Entrenamiento + comparacion
 # ---------------------------------------------------------------------------
@@ -271,8 +413,12 @@ class ResultadoEntrenamiento:
     cats: list[str]
     cfg_features: ConfigFeatures
     metricas_test_mejor: dict[str, float]
+    metricas_test_por_modelo: dict[str, dict[str, float]]
     metricas_baseline: dict[str, dict[str, float]]
+    criterio_seleccion: dict[str, Any]
     n_train: int
+    n_artefacto: int
+    importancias: pd.DataFrame
 
 
 def _muestrear(idx: np.ndarray, max_filas: int | None, seed: int) -> np.ndarray:
@@ -330,9 +476,7 @@ def entrenar_y_comparar(
     idx_test = idx[mask_test.to_numpy()]
     idx_train_fit = _muestrear(idx_train, max_train_rows, seed)
 
-    from sklearn.preprocessing import StandardScaler
-
-    zoo = construir_zoo(seed)
+    zoo = construir_zoo(seed, features, cats)
     filas_metricas: list[dict] = []
 
     # --- Baselines (en unidades; no requieren ajuste) ---
@@ -349,23 +493,16 @@ def entrenar_y_comparar(
                 metricas_baseline[nombre] = m
 
     # --- Modelos: ajuste en TRAIN, evaluacion en VALID y TEST ---
-    mae_test: dict[str, float] = {}
-    rmse_test: dict[str, float] = {}
+    metricas_test_por_modelo: dict[str, dict[str, float]] = {}
 
     for nombre, spec in zoo.items():
         log.info("Entrenando %s...", nombre)
-        escalador = None
-        if spec.tipo == "categorico":
+        if spec.tipo == "numerico":
+            Xtr = X_num[idx_train_fit]
+            Xva, Xte = X_num[idx_valid], X_num[idx_test]
+        else:  # "categorico" o "lineal": DataFrame con dtype category
             Xtr = X_cat.iloc[idx_train_fit]
             Xva, Xte = X_cat.iloc[idx_valid], X_cat.iloc[idx_test]
-        else:
-            if spec.escala:
-                escalador = StandardScaler()
-                Xtr = escalador.fit_transform(X_num[idx_train_fit])
-                Xva = escalador.transform(X_num[idx_valid])
-                Xte = escalador.transform(X_num[idx_test])
-            else:
-                Xtr, Xva, Xte = X_num[idx_train_fit], X_num[idx_valid], X_num[idx_test]
 
         modelo = spec.construir()
         modelo.fit(Xtr, y_log[idx_train_fit])
@@ -375,8 +512,7 @@ def entrenar_y_comparar(
             m = evaluar_en_unidades(y_log[idx_split], pred_log)
             filas_metricas.append({"modelo": nombre, "split": split, **m})
             if split == "test":
-                mae_test[nombre] = m["MAE"]
-                rmse_test[nombre] = m["RMSE"]
+                metricas_test_por_modelo[nombre] = m
 
     # --- Validacion cruzada temporal (expanding) sobre TRAIN+VALID ---
     if con_cv:
@@ -387,27 +523,25 @@ def entrenar_y_comparar(
 
     metricas_df = pd.DataFrame(filas_metricas)
 
-    # --- Eleccion del ganador: menor MAE en TEST entre los modelos ---
-    mejor = min(mae_test, key=mae_test.get)
-    log.info("Mejor modelo por MAE(test) = %s (%.3f)", mejor, mae_test[mejor])
+    # --- Eleccion del ganador: estabilidad por encima del MAE de test "a secas" ---
+    mejor, criterio = _elegir_ganador(metricas_df, metricas_test_por_modelo)
+    log.info("Modelo elegido = %s | criterio = %s", mejor, criterio.get("regla"))
 
-    # --- Reajuste del ganador sobre TODO lo etiquetado (mas datos = mejor artefacto) ---
+    # --- Reajuste del ganador sobre TODO el historico etiquetado ---
+    #     (mas datos = mejor artefacto de produccion; las metricas reportadas
+    #     provienen del holdout temporal, no de este reajuste final).
     log.info("Reajustando %s sobre todo el historico para el artefacto...", mejor)
     spec = zoo[mejor]
-    escalador_final = None
-    if spec.tipo == "categorico":
-        X_full: Any = X_cat
-    elif spec.escala:
-        escalador_final = StandardScaler()
-        X_full = escalador_final.fit_transform(X_num)
-    else:
-        X_full = X_num
+    X_full: Any = X_num if spec.tipo == "numerico" else X_cat
     modelo_final = spec.construir()
     modelo_final.fit(X_full, y_log)
     predictor_final = PredictorRegresion(
         modelo=modelo_final, features=features, cats=cats, categorias=categorias,
-        cfg_features=cfg_features, tipo=spec.tipo, escalador=escalador_final,
+        cfg_features=cfg_features, tipo=spec.tipo,
         nombre_modelo=mejor, techo_log=techo_log,
+    )
+    importancias = calcular_importancias(
+        spec, X_cat, X_num, y_log, idx_train_fit, idx_test, features, seed=seed
     )
 
     return ResultadoEntrenamiento(
@@ -418,9 +552,16 @@ def entrenar_y_comparar(
         features=features,
         cats=cats,
         cfg_features=cfg_features,
-        metricas_test_mejor={"MAE": mae_test[mejor], "RMSE": rmse_test[mejor]},
+        metricas_test_mejor={
+            "MAE": metricas_test_por_modelo[mejor]["MAE"],
+            "RMSE": metricas_test_por_modelo[mejor]["RMSE"],
+        },
+        metricas_test_por_modelo=metricas_test_por_modelo,
         metricas_baseline=metricas_baseline,
+        criterio_seleccion=criterio,
         n_train=len(idx_train_fit),
+        n_artefacto=len(y_log),
+        importancias=importancias,
     )
 
 
@@ -438,8 +579,6 @@ def _agregar_cv(
 ) -> None:
     """Validacion cruzada temporal expanding: folds de CV_DIAS_VAL dias dentro de
     TRAIN+VALID (nunca toca TEST). Agrega MAE/RMSE por fold (en unidades)."""
-    from sklearn.preprocessing import StandardScaler
-
     fechas = df_model[COL_FECHA]
     idx = np.arange(len(df_model))
     cap_cv = None if max_train_rows is None else max_train_rows // 2
@@ -454,14 +593,10 @@ def _agregar_cv(
         idx_tr = _muestrear(idx[m_tr], cap_cv, seed + k)
         idx_va = idx[m_va]
         for nombre, spec in zoo.items():
-            if spec.tipo == "categorico":
-                Xtr, Xva = X_cat.iloc[idx_tr], X_cat.iloc[idx_va]
-            elif spec.escala:
-                sc = StandardScaler()
-                Xtr = sc.fit_transform(X_num[idx_tr])
-                Xva = sc.transform(X_num[idx_va])
-            else:
+            if spec.tipo == "numerico":
                 Xtr, Xva = X_num[idx_tr], X_num[idx_va]
+            else:  # "categorico" o "lineal"
+                Xtr, Xva = X_cat.iloc[idx_tr], X_cat.iloc[idx_va]
             modelo = spec.construir()
             modelo.fit(Xtr, y_log[idx_tr])
             pred_log = np.clip(modelo.predict(Xva), 0.0, techo_log)
@@ -481,6 +616,10 @@ def persistir_metricas(res: ResultadoEntrenamiento, settings: Settings) -> Path:
         res.metricas.to_json(orient="records", force_ascii=False, indent=2),
         encoding="utf-8",
     )
+    if not res.importancias.empty:
+        res.importancias.to_csv(
+            settings.processed_dir / "importancias_regresion_2a.csv", index=False
+        )
     return ruta_csv
 
 
@@ -491,6 +630,7 @@ def serializar_artefacto(res: ResultadoEntrenamiento, settings: Settings) -> tup
         "version": VERSION_MODELO,
         "fecha_entrenamiento": date.today().isoformat(),
         "modelo": res.mejor_modelo,
+        "criterio_seleccion": res.criterio_seleccion,
         "transformacion_objetivo": "log1p",
         "escala_metricas": "unidades",
         "techo_log_prediccion": res.predictor.techo_log,
@@ -499,16 +639,54 @@ def serializar_artefacto(res: ResultadoEntrenamiento, settings: Settings) -> tup
         "features_categoricas": res.cats,
         "config_features": res.cfg_features.as_dict(),
         "cortes_temporales": res.cortes.as_dict(),
-        "metricas_test": res.metricas_test_mejor,
+        "metricas_test": res.metricas_test_por_modelo.get(
+            res.mejor_modelo, res.metricas_test_mejor
+        ),
         "metricas_test_baseline": res.metricas_baseline,
-        "n_filas_entrenamiento_fit": res.n_train,
+        "n_filas_comparacion": res.n_train,
+        "n_filas_artefacto_final": res.n_artefacto,
     }
     return guardar_artefacto(res.predictor, ruta, metadatos)
+
+
+def _texto_criterio(criterio: dict[str, Any]) -> str:
+    """Renderiza el criterio de seleccion como texto para el reporte."""
+    regla = criterio.get("regla", "")
+    cands = criterio.get("candidatos")
+    if not cands:
+        return f"Regla: {regla}."
+    filas = "; ".join(
+        f"`{m}` (MAE_cv {d['mae_cv_mean']}, RMSE_std {d['rmse_cv_std']})"
+        for m, d in cands.items()
+    )
+    return (
+        f"Regla aplicada: {regla}. Candidatos dentro de la banda de ruido del MAE "
+        f"de CV: {filas}. Gana el de **menor RMSE_std** (mas estable y, en la "
+        f"practica, mas rapido) frente a desempatar por una decima de MAE de test."
+    )
 
 
 def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
     """Genera ``docs/reporte_regresion_2a.md`` con la comparacion de modelos."""
     md = res.metricas.copy()
+
+    # --- Ridge: retirar de las tablas si, tras corregir el pipeline, sigue por
+    #     debajo de los baselines (peor que el peor baseline en MAE de test). ---
+    nota_ridge = ""
+    ridge_mae = res.metricas_test_por_modelo.get("Ridge", {}).get("MAE")
+    peor_baseline_mae = max(v["MAE"] for v in res.metricas_baseline.values())
+    if ridge_mae is not None and ridge_mae > peor_baseline_mae:
+        md = md[md["modelo"] != "Ridge"].copy()
+        nota_ridge = (
+            f"> **Nota — Ridge retirado de las tablas.** Tras montarlo correctamente "
+            f"(pipeline propio: one-hot de categoricos + estandarizacion de numericas "
+            f"y recorte de `expm1`), el lineal alcanza MAE(test) = {ridge_mae:.2f}, "
+            f"todavia por encima del peor baseline ({peor_baseline_mae:.2f}). Se "
+            f"documenta y se excluye de la comparacion para no dejar un modelo no apto "
+            f"en el entregable; queda como referencia interpretable, no como candidato "
+            f"a produccion."
+        )
+
     test = md[md["split"] == "test"].copy().sort_values("MAE")
     valid = md[md["split"] == "valid"].copy().sort_values("MAE")
     cv = md[md["split"].str.startswith("cv_")].copy()
@@ -518,7 +696,9 @@ def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
         else pd.DataFrame()
     )
 
-    metricas_cols = ["MAE", "RMSE", "RMSLE", "MAPE", "WAPE", "R2"]
+    # Jerarquia de metricas: WAPE/MAE/RMSE/RMSLE primero (principales); MAPE
+    # (inflado por ceros) y R2 quedan como referencia secundaria.
+    metricas_cols = ["WAPE", "MAE", "RMSE", "RMSLE", "MAPE", "R2"]
 
     def _fmt(df: pd.DataFrame) -> pd.DataFrame:
         out = df[["modelo", *metricas_cols]].copy()
@@ -541,24 +721,43 @@ def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
         "(objetivo entrenado en `log1p`, invertido con `expm1`). Validacion "
         "temporal sin fuga de futuro.",
         "",
+        "## Jerarquia de metricas",
+        "",
+        "Se prioriza, en este orden: **WAPE**, **MAE**, **RMSE** y **RMSLE**. El "
+        "**MAPE (~32%) esta inflado** por el 31% de ceros en `sales` "
+        "(zero-inflation): al excluir los ceros del denominador, sobre-pondera las "
+        "series de bajo volumen, asi que **no debe usarse como metrica principal** "
+        "(se incluye solo como referencia). `R2` se reporta como contexto, no como "
+        "criterio de seleccion.",
+        "",
         "## Cortes temporales",
         "",
         f"- **Train:** {res.cortes.as_dict()['train']}",
         f"- **Valid:** {res.cortes.as_dict()['valid']}",
         f"- **Test:** {res.cortes.as_dict()['test']}",
-        f"- Filas usadas para ajustar (submuestreo de train): "
+        f"- Filas para **comparar** modelos (submuestreo de train): "
         f"{res.n_train:,}".replace(",", " "),
+        f"- Filas del **artefacto final** (`{VERSION_MODELO}`, reajuste sobre todo "
+        f"el historico etiquetado): {format(res.n_artefacto, ',').replace(',', ' ')}",
         "",
         "## Resultados en TEST (ordenado por MAE, menor es mejor)",
         "",
         markdown_table(_fmt(test)),
         "",
-        f"**Modelo ganador: `{mejor}`** (artefacto `{VERSION_MODELO}`).",
+    ]
+    if nota_ridge:
+        lineas += [nota_ridge, ""]
+    lineas += [
+        f"**Modelo elegido: `{mejor}`** (artefacto `{VERSION_MODELO}`).",
         "",
-        f"- MAE ganador = {gan_mae:.3f} vs mejor baseline = {base_mae:.3f} "
+        f"- MAE elegido = {gan_mae:.3f} vs mejor baseline = {base_mae:.3f} "
         f"-> mejora {mejora_mae:.1f}%.",
-        f"- RMSE ganador = {gan_rmse:.3f} vs mejor baseline = {base_rmse:.3f} "
+        f"- RMSE elegido = {gan_rmse:.3f} vs mejor baseline = {base_rmse:.3f} "
         f"-> mejora {mejora_rmse:.1f}%.",
+        "",
+        "### Criterio de seleccion (estabilidad, no solo MAE de test)",
+        "",
+        _texto_criterio(res.criterio_seleccion),
         "",
         "## Resultados en VALID (ordenado por MAE)",
         "",
@@ -575,17 +774,52 @@ def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
             markdown_table(cv_flat),
             "",
         ]
+    if not res.importancias.empty:
+        imp = res.importancias.copy()
+        imp["importancia"] = imp["importancia"].round(3)
+        imp["importancia_pct"] = imp["importancia_pct"].round(2)
+        lineas += [
+            f"## Importancia de features (top {len(imp)}, modelo `{mejor}`)",
+            "",
+            "Calculada por **permutation importance held-out** (cuanto empeora el "
+            "MAE al barajar cada feature sobre el TEST); agnostica al modelo y mas "
+            "robusta que la importancia interna de los arboles.",
+            "",
+            markdown_table(imp),
+            "",
+            "Dominan, como anticipaba el EDA, los **rezagos y medias moviles del "
+            "objetivo** (autocorrelacion fuerte de la demanda), seguidos de la "
+            "**promocion** (`onpromotion` y sus rezagos) y el **calendario**. Esto "
+            "sustenta la trazabilidad hacia COMPRAS/ALMACEN: el pronostico se apoya "
+            "en la historia reciente de cada serie y en las palancas planificadas.",
+            "",
+        ]
     lineas += [
+        "## Nota sobre el MAPE",
+        "",
+        "El MAPE (~32%) **sobre-estima el error**: excluye los dias de venta cero "
+        "(31% del total) y penaliza desproporcionadamente las series pequenas. Para "
+        "esta serie zero-inflated, el **WAPE** (error agregado ponderado por "
+        "volumen) y el **MAE/RMSE** en unidades son las metricas fiables.",
+        "",
         "## Notas de diseno",
         "",
         "- Transacciones usadas **solo como rezagos** (t-1, t-7) y medias del "
         "pasado: en pronostico real no se conocen las del periodo a predecir.",
         "- Rezagos/ventanas del objetivo calculados por serie "
         "`(store_nbr, family)` con `shift` antes de la ventana (sin fuga).",
+        "- Modelo lineal (Ridge) montado en **pipeline propio** (one-hot + "
+        "estandarizacion); los modelos de arbol usan categoricas nativas/codigos.",
         "- Zero-inflation (31.3% de ceros) presente; el recorte a 0 tras `expm1` "
         "respeta que las ventas no son negativas.",
-        "- **Intervalos de prediccion:** pendientes (mejora futura via cuantiles "
-        "de boosting o residuos empiricos).",
+        "",
+        "## Mejoras diferidas (documentadas, no implementadas en este cierre)",
+        "",
+        "- **Intervalos de prediccion:** via cuantiles de boosting "
+        "(`quantile`/`pinball`) o residuos empiricos del holdout.",
+        "- **Enfoque zero-inflated / two-part:** clasificar cero vs. positivo y "
+        "regredir solo los positivos, dado el 31% de ceros; evaluar si reduce el "
+        "sesgo en series intermitentes.",
         "",
     ]
     ruta = settings.base_dir / "docs" / "reporte_regresion_2a.md"

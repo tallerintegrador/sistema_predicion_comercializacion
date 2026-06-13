@@ -45,3 +45,47 @@ def test_artefacto_serializa_recarga_y_predice_igual(analitico_sintetico, tmp_pa
     pred_sub = predictor2.predecir(sub)
     assert len(pred_sub) == len(sub)
     assert (pred_sub >= 0).all()
+
+
+def test_ridge_pipeline_no_explota(analitico_sintetico):
+    """Ridge en pipeline (one-hot + escala) ya no dispara `expm1` a valores absurdos."""
+    res = entrenar_y_comparar(
+        analitico_sintetico, Settings(), max_train_rows=None, con_cv=False
+    )
+    ridge = res.metricas[
+        (res.metricas["modelo"] == "Ridge") & (res.metricas["split"] == "test")
+    ]
+    assert not ridge.empty
+    mae = float(ridge["MAE"].iloc[0])
+    r2 = float(ridge["R2"].iloc[0])
+    assert np.isfinite(mae) and np.isfinite(r2)
+    # Sin explosion exponencial: MAE del orden de las ventas y R2 no catastrofico.
+    assert mae < 1e3
+    assert r2 > 0.0
+
+
+def test_metadatos_artefacto_completos(analitico_sintetico, tmp_path):
+    """Los metadatos del artefacto incluyen todo lo exigido por el criterio de hecho."""
+    settings = Settings(base_dir=tmp_path)
+    res = entrenar_y_comparar(
+        analitico_sintetico, settings, max_train_rows=None, con_cv=False
+    )
+    _, ruta_meta = serializar_artefacto(res, settings)
+    import json
+
+    meta = json.loads(ruta_meta.read_text(encoding="utf-8"))
+    for clave in (
+        "version",
+        "fecha_entrenamiento",
+        "modelo",
+        "semilla",
+        "features",
+        "transformacion_objetivo",
+        "criterio_seleccion",
+        "n_filas_artefacto_final",
+        "metricas_test",
+    ):
+        assert clave in meta, clave
+    assert meta["features"]  # lista de features no vacia
+    assert meta["semilla"] == settings.random_seed
+    assert meta["n_filas_artefacto_final"] >= meta["n_filas_comparacion"]

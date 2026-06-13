@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from spc.features.temporales import construir_features
+from spc.features.temporales import columnas_rezago, construir_features
 
 
 def test_lags_no_usan_el_valor_actual(analitico_sintetico):
@@ -36,3 +36,20 @@ def test_transacciones_solo_como_rezago(analitico_sintetico):
     assert any(c.startswith("trans_lag_") for c in features)
     # La promocion del dia SI es valida: es planificada/conocida de antemano.
     assert "onpromotion" in features
+
+
+def test_modificar_el_futuro_no_altera_features_pasadas(analitico_sintetico):
+    """Garantia fuerte de no-fuga: inflar la venta MAS futura de cada serie no
+    cambia ninguna feature de rezago/ventana (solo miran hacia atras)."""
+    base = analitico_sintetico
+    df_a, features, _c, _cfg = construir_features(base)
+    cols = columnas_rezago(features)
+
+    mod = base.copy()
+    fecha_max = mod.groupby(["store_nbr", "family"], observed=True)["date"].transform("max")
+    mod.loc[mod["date"] == fecha_max, "sales"] = mod["sales"] + 1e6
+    df_b, _f, _c2, _cfg2 = construir_features(mod)
+
+    a = df_a[cols].fillna(-1).to_numpy()
+    b = df_b[cols].fillna(-1).to_numpy()
+    assert np.array_equal(a, b)
