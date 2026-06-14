@@ -16,7 +16,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from spc.pipeline import cli  # noqa: E402
+from spc.eda.pipeline import cli  # noqa: E402
 
 if __name__ == "__main__":
     cli()

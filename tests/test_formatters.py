@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from spc.reporting.formatters import fmt_float, fmt_int, fmt_pct, markdown_table, pct
+from spc.utils.formatters import fmt_float, fmt_int, fmt_pct, markdown_table, pct
 
 
 def test_pct_evita_division_cero():

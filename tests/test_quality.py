@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from spc.quality.checks import build_observations, quality_checks
-from spc.quality.profiling import build_profiles, profile_dataframe
+from spc.eda.quality.checks import build_observations, quality_checks
+from spc.eda.quality.profiling import build_profiles, profile_dataframe
 
 
 def test_profile_dataframe_cuenta_filas_y_fechas(synthetic_data):

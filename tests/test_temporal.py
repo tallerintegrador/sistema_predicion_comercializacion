@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from spc.analysis.temporal import seasonal_month_index
+from spc.eda.analysis.temporal import seasonal_month_index
 
 
 def test_indice_estacional_no_depende_del_nivel_anual():

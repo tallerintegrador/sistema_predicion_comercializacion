@@ -23,12 +23,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import pandas as pd
 
 from spc.config import Settings
-from spc.features.integration import build_analytic_dataset
-from spc.io.loaders import load_data
-from spc.analysis.clustering import clustering_features
-from spc.modeling.regression import train_regression_models
-from spc.modeling.classification_model import train_classification_models
-from spc.modeling.clustering_eval import evaluate_clustering
+from spc.data.integration import build_analytic_dataset
+from spc.data.loaders import load_data
+from spc.eda.analysis.clustering import clustering_features
+from spc.models.clasificacion import train_classification_models
+from spc.models.clustering import evaluate_clustering
+from spc.models.regresion import train_regression_models
 
 
 def _separator(title: str) -> str:
@@ -161,9 +161,9 @@ def _save_metrics(reg: dict, clf: dict, clust: dict, settings: Settings) -> None
     clf["metrics"].to_csv(out_dir / "metricas_clasificacion.csv")
     clust["metrics"].to_csv(out_dir / "metricas_clustering.csv")
     print(f"  Metricas guardadas en: {out_dir}")
-    print(f"    - metricas_regresion.csv")
-    print(f"    - metricas_clasificacion.csv")
-    print(f"    - metricas_clustering.csv")
+    print("    - metricas_regresion.csv")
+    print("    - metricas_clasificacion.csv")
+    print("    - metricas_clustering.csv")
 
 
 def main() -> None:
