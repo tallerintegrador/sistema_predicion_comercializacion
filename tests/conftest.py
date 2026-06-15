@@ -172,6 +172,73 @@ def analitico_clasificacion() -> pd.DataFrame:
     return construir_analitico_clasificacion()
 
 
+def construir_analitico_clustering(n_dias: int = 60, seed: int = 21) -> pd.DataFrame:
+    """Dataset analitico sintetico para los tests de **clustering** (2c).
+
+    Estructura **separable a proposito** para que KMeans recupere segmentos claros:
+
+    - **Tiendas (16):** dos grupos. `store_nbr` 1..8 = alto volumen (venta y
+      transacciones altas, mas promo); 9..16 = bajo volumen e intermitente. -> el
+      perfil por tienda separa en 2 clusteres con silueta alta.
+    - **Familias (6):** 4 **continuas** (venta alta, pocos ceros) + 2 **intermitentes**
+      (`BOOKS`, `BABY CARE`: casi siempre 0). -> el perfil por familia aisla las
+      intermitentes en su propio cluster (lo que el plan espera, no se excluyen).
+    """
+    rng = np.random.default_rng(seed)
+    fechas = pd.date_range("2016-03-01", periods=n_dias, freq="D")
+    continuas = {"BEVERAGES": 1.0, "GROCERY": 1.4, "PRODUCE": 0.7, "CLEANING": 0.5}
+    intermitentes = ["BOOKS", "BABY CARE"]
+    familias = list(continuas) + intermitentes
+    frames = []
+    for s in range(1, 17):
+        alto = s <= 8
+        nivel = rng.uniform(400, 700) if alto else rng.uniform(20, 80)
+        trans = rng.uniform(2000, 3500) if alto else rng.uniform(150, 600)
+        promo_lambda = 4 if alto else 1
+        for fam in familias:
+            if fam in intermitentes:
+                sales = np.where(
+                    rng.random(n_dias) < 0.15, rng.integers(1, 4, n_dias), 0
+                ).astype("float64")
+                promo = rng.integers(0, 2, n_dias)
+            else:
+                base = nivel * continuas[fam]
+                promo = rng.poisson(promo_lambda, n_dias)
+                sales = np.maximum(
+                    0.0, base + 6.0 * promo + rng.normal(0, base * 0.15, n_dias)
+                )
+            transacciones = np.clip(trans + rng.normal(0, trans * 0.1, n_dias), 0, None)
+            frames.append(
+                pd.DataFrame(
+                    {
+                        "date": fechas,
+                        "store_nbr": np.int16(s),
+                        "family": fam,
+                        "sales": sales.astype("float32"),
+                        "onpromotion": np.asarray(promo).astype("int16"),
+                        "transactions_filled": transacciones.astype("int32"),
+                        "dcoilwtico": np.float32(50.0),
+                        "type": "A" if alto else "C",
+                        "city": "Quito" if alto else "Guayaquil",
+                        "state": "Pichincha" if alto else "Guayas",
+                        "cluster": np.int16(1 if alto else 2),
+                    }
+                )
+            )
+    df = pd.concat(frames, ignore_index=True)
+    df = _decorar_calendario(df)
+    # Etiqueta demanda_alta = sales > P75 de su familia (como en la integracion real).
+    p75 = df.groupby("family", observed=True)["sales"].transform(lambda x: x.quantile(0.75))
+    df["demanda_alta"] = (df["sales"].to_numpy() > p75.to_numpy()).astype("int8")
+    return df
+
+
+@pytest.fixture
+def analitico_clustering() -> pd.DataFrame:
+    """Dataset analitico sintetico separable (16 tiendas / 6 familias) para 2c."""
+    return construir_analitico_clustering()
+
+
 @pytest.fixture
 def synthetic_data() -> dict[str, pd.DataFrame]:
     """Dataset minimo coherente: 2 tiendas, 2 familias, 3 dias, 1 feriado nacional."""

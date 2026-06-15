@@ -29,6 +29,12 @@ from spc.models.clasificacion import (
     entrenar_y_comparar as entrenar_clasificacion,
 )
 from spc.models.clasificacion import serializar_artefacto as serializar_clasificacion
+from spc.models.clustering import (
+    CONFIGS,
+    PerfiladorClustering,
+)
+from spc.models.clustering import entrenar_tarea as entrenar_clustering_tarea
+from spc.models.clustering import serializar_artefactos as serializar_clustering
 from spc.models.regresion import (
     ModeloEnsemble,
     PredictorRegresion,
@@ -44,6 +50,7 @@ def test_clases_serializadas_no_viven_en_main():
     assert PredictorRegresion.__module__ == "spc.models.regresion"
     assert ModeloEnsemble.__module__ == "spc.models.regresion"
     assert PredictorClasificacion.__module__ == "spc.models.clasificacion"
+    assert PerfiladorClustering.__module__ == "spc.models.clustering"
 
 
 def test_artefacto_carga_en_proceso_limpio_y_predice(analitico_sintetico, tmp_path):
@@ -132,5 +139,56 @@ def test_artefacto_clasificacion_carga_en_proceso_limpio(analitico_clasificacion
     )
     assert proc.returncode == 0, (
         f"carga 2b en proceso limpio fallo:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert proc.stdout.startswith("OK"), proc.stdout
+
+
+def test_artefacto_clustering_carga_en_proceso_limpio(analitico_clustering, tmp_path):
+    """El artefacto 2c se carga y asigna segmento (clave + segmento + etiqueta) en un
+    subproceso limpio.
+
+    El subproceso solo llama a ``cargar_artefacto``; joblib auto-importa
+    ``spc.models.clustering`` desde el pickle. Si ``PerfiladorClustering`` viviera bajo
+    ``__main__`` fallaria; con el artefacto portable pasa. Verifica ademas que el scaler
+    viaja DENTRO del pipeline (se asigna escalando una entidad nueva).
+    """
+    settings = Settings(base_dir=tmp_path)
+    resultados = {
+        "tiendas": entrenar_clustering_tarea(analitico_clustering, CONFIGS["tiendas"], seed=42)
+    }
+    rutas = serializar_clustering(resultados, settings)
+    ruta_art, _ = rutas["tiendas"]
+    assert ruta_art.exists()
+
+    ruta_hist = tmp_path / "historico_clust.pkl"
+    analitico_clustering.to_pickle(ruta_hist)
+
+    codigo = textwrap.dedent(
+        f"""
+        import sys
+        sys.path.insert(0, {SRC!r})
+        import pandas as pd
+        from spc.utils.serializacion import cargar_artefacto
+        perfilador, meta = cargar_artefacto(r{str(ruta_art)!r})
+        hist = pd.read_pickle(r{str(ruta_hist)!r})
+        # Entidad nueva: el historico de una sola tienda.
+        una = hist[hist["store_nbr"] == 1].copy()
+        salida = perfilador.perfilar(una)
+        assert len(salida) == 1, "se esperaba una sola entidad"
+        assert list(salida.columns) == ["store_nbr", "segmento", "etiqueta_narrativa"]
+        seg = int(salida["segmento"].iloc[0])
+        assert 0 <= seg < perfilador.k, "segmento fuera de rango"
+        assert salida["etiqueta_narrativa"].iloc[0].strip(), "etiqueta vacia"
+        assert type(perfilador).__module__ == "spc.models.clustering"
+        print("OK", perfilador.k, meta.get("silueta"))
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", codigo],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (
+        f"carga 2c en proceso limpio fallo:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
     )
     assert proc.stdout.startswith("OK"), proc.stdout
