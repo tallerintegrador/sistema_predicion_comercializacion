@@ -81,6 +81,97 @@ def analitico_sintetico() -> pd.DataFrame:
     return construir_analitico_sintetico()
 
 
+def _decorar_calendario(df: pd.DataFrame) -> pd.DataFrame:
+    """Anade las columnas de calendario/feriados que espera el dataset analitico."""
+    df["year"] = df["date"].dt.year.astype("int16")
+    df["month"] = df["date"].dt.month.astype("int8")
+    df["day"] = df["date"].dt.day.astype("int8")
+    df["dayofweek"] = df["date"].dt.dayofweek.astype("int8")
+    df["is_weekend"] = df["dayofweek"] >= 5
+    df["is_month_end"] = df["date"].dt.is_month_end
+    df["is_payday"] = (df["day"] == 15) | df["is_month_end"]
+    for c in ("holiday_national", "holiday_regional", "holiday_local", "holiday_event_count"):
+        df[c] = np.int16(0)
+    df["holiday_any"] = False
+    df["family"] = df["family"].astype("category")
+    return df
+
+
+def construir_analitico_clasificacion(
+    n_dias: int = 170, n_stores: int = 4, seed: int = 11
+) -> pd.DataFrame:
+    """Dataset analitico sintetico para los tests de **clasificacion** (2b).
+
+    - Familias **normales** (AR(1) + efecto promocion): la etiqueta
+      ``demanda_alta = sales > P75(familia)`` queda **desbalanceada (~25 % pos)** y
+      es **aprendible** desde los rezagos/promocion (un booster supera al dummy).
+    - Una familia **degenerada** (`BOOKS`): ventas casi siempre 0 (P75 train = 0),
+      de modo que la etiqueta se vuelve "vendio algo" -> el motor la **excluye** y el
+      test verifica esa deteccion.
+    """
+    rng = np.random.default_rng(seed)
+    fechas = pd.date_range("2016-02-01", periods=n_dias, freq="D")
+    normales = ["BEVERAGES", "GROCERY", "MEATS"]
+    tipos = ["A", "B", "C", "D"]
+    ciudades = ["Quito", "Guayaquil"]
+    estados = ["Pichincha", "Guayas"]
+    frames = []
+    for s in range(n_stores):
+        for fam in normales:
+            promo = rng.integers(0, 6, n_dias)
+            sales = np.zeros(n_dias)
+            prev = rng.uniform(20, 60)
+            for t in range(n_dias):
+                valor = 0.85 * prev + 9.0 * promo[t] + rng.normal(0, 4)
+                sales[t] = max(0.0, valor)
+                prev = sales[t]
+            frames.append(
+                pd.DataFrame(
+                    {
+                        "date": fechas,
+                        "store_nbr": np.int16(s + 1),
+                        "family": fam,
+                        "sales": sales.astype("float32"),
+                        "onpromotion": promo.astype("int16"),
+                        "transactions_filled": (sales * 2 + rng.normal(0, 5, n_dias)).clip(0).astype("int32"),
+                        "dcoilwtico": np.float32(50.0),
+                        "type": tipos[s % len(tipos)],
+                        "city": ciudades[s % len(ciudades)],
+                        "state": estados[s % len(estados)],
+                        "cluster": np.int16(s % 3 + 1),
+                    }
+                )
+            )
+        # Familia degenerada: ventas casi siempre 0 -> P75 train = 0.
+        promo = rng.integers(0, 2, n_dias)
+        sales = np.where(rng.random(n_dias) < 0.10, rng.integers(1, 3, n_dias), 0).astype("float32")
+        frames.append(
+            pd.DataFrame(
+                {
+                    "date": fechas,
+                    "store_nbr": np.int16(s + 1),
+                    "family": "BOOKS",
+                    "sales": sales,
+                    "onpromotion": promo.astype("int16"),
+                    "transactions_filled": np.int32(0),
+                    "dcoilwtico": np.float32(50.0),
+                    "type": tipos[s % len(tipos)],
+                    "city": ciudades[s % len(ciudades)],
+                    "state": estados[s % len(estados)],
+                    "cluster": np.int16(s % 3 + 1),
+                }
+            )
+        )
+    df = pd.concat(frames, ignore_index=True)
+    return _decorar_calendario(df)
+
+
+@pytest.fixture
+def analitico_clasificacion() -> pd.DataFrame:
+    """Dataset analitico sintetico desbalanceado (con familia degenerada) para 2b."""
+    return construir_analitico_clasificacion()
+
+
 @pytest.fixture
 def synthetic_data() -> dict[str, pd.DataFrame]:
     """Dataset minimo coherente: 2 tiendas, 2 familias, 3 dias, 1 feriado nacional."""

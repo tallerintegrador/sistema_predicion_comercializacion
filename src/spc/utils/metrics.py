@@ -6,7 +6,9 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
     calinski_harabasz_score,
+    confusion_matrix,
     davies_bouldin_score,
     f1_score,
     mean_absolute_error,
@@ -90,6 +92,53 @@ def classification_metrics(
         except ValueError:
             metrics["AUC-ROC"] = np.nan
     return metrics
+
+
+def classification_metrics_min(
+    y_true: np.ndarray, y_prob: np.ndarray, umbral: float = 0.5
+) -> dict[str, float]:
+    """Metricas de clasificacion binaria centradas en la **clase minoritaria** (Fase 2b).
+
+    Jerarquia para desbalance: **PR-AUC** (principal, independiente del umbral,
+    adecuada para la minoritaria) -> **recall** de la positiva -> **F1** ->
+    **precision**. Se incluye **ROC-AUC** como contexto y la **prevalencia** de
+    positivos (= linea *sin-skill* de la PR-AUC: una PR-AUC solo es buena si supera
+    a la prevalencia). Recall/F1/precision se calculan al ``umbral`` dado (por
+    defecto 0.5; en 2b se reemplaza por el umbral elegido en VALID).
+
+    ``y_prob`` es la probabilidad de la clase positiva (``demanda_alta=1``). No se
+    reporta *accuracy* como metrica principal: enganha con clases desbalanceadas.
+    """
+    y_true = np.asarray(y_true).astype(int)
+    y_prob = np.asarray(y_prob, dtype="float64")
+    y_pred = (y_prob >= umbral).astype(int)
+    prevalencia = float(y_true.mean())
+    # PR-AUC y ROC-AUC necesitan ambas clases presentes en y_true.
+    if 0 < y_true.sum() < len(y_true):
+        pr_auc = float(average_precision_score(y_true, y_prob))
+        roc_auc = float(roc_auc_score(y_true, y_prob))
+    else:
+        pr_auc = roc_auc = np.nan
+    return {
+        "PR_AUC": pr_auc,
+        "Recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "F1": float(f1_score(y_true, y_pred, zero_division=0)),
+        "Precision": float(precision_score(y_true, y_pred, zero_division=0)),
+        "ROC_AUC": roc_auc,
+        "Accuracy": float(accuracy_score(y_true, y_pred)),
+        "prevalencia": prevalencia,
+        "umbral": float(umbral),
+    }
+
+
+def matriz_confusion(
+    y_true: np.ndarray, y_prob: np.ndarray, umbral: float = 0.5
+) -> dict[str, int]:
+    """Matriz de confusion (TN/FP/FN/TP) al ``umbral`` dado, como dict serializable."""
+    y_true = np.asarray(y_true).astype(int)
+    y_pred = (np.asarray(y_prob, dtype="float64") >= umbral).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    return {"TN": int(tn), "FP": int(fp), "FN": int(fn), "TP": int(tp)}
 
 
 def clustering_metrics(X: np.ndarray, labels: np.ndarray) -> dict[str, float]:

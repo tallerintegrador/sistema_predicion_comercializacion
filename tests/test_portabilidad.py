@@ -22,6 +22,13 @@ import textwrap
 from pathlib import Path
 
 from spc.config import Settings
+from spc.models.clasificacion import (
+    PredictorClasificacion,
+)
+from spc.models.clasificacion import (
+    entrenar_y_comparar as entrenar_clasificacion,
+)
+from spc.models.clasificacion import serializar_artefacto as serializar_clasificacion
 from spc.models.regresion import (
     ModeloEnsemble,
     PredictorRegresion,
@@ -33,9 +40,10 @@ SRC = str(Path(__file__).resolve().parent.parent / "src")
 
 
 def test_clases_serializadas_no_viven_en_main():
-    """Las clases del artefacto se resuelven a ``spc.models.regresion``, no ``__main__``."""
+    """Las clases del artefacto se resuelven a su modulo, no ``__main__``."""
     assert PredictorRegresion.__module__ == "spc.models.regresion"
     assert ModeloEnsemble.__module__ == "spc.models.regresion"
+    assert PredictorClasificacion.__module__ == "spc.models.clasificacion"
 
 
 def test_artefacto_carga_en_proceso_limpio_y_predice(analitico_sintetico, tmp_path):
@@ -79,5 +87,50 @@ def test_artefacto_carga_en_proceso_limpio_y_predice(analitico_sintetico, tmp_pa
     )
     assert proc.returncode == 0, (
         f"carga en proceso limpio fallo:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert proc.stdout.startswith("OK"), proc.stdout
+
+
+def test_artefacto_clasificacion_carga_en_proceso_limpio(analitico_clasificacion, tmp_path):
+    """El artefacto 2b se carga y predice (clase + probabilidad) en un subproceso limpio.
+
+    El subproceso solo llama a ``cargar_artefacto``; joblib auto-importa
+    ``spc.models.clasificacion`` desde el pickle. Si la clase viviera bajo
+    ``__main__`` fallaria; con el artefacto portable pasa.
+    """
+    settings = Settings(base_dir=tmp_path)
+    res = entrenar_clasificacion(
+        analitico_clasificacion, settings, max_train_rows=None, con_cv=False, usar_gpu=False
+    )
+    ruta_art, _ = serializar_clasificacion(res, settings)
+    assert ruta_art.exists()
+
+    ruta_hist = tmp_path / "historico_clf.pkl"
+    analitico_clasificacion.to_pickle(ruta_hist)
+
+    codigo = textwrap.dedent(
+        f"""
+        import sys
+        sys.path.insert(0, {SRC!r})
+        import pandas as pd
+        from spc.utils.serializacion import cargar_artefacto
+        predictor, meta = cargar_artefacto(r{str(ruta_art)!r})
+        hist = pd.read_pickle(r{str(ruta_hist)!r})
+        out = predictor.predecir(hist)
+        assert len(out) == len(hist), "longitud inesperada"
+        prob = out["probabilidad_demanda_alta"].to_numpy()
+        assert ((prob >= 0) & (prob <= 1)).all(), "probabilidad fuera de [0,1]"
+        assert set(out["clase_demanda_alta"].unique()).issubset({{0, 1}}), "clase no binaria"
+        assert type(predictor).__module__ == "spc.models.clasificacion"
+        print("OK", len(out), meta.get("estrategia_desbalance"))
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", codigo],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (
+        f"carga 2b en proceso limpio fallo:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
     )
     assert proc.stdout.startswith("OK"), proc.stdout
