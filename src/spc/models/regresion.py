@@ -192,6 +192,8 @@ def construir_zoo(
     features: list[str],
     cats: list[str],
     params: dict[str, dict[str, Any]] | None = None,
+    *,
+    usar_gpu: bool = False,
 ) -> dict[str, EspecModelo]:
     """Define los regresores a comparar (semilla fija para reproducibilidad).
 
@@ -204,12 +206,20 @@ def construir_zoo(
 
     ``params`` permite inyectar hiperparametros optimizados por Optuna; si una
     clave no aparece, se usa el valor por defecto razonable indicado abajo.
+
+    Con ``usar_gpu=True`` los **boosters** entrenan en GPU (XGBoost ``device="cuda"``,
+    LightGBM ``device="gpu"`` via OpenCL). HistGradientBoosting, RandomForest y
+    Ridge son de scikit-learn y **no tienen backend GPU**: siguen en CPU. Tras el
+    ajuste se conmuta la prediccion de XGBoost a CPU (:func:`_post_fit_cpu`) para
+    que el artefacto sea portable y se sirva sin GPU en produccion.
     """
     from lightgbm import LGBMRegressor
     from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
     from xgboost import XGBRegressor
 
     params = params or {}
+    dev_xgb = "cuda" if usar_gpu else "cpu"
+    dev_lgbm = "gpu" if usar_gpu else "cpu"
 
     def p(nombre: str, base: dict[str, Any]) -> dict[str, Any]:
         """Combina los hiperparametros por defecto con los tuneados (si existen)."""
@@ -249,7 +259,7 @@ def construir_zoo(
                     n_estimators=600, learning_rate=0.05, num_leaves=63,
                     subsample=0.8, colsample_bytree=0.8,
                 )),
-                subsample_freq=1, importance_type="gain",
+                subsample_freq=1, importance_type="gain", device=dev_lgbm,
                 random_state=seed, n_jobs=-1, verbose=-1,
             ),
             espacio="log",
@@ -261,7 +271,7 @@ def construir_zoo(
                     n_estimators=600, learning_rate=0.05, max_depth=8,
                     subsample=0.8, colsample_bytree=0.8,
                 )),
-                tree_method="hist", enable_categorical=True,
+                tree_method="hist", enable_categorical=True, device=dev_xgb,
                 random_state=seed, n_jobs=-1,
             ),
             espacio="log",
@@ -275,7 +285,7 @@ def construir_zoo(
                     subsample=0.8, colsample_bytree=0.8, tweedie_variance_power=1.2,
                 )),
                 objective="tweedie", subsample_freq=1, importance_type="gain",
-                random_state=seed, n_jobs=-1, verbose=-1,
+                device=dev_lgbm, random_state=seed, n_jobs=-1, verbose=-1,
             ),
             espacio="unidades",
         ),
@@ -287,7 +297,7 @@ def construir_zoo(
                     subsample=0.8, colsample_bytree=0.8,
                 )),
                 objective="poisson", subsample_freq=1, importance_type="gain",
-                random_state=seed, n_jobs=-1, verbose=-1,
+                device=dev_lgbm, random_state=seed, n_jobs=-1, verbose=-1,
             ),
             espacio="unidades",
         ),
@@ -300,11 +310,38 @@ def construir_zoo(
                     tweedie_variance_power=1.2,
                 )),
                 objective="reg:tweedie", tree_method="hist", enable_categorical=True,
-                random_state=seed, n_jobs=-1,
+                device=dev_xgb, random_state=seed, n_jobs=-1,
             ),
             espacio="unidades",
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Entrenamiento de un estimador (entrena en GPU, predice en CPU)
+# ---------------------------------------------------------------------------
+def _post_fit_cpu(modelo: Any) -> Any:
+    """Conmuta la **prediccion** de un XGBoost entrenado en GPU a CPU.
+
+    El motor entrena en GPU (rapido) pero el artefacto se sirve **sin GPU** en
+    produccion: la prediccion debe correr en CPU para ser portable. En XGBoost
+    el ``device`` se fija en el booster, asi que tras ``fit`` se cambia a ``cpu``
+    (la prediccion en CPU coincide con la de GPU salvo error de redondeo ~1e-7).
+    LightGBM ya predice en CPU; el resto (sklearn) no usa GPU. No-op si el modelo
+    no es XGBoost.
+    """
+    try:
+        modelo.get_booster().set_param({"device": "cpu"})  # solo XGBoost
+    except Exception:
+        pass
+    return modelo
+
+
+def _entrenar_modelo(spec: EspecModelo, X: Any, y: np.ndarray) -> Any:
+    """Construye, ajusta y deja el estimador listo para predecir en CPU."""
+    modelo = spec.construir()
+    modelo.fit(X, y)
+    return _post_fit_cpu(modelo)
 
 
 # ---------------------------------------------------------------------------
@@ -590,8 +627,7 @@ def calcular_importancias(
         Xfit = X_cat.iloc[idx_fit]
         Xev = X_cat.iloc[idx_eval]
 
-    modelo = spec.construir()
-    modelo.fit(Xfit, y_log[idx_fit])
+    modelo = _entrenar_modelo(spec, Xfit, y_log[idx_fit])
 
     rng = np.random.default_rng(seed)
     y_eval = y_log[idx_eval]
@@ -681,9 +717,8 @@ def construir_ensemble(
     mae_va: dict[str, float] = {}
     for nombre in candidatos:
         spec = zoo[nombre]
-        modelo = spec.construir()
         y_fit = y_log if spec.espacio == "log" else y_units
-        modelo.fit(Xtr, y_fit[idx_train_fit])
+        modelo = _entrenar_modelo(spec, Xtr, y_fit[idx_train_fit])
         u = _a_unidades(modelo.predict(Xva), spec.espacio, techo_log, techo_unidades)
         preds_va[nombre] = u
         mae_va[nombre] = float(mean_absolute_error(yv, u))
@@ -711,9 +746,8 @@ def _ajustar_ensemble(
     espacios: list[str] = []
     for nombre in elegidos:
         spec = zoo[nombre]
-        modelo = spec.construir()
         y_fit = y_log if spec.espacio == "log" else y_units
-        modelo.fit(Xf, y_fit[idx_fit])
+        modelo = _entrenar_modelo(spec, Xf, y_fit[idx_fit])
         modelos.append(modelo)
         espacios.append(spec.espacio)
     return ModeloEnsemble(
@@ -729,23 +763,37 @@ def evaluar_recursivo(
     analytic: pd.DataFrame,
     cortes: CortesTemporales,
     *,
+    ventana: str = "test",
     buffer_dias: int = 120,
 ) -> tuple[dict[str, float], pd.DataFrame]:
-    """Evalua el TEST con **pronostico recursivo multi-paso** (metrica honesta).
+    """Evalua una ventana con **pronostico recursivo multi-paso** (metrica honesta).
 
     La evaluacion por split (teacher forcing) alimenta los rezagos con ventas
     reales del propio horizonte, lo que **sobreestima** la precision real. Aqui
-    se proyecta el rango de TEST dia a dia realimentando las predicciones (como
-    en produccion) y se compara contra las ventas reales. Es la metrica guia del
-    proyecto (``WAPE`` honesto).
+    se proyecta el rango ``ventana`` dia a dia realimentando las predicciones
+    (como en produccion) y se compara contra las ventas reales. Es la metrica
+    guia del proyecto (``WAPE`` honesto).
 
-    Se recorta el historico a ``buffer_dias`` previos al inicio del test para
-    cubrir las ventanas/rezagos mas largos sin recomputar features sobre millones
-    de filas (el resultado es identico: las ventanas tienen min_periods=1 y el
-    buffer supera la ventana maxima).
+    ``ventana`` selecciona el rango a proyectar:
+      - ``"valid"`` -> ``valid_ini..valid_fin`` (se usa para **seleccionar** el
+        modelo de produccion sin tocar TEST);
+      - ``"test"`` -> ``test_ini..test_fin`` (reporte final, evaluado una sola vez).
+
+    El predictor debe haberse entrenado **sin ver la ventana** que se proyecta
+    (para ``"valid"``, solo con TRAIN). El historico previo (rezagos) sigue siendo
+    el real de ``analytic``; solo se anulan las ventas de la propia ventana.
+
+    Se recorta el historico a ``buffer_dias`` previos al inicio para cubrir las
+    ventanas/rezagos mas largos sin recomputar features sobre millones de filas
+    (el resultado es identico: las ventanas tienen min_periods=1 y el buffer
+    supera la ventana maxima).
     """
-    inicio = pd.Timestamp(cortes.test_ini)
-    fin = pd.Timestamp(cortes.test_fin)
+    if ventana == "valid":
+        inicio = pd.Timestamp(cortes.valid_ini)
+        fin = pd.Timestamp(cortes.valid_fin)
+    else:
+        inicio = pd.Timestamp(cortes.test_ini)
+        fin = pd.Timestamp(cortes.test_fin)
     corte_hist = inicio - pd.Timedelta(days=buffer_dias)
     df = analytic[analytic[COL_FECHA] >= corte_hist].copy()
 
@@ -977,9 +1025,10 @@ def _cv_mae_familia(
     seed: int,
     techo_log: float,
     techo_unidades: float,
+    usar_gpu: bool = False,
 ) -> float:
     """MAE medio (en unidades) de una familia con ``params`` sobre los folds CV."""
-    spec = construir_zoo(seed, [], [], params={familia: params})[familia]
+    spec = construir_zoo(seed, [], [], params={familia: params}, usar_gpu=usar_gpu)[familia]
     y_fit = y_log if spec.espacio == "log" else y_units
     maes: list[float] = []
     for idx_tr, idx_va in folds:
@@ -987,8 +1036,7 @@ def _cv_mae_familia(
             Xtr, Xva = X_num[idx_tr], X_num[idx_va]
         else:
             Xtr, Xva = X_cat.iloc[idx_tr], X_cat.iloc[idx_va]
-        modelo = spec.construir()
-        modelo.fit(Xtr, y_fit[idx_tr])
+        modelo = _entrenar_modelo(spec, Xtr, y_fit[idx_tr])
         pred_u = _a_unidades(modelo.predict(Xva), spec.espacio, techo_log, techo_unidades)
         maes.append(float(np.mean(np.abs(y_units[idx_va] - pred_u))))
     return float(np.mean(maes)) if maes else float("inf")
@@ -1007,6 +1055,7 @@ def optimizar_hiperparametros(
     techo_unidades: float,
     *,
     n_trials: int = 30,
+    usar_gpu: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Busqueda bayesiana (Optuna) de hiperparametros por familia de booster.
 
@@ -1043,7 +1092,7 @@ def optimizar_hiperparametros(
             params = _espacio_busqueda(_fam, trial)
             return _cv_mae_familia(
                 _fam, params, X_cat, X_num, y_log, y_units, folds,
-                seed, techo_log, techo_unidades,
+                seed, techo_log, techo_unidades, usar_gpu=usar_gpu,
             )
 
         estudio = optuna.create_study(
@@ -1069,11 +1118,16 @@ def entrenar_y_comparar(
     hpo: bool = False,
     hpo_trials: int = 30,
     ensemble: bool = True,
+    usar_gpu: bool = False,
 ) -> ResultadoEntrenamiento:
     """Construye features, valida temporalmente y compara baselines vs el zoo.
 
     Con ``hpo=True`` ejecuta una busqueda bayesiana (Optuna) de hiperparametros
     por familia de booster sobre la validacion cruzada temporal antes de comparar.
+
+    Con ``usar_gpu=True`` los boosters entrenan en GPU (ver :func:`construir_zoo`).
+    Por defecto ``False`` para que la suite de tests sea portable (sin GPU); el
+    entrenamiento de produccion (``entrenar``/``cli``) lo activa.
     """
     seed = settings.random_seed
     cfg_features = cfg_features or ConfigFeatures()
@@ -1126,9 +1180,10 @@ def entrenar_y_comparar(
         params_tuneados = optimizar_hiperparametros(
             df_model, X_cat, X_num, y_log, y_units, cortes, seed,
             max_train_rows, techo_log, techo_unidades, n_trials=hpo_trials,
+            usar_gpu=usar_gpu,
         )
 
-    zoo = construir_zoo(seed, features, cats, params=params_tuneados)
+    zoo = construir_zoo(seed, features, cats, params=params_tuneados, usar_gpu=usar_gpu)
     filas_metricas: list[dict] = []
 
     def _y_fit(espacio: str) -> np.ndarray:
@@ -1159,8 +1214,7 @@ def entrenar_y_comparar(
             Xtr = X_cat.iloc[idx_train_fit]
             Xva, Xte = X_cat.iloc[idx_valid], X_cat.iloc[idx_test]
 
-        modelo = spec.construir()
-        modelo.fit(Xtr, _y_fit(spec.espacio)[idx_train_fit])
+        modelo = _entrenar_modelo(spec, Xtr, _y_fit(spec.espacio)[idx_train_fit])
 
         for split, X_split, idx_split in (("valid", Xva, idx_valid), ("test", Xte, idx_test)):
             pred_u = _a_unidades(
@@ -1176,7 +1230,7 @@ def entrenar_y_comparar(
         _agregar_cv(
             df_model, X_cat, X_num, y_log, y_units, zoo, cortes, seed,
             max_train_rows, techo_log, techo_unidades, filas_metricas,
-        )
+        )  # nota: el zoo ya lleva usar_gpu inyectado en cada spec
 
     metricas_df = pd.DataFrame(filas_metricas)
 
@@ -1184,119 +1238,150 @@ def entrenar_y_comparar(
     mejor, criterio = _elegir_ganador(metricas_df, metricas_test_por_modelo)
     log.info("Modelo elegido = %s | criterio = %s", mejor, criterio.get("regla"))
 
-    # --- Reajuste del ganador sobre TODO el historico etiquetado ---
-    #     (mas datos = mejor artefacto de produccion; las metricas reportadas
-    #     provienen del holdout temporal, no de este reajuste final).
-    log.info("Reajustando %s sobre todo el historico para el artefacto...", mejor)
+    # --- Modelo honesto individual (entrenado SOLO en TRAIN) ---
+    #     No ve valid/test. La seleccion ensemble-vs-individual se decide
+    #     proyectando VALID de forma recursiva (honesta); TEST queda intacto y se
+    #     evalua una sola vez sobre el modelo ya elegido.
     spec = zoo[mejor]
-    X_full: Any = X_num if spec.tipo == "numerico" else X_cat
-    modelo_final = spec.construir()
-    modelo_final.fit(X_full, _y_fit(spec.espacio))
-    predictor_final = PredictorRegresion(
-        modelo=modelo_final, features=features, cats=cats, categorias=categorias,
-        cfg_features=cfg_features, tipo=spec.tipo, nombre_modelo=mejor,
-        techo_log=techo_log, techo_unidades=techo_unidades, espacio=spec.espacio,
-    )
-    importancias = calcular_importancias(
-        spec, X_cat, X_num, _y_fit(spec.espacio), idx_train_fit, idx_test, features,
-        seed=seed,
-    )
-
-    # --- Evaluacion honesta: pronostico recursivo multi-paso sobre TEST ---
-    #     El ganador se entrena SOLO con TRAIN (no ve valid/test) y proyecta el
-    #     test de forma autorregresiva, como en produccion. Esta es la metrica
-    #     guia (WAPE honesto); la del split por modelo usa teacher forcing y
-    #     sobreestima la precision real.
-    log.info("Evaluando %s con pronostico recursivo (metrica honesta)...", mejor)
-    modelo_honesto = spec.construir()
-    if spec.tipo == "numerico":
-        modelo_honesto.fit(X_num[idx_train_fit], _y_fit(spec.espacio)[idx_train_fit])
-    else:
-        modelo_honesto.fit(X_cat.iloc[idx_train_fit], _y_fit(spec.espacio)[idx_train_fit])
+    log.info("Entrenando honesto (solo TRAIN) `%s` para evaluacion recursiva...", mejor)
+    Xh = X_num[idx_train_fit] if spec.tipo == "numerico" else X_cat.iloc[idx_train_fit]
+    modelo_honesto = _entrenar_modelo(spec, Xh, _y_fit(spec.espacio)[idx_train_fit])
     predictor_honesto = PredictorRegresion(
         modelo=modelo_honesto, features=features, cats=cats, categorias=categorias,
         cfg_features=cfg_features, tipo=spec.tipo, nombre_modelo=mejor,
         techo_log=techo_log, techo_unidades=techo_unidades, espacio=spec.espacio,
     )
-    metricas_rec, merged_rec = evaluar_recursivo(predictor_honesto, analytic, cortes)
-    metricas_base_rec = evaluar_baselines_recursivo(analytic, cortes)
-    agg = agregados_recursivo(merged_rec) if not merged_rec.empty else {}
+    metricas_valid_ind, _ = evaluar_recursivo(
+        predictor_honesto, analytic, cortes, ventana="valid"
+    )
     log.info(
-        "WAPE honesto (recursivo) test = %.2f%% | MAE = %.2f",
-        metricas_rec.get("WAPE", float("nan")),
-        metricas_rec.get("MAE", float("nan")),
+        "WAPE honesto VALID individual `%s` = %.2f%%",
+        mejor, metricas_valid_ind.get("WAPE", float("nan")),
     )
 
-    # --- F4: Ensemble de boosters (gana solo si baja el WAPE honesto) ---
-    #     Mezcla convexa (en unidades) de los mejores boosters en VALID. Se
-    #     evalua con el MISMO pronostico recursivo honesto; reemplaza al ganador
-    #     individual unicamente si mejora la metrica guia (WAPE recursivo).
+    # --- Gate ensemble-vs-individual: se decide en VALID (NO en TEST) ---
+    #     Mezcla convexa (en unidades) de los mejores boosters en VALID. Reemplaza
+    #     al ganador individual solo si baja el WAPE honesto recursivo sobre VALID.
+    usar_ensemble = False
+    sel_ens: tuple[list[str], np.ndarray] | None = None
+    ens_honesto_pred: PredictorRegresion | None = None
+    metricas_valid_ens: dict[str, float] = {}
     if ensemble:
-        sel = construir_ensemble(
+        sel_ens = construir_ensemble(
             zoo, X_cat, idx_train_fit, idx_valid, y_log, y_units,
             techo_log, techo_unidades,
         )
-        if sel is not None:
-            elegidos, pesos = sel
+        if sel_ens is not None:
+            elegidos, pesos = sel_ens
             nombre_ens = "Ensemble(" + "+".join(elegidos) + ")"
             log.info(
                 "Ensemble candidato = %s | pesos = %s",
                 nombre_ens, np.round(pesos, 3).tolist(),
             )
-            # Honesto: submodelos en TRAIN, evaluacion recursiva sobre TEST.
             ens_honesto = _ajustar_ensemble(
                 zoo, elegidos, pesos, X_cat, idx_train_fit,
                 y_log, y_units, techo_log, techo_unidades,
             )
-            pred_ens_honesto = PredictorRegresion(
+            ens_honesto_pred = PredictorRegresion(
                 modelo=ens_honesto, features=features, cats=cats, categorias=categorias,
                 cfg_features=cfg_features, tipo="categorico", nombre_modelo=nombre_ens,
                 techo_log=None, techo_unidades=techo_unidades, espacio="unidades",
             )
-            metricas_rec_ens, merged_rec_ens = evaluar_recursivo(
-                pred_ens_honesto, analytic, cortes
+            metricas_valid_ens, _ = evaluar_recursivo(
+                ens_honesto_pred, analytic, cortes, ventana="valid"
             )
             log.info(
-                "WAPE honesto ensemble = %.2f%% (individual = %.2f%%)",
-                metricas_rec_ens.get("WAPE", float("nan")),
-                metricas_rec.get("WAPE", float("nan")),
+                "WAPE honesto VALID ensemble = %.2f%% (individual = %.2f%%)",
+                metricas_valid_ens.get("WAPE", float("nan")),
+                metricas_valid_ind.get("WAPE", float("nan")),
             )
-            if metricas_rec_ens.get("WAPE", float("inf")) < metricas_rec.get(
-                "WAPE", float("inf")
-            ):
-                # El ensemble gana: artefacto final = submodelos sobre TODO.
-                ens_final = _ajustar_ensemble(
-                    zoo, elegidos, pesos, X_cat, np.arange(len(y_log)),
-                    y_log, y_units, techo_log, techo_unidades,
-                )
-                predictor_final = PredictorRegresion(
-                    modelo=ens_final, features=features, cats=cats, categorias=categorias,
-                    cfg_features=cfg_features, tipo="categorico", nombre_modelo=nombre_ens,
-                    techo_log=None, techo_unidades=techo_unidades, espacio="unidades",
-                )
-                # Metricas TEST (teacher forcing) del ensemble para el reporte.
-                pred_ens_test = ens_honesto.predict(X_cat.iloc[idx_test])
-                metricas_test_por_modelo[nombre_ens] = regression_metrics(
-                    y_units[idx_test], pred_ens_test
-                )
-                criterio = {
-                    "regla": (
-                        "ensemble convexo de boosters elegido por **menor WAPE "
-                        "honesto (recursivo)** frente al ganador individual "
-                        f"`{mejor}`"
-                    ),
-                    "ganador_individual": mejor,
-                    "wape_individual": round(metricas_rec.get("WAPE", float("nan")), 3),
-                    "wape_ensemble": round(metricas_rec_ens.get("WAPE", float("nan")), 3),
-                    "miembros": list(elegidos),
-                    "pesos": [round(float(w), 4) for w in pesos],
-                }
-                mejor = nombre_ens
-                metricas_rec, merged_rec = metricas_rec_ens, merged_rec_ens
-                agg = (
-                    agregados_recursivo(merged_rec) if not merged_rec.empty else {}
-                )
-                log.info("Ensemble seleccionado como modelo de produccion.")
+            usar_ensemble = metricas_valid_ens.get("WAPE", float("inf")) < (
+                metricas_valid_ind.get("WAPE", float("inf"))
+            )
+
+    # --- Modelo de produccion elegido y evaluacion HONESTA sobre TEST (una vez) ---
+    if usar_ensemble and sel_ens is not None and ens_honesto_pred is not None:
+        elegidos, pesos = sel_ens
+        nombre_ens = "Ensemble(" + "+".join(elegidos) + ")"
+        # Artefacto final: submodelos reajustados sobre TODO el historico.
+        ens_final = _ajustar_ensemble(
+            zoo, elegidos, pesos, X_cat, np.arange(len(y_log)),
+            y_log, y_units, techo_log, techo_unidades,
+        )
+        predictor_final = PredictorRegresion(
+            modelo=ens_final, features=features, cats=cats, categorias=categorias,
+            cfg_features=cfg_features, tipo="categorico", nombre_modelo=nombre_ens,
+            techo_log=None, techo_unidades=techo_unidades, espacio="unidades",
+        )
+        # TEST honesto (una sola vez) con el ensemble honesto (solo TRAIN).
+        metricas_rec, merged_rec = evaluar_recursivo(
+            ens_honesto_pred, analytic, cortes, ventana="test"
+        )
+        # Referencia teacher forcing del ensemble en TEST (no es la metrica guia).
+        pred_ens_test = ens_honesto_pred.modelo.predict(X_cat.iloc[idx_test])
+        metricas_test_por_modelo[nombre_ens] = regression_metrics(
+            y_units[idx_test], pred_ens_test
+        )
+        criterio = {
+            "regla": (
+                "ensemble convexo de boosters elegido por **menor WAPE honesto "
+                "(recursivo) sobre VALID** frente al ganador individual "
+                f"`{mejor}`; TEST no se uso para seleccionar"
+            ),
+            "decision_en": "valid",
+            "ganador_individual": mejor,
+            "wape_valid_individual": round(metricas_valid_ind.get("WAPE", float("nan")), 3),
+            "wape_valid_ensemble": round(metricas_valid_ens.get("WAPE", float("nan")), 3),
+            "miembros": list(elegidos),
+            "pesos": [round(float(w), 4) for w in pesos],
+        }
+        mejor_final = nombre_ens
+        log.info("Ensemble seleccionado como modelo de produccion (gate en VALID).")
+    else:
+        # Individual gana: reajuste sobre TODO el historico para el artefacto.
+        log.info("Reajustando `%s` sobre todo el historico para el artefacto...", mejor)
+        X_full: Any = X_num if spec.tipo == "numerico" else X_cat
+        modelo_final = _entrenar_modelo(spec, X_full, _y_fit(spec.espacio))
+        predictor_final = PredictorRegresion(
+            modelo=modelo_final, features=features, cats=cats, categorias=categorias,
+            cfg_features=cfg_features, tipo=spec.tipo, nombre_modelo=mejor,
+            techo_log=techo_log, techo_unidades=techo_unidades, espacio=spec.espacio,
+        )
+        # TEST honesto (una sola vez) con el individual honesto (solo TRAIN).
+        metricas_rec, merged_rec = evaluar_recursivo(
+            predictor_honesto, analytic, cortes, ventana="test"
+        )
+        # Deja rastro de que el gate se evaluo en VALID aunque ganara el individual.
+        criterio = {
+            **criterio,
+            "decision_en": "valid",
+            "gate_ensemble_vs_individual": (
+                "evaluado por WAPE honesto recursivo sobre VALID; el ensemble no "
+                "mejoro al individual (o no se construyo) -> se conserva el individual"
+            ),
+            "wape_valid_individual": round(metricas_valid_ind.get("WAPE", float("nan")), 3),
+        }
+        if metricas_valid_ens:
+            criterio["wape_valid_ensemble"] = round(
+                metricas_valid_ens.get("WAPE", float("nan")), 3
+            )
+        mejor_final = mejor
+
+    metricas_base_rec = evaluar_baselines_recursivo(analytic, cortes)
+    agg = agregados_recursivo(merged_rec) if not merged_rec.empty else {}
+    log.info(
+        "WAPE honesto (recursivo) TEST `%s` = %.2f%% | MAE = %.2f",
+        mejor_final,
+        metricas_rec.get("WAPE", float("nan")),
+        metricas_rec.get("MAE", float("nan")),
+    )
+
+    # Importancia de features del ganador individual base (permutation held-out).
+    importancias = calcular_importancias(
+        spec, X_cat, X_num, _y_fit(spec.espacio), idx_train_fit, idx_test, features,
+        seed=seed,
+    )
+    mejor = mejor_final
 
     return ResultadoEntrenamiento(
         metricas=metricas_df,
@@ -1357,8 +1442,7 @@ def _agregar_cv(
             else:  # "categorico" o "lineal"
                 Xtr, Xva = X_cat.iloc[idx_tr], X_cat.iloc[idx_va]
             y_fit = y_log if spec.espacio == "log" else y_units
-            modelo = spec.construir()
-            modelo.fit(Xtr, y_fit[idx_tr])
+            modelo = _entrenar_modelo(spec, Xtr, y_fit[idx_tr])
             pred_u = _a_unidades(
                 modelo.predict(Xva), spec.espacio, techo_log, techo_unidades
             )
@@ -1369,13 +1453,43 @@ def _agregar_cv(
 # ---------------------------------------------------------------------------
 # Persistencia de metricas, artefacto y reporte
 # ---------------------------------------------------------------------------
+def _filas_recursivas(res: ResultadoEntrenamiento) -> list[dict[str, Any]]:
+    """Filas del registro canonico para la **metrica honesta** (recursiva sobre TEST).
+
+    La metrica guia del proyecto (WAPE/MAE/RMSE/RMSLE recursivo del modelo de
+    produccion y de los baselines) debe existir como **fila propia** del registro,
+    no solo en la prosa del reporte o en el meta del artefacto. Se marcan con
+    ``split="test_recursivo"`` para distinguirlas del teacher forcing.
+    """
+    filas: list[dict[str, Any]] = []
+    if res.metricas_test_recursivo:
+        filas.append(
+            {"modelo": res.mejor_modelo, "split": "test_recursivo",
+             **res.metricas_test_recursivo}
+        )
+    for nombre, m in (res.metricas_baseline_recursivo or {}).items():
+        filas.append({"modelo": nombre, "split": "test_recursivo", **m})
+    return filas
+
+
 def persistir_metricas(res: ResultadoEntrenamiento, settings: Settings) -> Path:
-    """Guarda la tabla de metricas en CSV y JSON (trazabilidad reproducible)."""
+    """Guarda la tabla de metricas en CSV y JSON (trazabilidad reproducible).
+
+    Incluye, ademas de los modelos individuales por split (valid/test/cv en
+    teacher forcing), las filas ``split="test_recursivo"`` del **modelo de
+    produccion** y los **baselines** en modo recursivo (la metrica honesta guia).
+    """
     settings.processed_dir.mkdir(parents=True, exist_ok=True)
+    filas_rec = _filas_recursivas(res)
+    registro = (
+        pd.concat([res.metricas, pd.DataFrame(filas_rec)], ignore_index=True)
+        if filas_rec
+        else res.metricas
+    )
     ruta_csv = settings.processed_dir / "metricas_regresion_2a.csv"
-    res.metricas.to_csv(ruta_csv, index=False)
+    registro.to_csv(ruta_csv, index=False)
     (settings.processed_dir / "metricas_regresion_2a.json").write_text(
-        res.metricas.to_json(orient="records", force_ascii=False, indent=2),
+        registro.to_json(orient="records", force_ascii=False, indent=2),
         encoding="utf-8",
     )
     if not res.importancias.empty:
@@ -1407,6 +1521,15 @@ def serializar_artefacto(res: ResultadoEntrenamiento, settings: Settings) -> tup
         "criterio_seleccion": res.criterio_seleccion,
         "transformacion_objetivo": res.predictor.transformacion,
         "espacio_objetivo": res.predictor.espacio,
+        "nota_transformacion": (
+            "transformacion_objetivo='identidad' significa que el modelo de "
+            "produccion predice en UNIDADES directamente (objetivo Tweedie u otro "
+            "del espacio 'unidades', sin log a la salida). Los submodelos del "
+            "espacio 'log' SI entrenan en log1p(sales) e invierten internamente con "
+            "expm1 antes de combinarse en el ensemble; el log1p aplica a esos "
+            "submodelos, no a la salida final del predictor. 'log1p' aparece aqui "
+            "solo si el modelo de produccion es un individual del espacio 'log'."
+        ),
         "escala_metricas": "unidades",
         "techo_log_prediccion": res.predictor.techo_log,
         "techo_unidades_prediccion": res.predictor.techo_unidades,
@@ -1480,10 +1603,10 @@ def _bloque_recursivo(res: ResultadoEntrenamiento) -> list[str]:
         lineas += [
             "",
             f"- **Modelo de produccion = ensemble convexo** de: {comp}.",
-            f"- Elegido por **menor WAPE honesto**: ensemble "
-            f"{crit.get('wape_ensemble', float('nan'))}% vs ganador individual "
-            f"`{crit.get('ganador_individual', '?')}` "
-            f"{crit.get('wape_individual', float('nan'))}%.",
+            f"- Elegido por **menor WAPE honesto sobre VALID** (gate, no TEST): "
+            f"ensemble {crit.get('wape_valid_ensemble', float('nan'))}% vs ganador "
+            f"individual `{crit.get('ganador_individual', '?')}` "
+            f"{crit.get('wape_valid_individual', float('nan'))}%.",
         ]
     agg = res.agregados or {}
     fam = agg.get("por_familia")
@@ -1539,9 +1662,22 @@ def _bloque_recursivo(res: ResultadoEntrenamiento) -> list[str]:
 def _texto_criterio(criterio: dict[str, Any]) -> str:
     """Renderiza el criterio de seleccion como texto para el reporte."""
     regla = criterio.get("regla", "")
+    gate = ""
+    if criterio.get("decision_en") == "valid":
+        wi = criterio.get("wape_valid_individual")
+        we = criterio.get("wape_valid_ensemble")
+        partes = [
+            "La decision ensemble-vs-individual se tomo sobre **VALID** "
+            "(pronostico recursivo honesto), no sobre TEST."
+        ]
+        if wi is not None:
+            partes.append(f"WAPE VALID individual = {wi}%.")
+        if we is not None:
+            partes.append(f"WAPE VALID ensemble = {we}%.")
+        gate = " " + " ".join(partes)
     cands = criterio.get("candidatos")
     if not cands:
-        return f"Regla: {regla}."
+        return f"Regla: {regla}.{gate}"
     filas = "; ".join(
         f"`{m}` (MAE_cv {d['mae_cv_mean']}, RMSE_std {d['rmse_cv_std']})"
         for m, d in cands.items()
@@ -1550,6 +1686,7 @@ def _texto_criterio(criterio: dict[str, Any]) -> str:
         f"Regla aplicada: {regla}. Candidatos dentro de la banda de ruido del MAE "
         f"de CV: {filas}. Gana el de **menor RMSE_std** (mas estable y, en la "
         f"practica, mas rapido) frente a desempatar por una decima de MAE de test."
+        f"{gate}"
     )
 
 
@@ -1594,19 +1731,38 @@ def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
         return out
 
     mejor = res.mejor_modelo
+    # --- Headline HONESTO (pronostico recursivo sobre TEST, evaluado una vez) ---
+    rec = res.metricas_test_recursivo or {}
+    base_rec = res.metricas_baseline_recursivo or {}
+    rec_mae = rec.get("MAE", float("nan"))
+    rec_rmse = rec.get("RMSE", float("nan"))
+    rec_wape = rec.get("WAPE", float("nan"))
+    base_rec_mae = min((v["MAE"] for v in base_rec.values()), default=float("nan"))
+    base_rec_rmse = min((v["RMSE"] for v in base_rec.values()), default=float("nan"))
+    base_rec_wape = min((v["WAPE"] for v in base_rec.values()), default=float("nan"))
+    mejora_rec_mae = (
+        (base_rec_mae - rec_mae) / base_rec_mae * 100 if base_rec_mae else float("nan")
+    )
+    mejora_rec_rmse = (
+        (base_rec_rmse - rec_rmse) / base_rec_rmse * 100 if base_rec_rmse else float("nan")
+    )
+    # --- Referencia teacher forcing (optimista): rezagos reales del horizonte ---
     base_mae = min(v["MAE"] for v in res.metricas_baseline.values())
     base_rmse = min(v["RMSE"] for v in res.metricas_baseline.values())
     gan_mae = res.metricas_test_mejor["MAE"]
     gan_rmse = res.metricas_test_mejor["RMSE"]
     mejora_mae = (base_mae - gan_mae) / base_mae * 100 if base_mae else float("nan")
-    mejora_rmse = (base_rmse - gan_rmse) / base_rmse * 100 if base_rmse else float("nan")
 
     lineas = [
         "# Reporte de Regresion (Fase 2a) - VENTAS",
         "",
-        "> Generado por `spc.models.regresion`. Metricas en **unidades** "
-        "(objetivo entrenado en `log1p`, invertido con `expm1`). Validacion "
-        "temporal sin fuga de futuro.",
+        "> Generado por `spc.models.regresion`. Metricas en **unidades**. "
+        "Validacion temporal sin fuga de futuro. Nota sobre la transformacion: los "
+        "submodelos del espacio `log` entrenan en `log1p(sales)` e invierten con "
+        "`expm1`; los objetivos Tweedie/Poisson predicen **unidades** directas. Si el "
+        "modelo de produccion es un ensemble (o un individual Tweedie), su "
+        "`transformacion_objetivo` es `identidad` (combina/predice en unidades) "
+        "aunque por dentro use submodelos `log1p`.",
         "",
         "## Jerarquia de metricas",
         "",
@@ -1637,12 +1793,26 @@ def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
     lineas += [
         f"**Modelo elegido: `{mejor}`** (artefacto `{VERSION_MODELO}`).",
         "",
-        f"- MAE elegido = {gan_mae:.3f} vs mejor baseline = {base_mae:.3f} "
-        f"-> mejora {mejora_mae:.1f}%.",
-        f"- RMSE elegido = {gan_rmse:.3f} vs mejor baseline = {base_rmse:.3f} "
-        f"-> mejora {mejora_rmse:.1f}%.",
+        "### Resultado headline -- metrica HONESTA (pronostico recursivo sobre TEST, "
+        "evaluado una sola vez)",
         "",
-        "### Criterio de seleccion (estabilidad, no solo MAE de test)",
+        "La metrica guia del proyecto es el **pronostico recursivo multi-paso** "
+        "(autorregresivo, como en produccion), no el teacher forcing. Sobre TEST, "
+        "evaluado una sola vez tras seleccionar en VALID:",
+        "",
+        f"- **MAE honesto = {rec_mae:.3f}** vs mejor baseline honesto recursivo "
+        f"= {base_rec_mae:.3f} -> mejora **{mejora_rec_mae:.1f}%**.",
+        f"- **WAPE honesto = {rec_wape:.2f}%** vs mejor baseline honesto "
+        f"= {base_rec_wape:.2f}% -> mejora **{base_rec_wape - rec_wape:.2f} puntos**.",
+        f"- **RMSE honesto = {rec_rmse:.3f}** vs mejor baseline honesto recursivo "
+        f"= {base_rec_rmse:.3f} -> mejora **{mejora_rec_rmse:.1f}%**.",
+        "",
+        f"> *Referencia teacher-forced (optimista, alimenta los rezagos con ventas "
+        f"reales del horizonte; NO es la metrica guia):* MAE {gan_mae:.3f} vs "
+        f"baseline {base_mae:.3f} ({mejora_mae:.1f}%), RMSE {gan_rmse:.3f} vs "
+        f"baseline {base_rmse:.3f}. Util solo como cota superior optimista.",
+        "",
+        "### Criterio de seleccion (gate en VALID; estabilidad por CV temporal)",
         "",
         _texto_criterio(res.criterio_seleccion),
         "",
@@ -1710,6 +1880,12 @@ def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
         "- **Enfoque zero-inflated / two-part:** clasificar cero vs. positivo y "
         "regredir solo los positivos, dado el 31% de ceros; evaluar si reduce el "
         "sesgo en series intermitentes.",
+        "- **Familias intermitentes de bajo volumen:** algunas familias "
+        "(p. ej. `BOOKS`, `BABY CARE`, `HOME APPLIANCES`) muestran **WAPE alto** en "
+        "el desglose, pero su **MAE es trivial** (fracciones de unidad): el WAPE se "
+        "dispara al dividir errores minusculos entre ventas casi nulas. No afecta el "
+        "WAPE agregado (ponderado por volumen) ni el negocio; se trataria, si acaso, "
+        "con el enfoque two-part de arriba.",
         "",
     ]
     ruta = settings.base_dir / "docs" / "reporte_regresion_2a.md"
@@ -1724,8 +1900,14 @@ def escribir_reporte(res: ResultadoEntrenamiento, settings: Settings) -> Path:
 def entrenar(
     settings: Settings, *, max_train_rows: int | None, con_cv: bool,
     hpo: bool = False, hpo_trials: int = 30, ensemble: bool = True,
+    usar_gpu: bool = True,
 ) -> ResultadoEntrenamiento:
-    """Flujo offline: carga datos, entrena, persiste metricas, artefacto y reporte."""
+    """Flujo offline: carga datos, entrena, persiste metricas, artefacto y reporte.
+
+    ``usar_gpu`` por defecto **True**: el entrenamiento de produccion usa GPU para
+    los boosters (ver :func:`construir_zoo`). El artefacto resultante predice en
+    CPU (portable, sin GPU en produccion).
+    """
     from spc.data.integration import build_analytic_dataset
     from spc.data.loaders import load_data
 
@@ -1735,7 +1917,7 @@ def entrenar(
 
     res = entrenar_y_comparar(
         analytic, settings, max_train_rows=max_train_rows, con_cv=con_cv,
-        hpo=hpo, hpo_trials=hpo_trials, ensemble=ensemble,
+        hpo=hpo, hpo_trials=hpo_trials, ensemble=ensemble, usar_gpu=usar_gpu,
     )
     ruta_csv = persistir_metricas(res, settings)
     ruta_art, ruta_meta = serializar_artefacto(res, settings)
@@ -1772,6 +1954,11 @@ def cli(argv: list[str] | None = None) -> None:
         "--sin-ensemble", action="store_true",
         help="Desactivar el ensemble de boosters (solo modelos individuales).",
     )
+    parser.add_argument(
+        "--cpu", action="store_true",
+        help="Forzar CPU (por defecto los boosters entrenan en GPU: XGBoost cuda, "
+        "LightGBM gpu/OpenCL).",
+    )
     args = parser.parse_args(argv)
 
     from spc.utils.logging import configure_logging
@@ -1783,6 +1970,7 @@ def cli(argv: list[str] | None = None) -> None:
     res = entrenar(
         settings, max_train_rows=max_rows, con_cv=not args.sin_cv,
         hpo=args.hpo, hpo_trials=args.hpo_trials, ensemble=not args.sin_ensemble,
+        usar_gpu=not args.cpu,
     )
 
     print("\n" + "=" * 72)
@@ -1806,5 +1994,11 @@ def cargar_predictor(ruta: Path) -> tuple[PredictorRegresion, dict[str, Any]]:
     return cargar_artefacto(ruta)
 
 
-if __name__ == "__main__":
-    cli()
+# Portabilidad del artefacto: este modulo NO se ejecuta como ``__main__`` (no hay
+# bloque ``if __name__ == "__main__"``). Si se corriera como script, las clases
+# ``PredictorRegresion`` / ``ModeloEnsemble`` quedarian pickleadas bajo ``__main__``
+# y el artefacto no cargaria desde un proceso limpio (la capa de servicio/API hace
+# ``cargar_artefacto`` sin aliasar ``__main__``). El entrenamiento offline se lanza
+# por **import**: ``scripts/train_regresion.py`` o el entry point
+# ``spc-train-regresion`` (pyproject), ambos importan ``cli`` desde
+# ``spc.models.regresion``, de modo que las clases se resuelven a este modulo.

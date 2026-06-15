@@ -1,6 +1,6 @@
 # Reporte de Regresion (Fase 2a) - VENTAS
 
-> Generado por `spc.models.regresion`. Metricas en **unidades** (objetivo entrenado en `log1p`, invertido con `expm1`). Validacion temporal sin fuga de futuro.
+> Generado por `spc.models.regresion`. Metricas en **unidades**. Validacion temporal sin fuga de futuro. Nota sobre la transformacion: los submodelos del espacio `log` entrenan en `log1p(sales)` e invierten con `expm1`; los objetivos Tweedie/Poisson predicen **unidades** directas. Si el modelo de produccion es un ensemble (o un individual Tweedie), su `transformacion_objetivo` es `identidad` (combina/predice en unidades) aunque por dentro use submodelos `log1p`.
 
 ## Jerarquia de metricas
 
@@ -11,33 +11,40 @@ Se prioriza, en este orden: **WAPE**, **MAE**, **RMSE** y **RMSLE**. El **MAPE (
 - **Train:** <= 2017-07-14
 - **Valid:** 2017-07-15 .. 2017-07-30
 - **Test:** 2017-07-31 .. 2017-08-15
-- Filas para **comparar** modelos (submuestreo de train): 2 893 968
+- Filas para **comparar** modelos (submuestreo de train): 250 000
 - Filas del **artefacto final** (`regresion_v3`, reajuste sobre todo el historico etiquetado): 2 950 992
 
 ## Resultados en TEST (ordenado por MAE, menor es mejor)
 
 | modelo | WAPE | MAE | RMSE | RMSLE | MAPE | R2 |
 | --- | --- | --- | --- | --- | --- | --- |
-| LightGBM | 11.482 | 53.636 | 185.33 | 0.37 | 30.975 | 0.978 |
-| XGBoost_Tweedie | 11.729 | 54.792 | 191.235 | 0.377 | 33.109 | 0.977 |
-| XGBoost | 11.777 | 55.015 | 193.567 | 0.371 | 31.091 | 0.976 |
-| LightGBM_Tweedie | 12.407 | 57.959 | 196.137 | 0.386 | 33.559 | 0.975 |
-| LightGBM_Poisson | 12.93 | 60.404 | 207.003 | 0.401 | 36.327 | 0.973 |
-| HistGradientBoosting | 13.066 | 61.035 | 207.755 | 0.375 | 31.164 | 0.972 |
-| RandomForest | 14.034 | 65.56 | 222.46 | 0.398 | 33.654 | 0.968 |
+| LightGBM_Tweedie | 12.407 | 57.956 | 197.091 | 0.389 | 33.311 | 0.975 |
+| XGBoost_Tweedie | 12.426 | 58.047 | 211.737 | 0.387 | 33.405 | 0.971 |
+| XGBoost | 13.068 | 61.046 | 216.067 | 0.384 | 32.493 | 0.97 |
+| LightGBM_Poisson | 13.223 | 61.769 | 214.655 | 0.401 | 35.923 | 0.97 |
+| LightGBM | 14.179 | 66.235 | 234.328 | 0.386 | 32.974 | 0.965 |
+| HistGradientBoosting | 14.45 | 67.501 | 236.533 | 0.387 | 33.319 | 0.964 |
+| RandomForest | 16.35 | 76.38 | 305.819 | 0.411 | 34.499 | 0.94 |
 | BASELINE media_movil_7 | 19.446 | 90.84 | 297.306 | 0.449 | 44.039 | 0.943 |
 | BASELINE naive_estacional(t-7) | 21.456 | 100.23 | 350.061 | 0.569 | 49.499 | 0.921 |
 
-> **Nota — Ridge retirado de las tablas.** Tras montarlo correctamente (pipeline propio: one-hot de categoricos + estandarizacion de numericas y recorte de `expm1`), el lineal alcanza MAE(test) = 766.59, todavia por encima del peor baseline (100.23). Se documenta y se excluye de la comparacion para no dejar un modelo no apto en el entregable; queda como referencia interpretable, no como candidato a produccion.
+> **Nota — Ridge retirado de las tablas.** Tras montarlo correctamente (pipeline propio: one-hot de categoricos + estandarizacion de numericas y recorte de `expm1`), el lineal alcanza MAE(test) = 743.72, todavia por encima del peor baseline (100.23). Se documenta y se excluye de la comparacion para no dejar un modelo no apto en el entregable; queda como referencia interpretable, no como candidato a produccion.
 
-**Modelo elegido: `Ensemble(XGBoost+XGBoost_Tweedie+LightGBM_Tweedie+LightGBM)`** (artefacto `regresion_v3`).
+**Modelo elegido: `Ensemble(XGBoost+XGBoost_Tweedie+LightGBM+LightGBM_Poisson)`** (artefacto `regresion_v3`).
 
-- MAE elegido = 51.308 vs mejor baseline = 90.840 -> mejora 43.5%.
-- RMSE elegido = 179.453 vs mejor baseline = 297.306 -> mejora 39.6%.
+### Resultado headline -- metrica HONESTA (pronostico recursivo sobre TEST, evaluado una sola vez)
 
-### Criterio de seleccion (estabilidad, no solo MAE de test)
+La metrica guia del proyecto es el **pronostico recursivo multi-paso** (autorregresivo, como en produccion), no el teacher forcing. Sobre TEST, evaluado una sola vez tras seleccionar en VALID:
 
-Regla: ensemble convexo de boosters elegido por **menor WAPE honesto (recursivo)** frente al ganador individual `LightGBM_Tweedie`.
+- **MAE honesto = 68.151** vs mejor baseline honesto recursivo = 96.535 -> mejora **29.4%**.
+- **WAPE honesto = 14.59%** vs mejor baseline honesto = 20.67% -> mejora **6.08 puntos**.
+- **RMSE honesto = 235.731** vs mejor baseline honesto recursivo = 348.382 -> mejora **32.3%**.
+
+> *Referencia teacher-forced (optimista, alimenta los rezagos con ventas reales del horizonte; NO es la metrica guia):* MAE 57.914 vs baseline 90.840 (36.2%), RMSE 202.386 vs baseline 297.306. Util solo como cota superior optimista.
+
+### Criterio de seleccion (gate en VALID; estabilidad por CV temporal)
+
+Regla: ensemble convexo de boosters elegido por **menor WAPE honesto (recursivo) sobre VALID** frente al ganador individual `LightGBM_Tweedie`; TEST no se uso para seleccionar. La decision ensemble-vs-individual se tomo sobre **VALID** (pronostico recursivo honesto), no sobre TEST. WAPE VALID individual = 14.249%. WAPE VALID ensemble = 12.177%.
 
 ## Evaluacion HONESTA - pronostico recursivo multi-paso (metrica guia)
 
@@ -45,72 +52,72 @@ A diferencia de la tabla anterior (que usa *teacher forcing*: alimenta los rezag
 
 | fuente | WAPE | MAE | RMSE | RMSLE | MAPE | R2 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Ensemble(XGBoost+XGBoost_Tweedie+LightGBM_Tweedie+LightGBM)** (recursivo) | 12.713 | 59.389 | 205.007 | 0.396 | 32.866 | 0.973 |
+| **Ensemble(XGBoost+XGBoost_Tweedie+LightGBM+LightGBM_Poisson)** (recursivo) | 14.589 | 68.151 | 235.731 | 0.423 | 34.063 | 0.964 |
 | BASELINE naive_estacional(t-7) | 20.665 | 96.535 | 348.382 | 0.617 | 49.975 | 0.922 |
 | BASELINE media_movil_7 | 23.261 | 108.662 | 359.824 | 0.531 | 50.974 | 0.917 |
 
-- **WAPE honesto** del modelo = 12.71%.
-- Mejor baseline honesto (recursivo) = 20.67% WAPE -> el modelo mejora 7.95 puntos.
+- **WAPE honesto** del modelo = 14.59%.
+- Mejor baseline honesto (recursivo) = 20.67% WAPE -> el modelo mejora 6.08 puntos.
 
-- **Modelo de produccion = ensemble convexo** de: `XGBoost` (25%), `XGBoost_Tweedie` (25%), `LightGBM_Tweedie` (25%), `LightGBM` (25%).
-- Elegido por **menor WAPE honesto**: ensemble 12.713% vs ganador individual `LightGBM_Tweedie` 13.618%.
+- **Modelo de produccion = ensemble convexo** de: `XGBoost` (26%), `XGBoost_Tweedie` (25%), `LightGBM` (25%), `LightGBM_Poisson` (24%).
+- Elegido por **menor WAPE honesto sobre VALID** (gate, no TEST): ensemble 12.177% vs ganador individual `LightGBM_Tweedie` 14.249%.
 
 ### WAPE honesto por familia (las 10 peores)
 
 | family | n | WAPE | MAE |
 | --- | --- | --- | --- |
-| BOOKS | 864.0 | 1089.21 | 0.11 |
-| HOME APPLIANCES | 864.0 | 203.69 | 0.41 |
-| BABY CARE | 864.0 | 168.19 | 0.31 |
-| HARDWARE | 864.0 | 72.25 | 1.05 |
-| SCHOOL AND OFFICE SUPPLIES | 864.0 | 69.24 | 41.51 |
-| LINGERIE | 864.0 | 48.4 | 3.76 |
-| MAGAZINES | 864.0 | 40.32 | 2.87 |
-| CELEBRATION | 864.0 | 38.89 | 4.85 |
-| AUTOMOTIVE | 864.0 | 37.26 | 2.75 |
-| LADIESWEAR | 864.0 | 36.52 | 3.68 |
+| BOOKS | 864.0 | 1997.66 | 0.21 |
+| HOME APPLIANCES | 864.0 | 219.43 | 0.44 |
+| BABY CARE | 864.0 | 190.74 | 0.35 |
+| HARDWARE | 864.0 | 73.72 | 1.07 |
+| SCHOOL AND OFFICE SUPPLIES | 864.0 | 73.48 | 44.05 |
+| LINGERIE | 864.0 | 50.29 | 3.91 |
+| MAGAZINES | 864.0 | 40.36 | 2.87 |
+| CELEBRATION | 864.0 | 39.12 | 4.88 |
+| AUTOMOTIVE | 864.0 | 38.5 | 2.84 |
+| LADIESWEAR | 864.0 | 38.38 | 3.87 |
 
 ### WAPE honesto por tienda (las 10 peores)
 
 | store_nbr | n | WAPE | MAE |
 | --- | --- | --- | --- |
-| 32 | 528.0 | 24.01 | 38.03 |
-| 38 | 528.0 | 21.59 | 80.88 |
-| 30 | 528.0 | 21.12 | 42.22 |
-| 26 | 528.0 | 21.07 | 29.77 |
-| 14 | 528.0 | 20.79 | 53.81 |
-| 22 | 528.0 | 19.82 | 45.7 |
-| 54 | 528.0 | 19.77 | 66.11 |
-| 39 | 528.0 | 19.71 | 97.72 |
-| 25 | 528.0 | 19.05 | 55.9 |
-| 36 | 528.0 | 18.9 | 76.4 |
+| 26 | 528.0 | 30.09 | 42.51 |
+| 25 | 528.0 | 24.13 | 70.79 |
+| 38 | 528.0 | 24.07 | 90.18 |
+| 32 | 528.0 | 23.19 | 36.73 |
+| 39 | 528.0 | 22.18 | 109.93 |
+| 14 | 528.0 | 21.44 | 55.48 |
+| 40 | 528.0 | 21.06 | 114.8 |
+| 54 | 528.0 | 21.05 | 70.38 |
+| 30 | 528.0 | 20.56 | 41.1 |
+| 42 | 528.0 | 20.37 | 70.07 |
 
 ### Agregado SEMANAL (suma de ventas reales vs pronosticadas)
 
 | semana | real | pred | WAPE | error_abs |
 | --- | --- | --- | --- | --- |
-| 2017-07-31 | 6.4101935e+06 | 6420978.32 | 0.17 | 10784.82 |
-| 2017-08-07 | 5.385402e+06 | 5647773.08 | 4.87 | 262371.08 |
-| 2017-08-14 | 1.5235844e+06 | 1516580.42 | 0.46 | 7003.96 |
+| 2017-07-31 | 6.4101935e+06 | 6494776.53 | 1.32 | 84583.03 |
+| 2017-08-07 | 5.385402e+06 | 5658375.33 | 5.07 | 272973.33 |
+| 2017-08-14 | 1.5235844e+06 | 1508365.25 | 1.0 | 15219.13 |
 
 ### Agregado MENSUAL (suma de ventas reales vs pronosticadas)
 
 | mes | real | pred | WAPE | error_abs |
 | --- | --- | --- | --- | --- |
-| 2017-07-01 | 885856.8 | 896093.61 | 1.16 | 10236.8 |
-| 2017-08-01 | 1.2433324e+07 | 12689238.21 | 2.06 | 255915.21 |
+| 2017-07-01 | 885856.8 | 868458.28 | 1.96 | 17398.53 |
+| 2017-08-01 | 1.2433324e+07 | 12793058.83 | 2.89 | 359735.83 |
 
 ## Resultados en VALID (ordenado por MAE)
 
 | modelo | WAPE | MAE | RMSE | RMSLE | MAPE | R2 |
 | --- | --- | --- | --- | --- | --- | --- |
-| XGBoost | 10.523 | 50.695 | 195.664 | 0.368 | 29.603 | 0.978 |
-| XGBoost_Tweedie | 10.699 | 51.544 | 197.602 | 0.374 | 31.95 | 0.978 |
-| LightGBM_Tweedie | 10.748 | 51.78 | 190.831 | 0.382 | 32.777 | 0.979 |
-| LightGBM | 10.806 | 52.058 | 198.54 | 0.371 | 29.768 | 0.978 |
-| LightGBM_Poisson | 11.087 | 53.413 | 197.544 | 0.392 | 33.962 | 0.978 |
-| RandomForest | 11.454 | 55.183 | 207.928 | 0.383 | 31.47 | 0.975 |
-| HistGradientBoosting | 12.057 | 58.084 | 219.85 | 0.374 | 29.984 | 0.973 |
+| LightGBM_Tweedie | 11.35 | 54.681 | 198.001 | 0.386 | 32.353 | 0.978 |
+| XGBoost | 11.417 | 55.002 | 207.79 | 0.376 | 30.784 | 0.975 |
+| RandomForest | 11.519 | 55.495 | 209.651 | 0.384 | 31.432 | 0.975 |
+| XGBoost_Tweedie | 11.534 | 55.568 | 208.699 | 0.383 | 32.68 | 0.975 |
+| LightGBM_Poisson | 11.87 | 57.184 | 209.51 | 0.395 | 34.296 | 0.975 |
+| LightGBM | 12.215 | 58.848 | 213.199 | 0.38 | 31.062 | 0.974 |
+| HistGradientBoosting | 12.379 | 59.636 | 222.94 | 0.379 | 31.082 | 0.972 |
 | BASELINE naive_estacional(t-7) | 14.147 | 68.155 | 266.225 | 0.51 | 44.246 | 0.96 |
 | BASELINE media_movil_7 | 21.534 | 103.744 | 373.731 | 0.449 | 42.745 | 0.921 |
 
@@ -118,35 +125,35 @@ A diferencia de la tabla anterior (que usa *teacher forcing*: alimenta los rezag
 
 | modelo | MAE_mean | MAE_std | RMSE_mean | RMSE_std |
 | --- | --- | --- | --- | --- |
-| HistGradientBoosting | 49.315 | 2.253 | 199.593 | 10.597 |
-| LightGBM | 49.138 | 2.259 | 198.487 | 10.16 |
-| LightGBM_Poisson | 51.119 | 2.221 | 203.534 | 11.149 |
-| LightGBM_Tweedie | 47.49 | 1.865 | 188.982 | 6.106 |
-| RandomForest | 53.156 | 2.205 | 207.644 | 11.344 |
-| XGBoost | 48.006 | 2.342 | 196.949 | 9.683 |
-| XGBoost_Tweedie | 48.617 | 1.671 | 201.308 | 14.09 |
+| HistGradientBoosting | 58.727 | 2.613 | 242.111 | 19.048 |
+| LightGBM | 57.18 | 3.161 | 230.713 | 23.806 |
+| LightGBM_Poisson | 55.292 | 3.352 | 223.093 | 4.567 |
+| LightGBM_Tweedie | 53.263 | 3.401 | 205.603 | 8.165 |
+| RandomForest | 61.613 | 12.878 | 260.725 | 84.845 |
+| XGBoost | 55.103 | 3.476 | 235.269 | 45.488 |
+| XGBoost_Tweedie | 63.142 | 10.059 | 256.617 | 45.671 |
 
-## Importancia de features (top 15, modelo `Ensemble(XGBoost+XGBoost_Tweedie+LightGBM_Tweedie+LightGBM)`)
+## Importancia de features (top 15, modelo `Ensemble(XGBoost+XGBoost_Tweedie+LightGBM+LightGBM_Poisson)`)
 
 Calculada por **permutation importance held-out** (cuanto empeora el MAE al barajar cada feature sobre el TEST); agnostica al modelo y mas robusta que la importancia interna de los arboles.
 
 | feature | importancia | importancia_pct |
 | --- | --- | --- |
-| sales_rmean_7 | 335.141 | 29.95 |
-| sales_lag_1 | 194.556 | 17.39 |
-| family | 147.036 | 13.14 |
-| sales_rmean_14 | 103.106 | 9.21 |
-| sales_rmed_7 | 57.672 | 5.15 |
-| sales_rstd_7 | 43.467 | 3.88 |
-| dias_desde_venta | 41.2 | 3.68 |
-| sales_ewm_28 | 28.487 | 2.55 |
-| ceros_rsum_7 | 23.949 | 2.14 |
-| store_nbr | 17.617 | 1.57 |
-| sales_lag_7 | 17.052 | 1.52 |
-| onpromotion | 13.622 | 1.22 |
-| sales_ewm_7 | 13.611 | 1.22 |
-| sales_rmean_56 | 11.208 | 1.0 |
-| sales_rmean_28 | 9.847 | 0.88 |
+| sales_rmean_7 | 286.989 | 29.38 |
+| sales_lag_1 | 249.078 | 25.5 |
+| sales_ewm_7 | 89.671 | 9.18 |
+| sales_rmed_7 | 47.13 | 4.82 |
+| onpromotion | 44.241 | 4.53 |
+| sales_lag_7 | 35.677 | 3.65 |
+| sales_rmed_28 | 35.182 | 3.6 |
+| sales_rmean_14 | 34.475 | 3.53 |
+| sales_rmean_28 | 28.808 | 2.95 |
+| family | 27.687 | 2.83 |
+| sales_ewm_28 | 17.421 | 1.78 |
+| sales_rstd_7 | 16.577 | 1.7 |
+| dias_desde_venta | 12.03 | 1.23 |
+| sales_lag_14 | 7.492 | 0.77 |
+| sales_rmean_56 | 7.394 | 0.76 |
 
 Dominan, como anticipaba el EDA, los **rezagos y medias moviles del objetivo** (autocorrelacion fuerte de la demanda), seguidos de la **promocion** (`onpromotion` y sus rezagos) y el **calendario**. Esto sustenta la trazabilidad hacia COMPRAS/ALMACEN: el pronostico se apoya en la historia reciente de cada serie y en las palancas planificadas.
 
@@ -165,3 +172,4 @@ El MAPE (~32%) **sobre-estima el error**: excluye los dias de venta cero (31% de
 
 - **Intervalos de prediccion:** via cuantiles de boosting (`quantile`/`pinball`) o residuos empiricos del holdout.
 - **Enfoque zero-inflated / two-part:** clasificar cero vs. positivo y regredir solo los positivos, dado el 31% de ceros; evaluar si reduce el sesgo en series intermitentes.
+- **Familias intermitentes de bajo volumen:** algunas familias (p. ej. `BOOKS`, `BABY CARE`, `HOME APPLIANCES`) muestran **WAPE alto** en el desglose, pero su **MAE es trivial** (fracciones de unidad): el WAPE se dispara al dividir errores minusculos entre ventas casi nulas. No afecta el WAPE agregado (ponderado por volumen) ni el negocio; se trataria, si acaso, con el enfoque two-part de arriba.
