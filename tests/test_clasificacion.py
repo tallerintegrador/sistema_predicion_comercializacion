@@ -8,8 +8,20 @@ import json
 import numpy as np
 
 from spc.models.clasificacion import (
+    MARGEN_VALID,
+    PRECISION_FLOOR,
+    _candidatos_pr,
+    _max_recall_con_piso,
+    agregar_puntos_a_registro,
+    aplicar_recalibracion,
     construir_estrategia,
+    curva_pr,
     entrenar_y_comparar,
+    persistir_curva_pr,
+    persistir_metricas,
+    puntos_de_operacion,
+    recalibrar_umbral,
+    seleccionar_umbral,
     serializar_artefacto,
 )
 from spc.utils.serializacion import cargar_artefacto
@@ -77,10 +89,138 @@ def test_smote_solo_actua_en_el_fold_de_train(analitico_clasificacion, settings)
 
 
 def test_umbral_elegido_en_valid_marco_negocio(analitico_clasificacion, settings):
-    """El umbral se elige en VALID con criterio de recall (no el 0.5 por defecto)."""
+    """El umbral se elige en VALID con piso REAL de precision 0.80 (no 0.5, no 0.50)."""
     res = _entrenar(analitico_clasificacion, settings, con_cv=False)
     assert 0.0 < res.umbral < 1.0
-    assert "recall" in res.criterio_umbral["criterio"].lower()
+    assert res.criterio_umbral["precision_floor"] == 0.80
+    assert "0.80" in res.criterio_umbral["criterio"]
+
+
+# ---------------------------------------------------------------------------
+# Seleccion de umbral: piso REAL de precision + margen (unit, sin modelo)
+# ---------------------------------------------------------------------------
+def _probs_separables(seed: int = 0, n: int = 500):
+    """y_true balanceado y probas con buena separacion (precision 0.80 alcanzable a
+    recall < 1, precision colapsa hacia 0.5 al bajar el umbral)."""
+    rng = np.random.default_rng(seed)
+    y = np.concatenate([np.ones(n), np.zeros(n)]).astype(int)
+    prob = np.concatenate(
+        [rng.uniform(0.40, 1.00, n), rng.uniform(0.00, 0.60, n)]
+    )
+    return y, prob
+
+
+def test_seleccionar_umbral_usa_piso_real_080_con_margen():
+    """El default exige precision >= 0.80 (piso real) con piso efectivo 0.80+margen."""
+    y, prob = _probs_separables()
+    _, info = seleccionar_umbral(y, prob)
+    assert info["precision_floor"] == PRECISION_FLOOR == 0.80
+    assert info["piso_efectivo_valid"] == round(0.80 + MARGEN_VALID, 4)
+    # El punto elegido respeta el piso real (no 0.50).
+    assert info["precision_en_umbral"] >= 0.80
+
+
+def test_default_retrocede_recall_vs_recall_prioritario():
+    """El piso 0.80 alcanza MENOS recall que el viejo piso 0.50 (retroceder recall
+    mejora precision): el operativo deja de ser degenerado."""
+    y, prob = _probs_separables()
+    _, info = seleccionar_umbral(y, prob)
+    cand = _candidatos_pr(y, prob)
+    rp = _max_recall_con_piso(cand, 0.50)  # punto recall-prioritario (default viejo)
+    assert rp is not None
+    assert rp[2] >= info["recall_en_umbral"]  # recall(p>=0.50) >= recall(p>=0.80)
+
+
+def test_curva_pr_columnas_y_rango():
+    """La curva PR persistible tiene (umbral, precision, recall) en rango [0,1]."""
+    y, prob = _probs_separables()
+    df = curva_pr(y, prob)
+    assert list(df.columns) == ["umbral", "precision", "recall"]
+    assert len(df) >= 2
+    assert ((df["precision"] >= 0) & (df["precision"] <= 1)).all()
+    assert ((df["recall"] >= 0) & (df["recall"] <= 1)).all()
+
+
+def test_puntos_de_operacion_tres_puntos_un_default():
+    """Tres puntos (default p>=0.80, max F1, recall-prioritario); exactamente 1 default;
+    el default marca <= filas que el recall-prioritario."""
+    yv, pv = _probs_separables(seed=1)
+    yt, pt = _probs_separables(seed=2)
+    umbrales, detalle = puntos_de_operacion(yv, pv, yt, pt)
+    assert len(umbrales) == 3
+    defaults = [d for d in detalle.values() if d["es_default"]]
+    assert len(defaults) == 1
+    rp_key = next(k for k in detalle if k.startswith("recall_prioritario"))
+    assert defaults[0]["n_pos_pred_test"] <= detalle[rp_key]["n_pos_pred_test"]
+
+
+# ---------------------------------------------------------------------------
+# Recalibracion POST-HOC del umbral (sin reentrenar el booster de produccion)
+# ---------------------------------------------------------------------------
+def test_recalibracion_default_en_valid_no_degenerado(analitico_clasificacion, settings):
+    """El nuevo default se elige en VALID (piso 0.80) y NO opera en el regimen
+    degenerado (marca menos filas que el recall-prioritario; respeta el piso si es
+    alcanzable)."""
+    res = recalibrar_umbral(
+        analitico_clasificacion, settings, max_train_rows=None, usar_gpu=False
+    )
+    assert 0.0 < res.umbral < 1.0
+    assert res.criterio_umbral["precision_floor"] == 0.80
+    assert len(res.umbrales_punto) == 3
+    default = next(d for d in res.detalle_puntos.values() if d["es_default"])
+    rp_key = next(k for k in res.detalle_puntos if k.startswith("recall_prioritario"))
+    rp = res.detalle_puntos[rp_key]
+    # Operativo accionable: el default marca <= filas que el recall-prioritario.
+    assert default["n_pos_pred_test"] <= rp["n_pos_pred_test"]
+    # Si el piso es alcanzable (no hubo fallback), la precision VALID lo respeta.
+    if "fallback" not in res.criterio_umbral["criterio"]:
+        assert res.metricas_valid["Precision"] >= PRECISION_FLOOR - 1e-9
+
+
+def test_recalibracion_actualiza_umbral_sin_cambiar_el_booster(
+    analitico_clasificacion, settings
+):
+    """La recalibracion cambia SOLO el umbral del artefacto + sus metadatos; el booster
+    de produccion no cambia (mismas probabilidades) y persiste curva PR + registro."""
+    import pandas as pd
+
+    # 1) Artefacto base + registro base (entrenamiento completo).
+    base = _entrenar(analitico_clasificacion, settings, con_cv=False)
+    ruta_art, _ = serializar_artefacto(base, settings)
+    persistir_metricas(base, settings)
+    pred_antes, _ = cargar_artefacto(ruta_art)
+    p_antes = pred_antes.predecir_proba(analitico_clasificacion).to_numpy()
+
+    # 2) Recalibracion post-hoc + aplicacion.
+    res = recalibrar_umbral(
+        analitico_clasificacion, settings, max_train_rows=None, usar_gpu=False
+    )
+    ruta_art2, _ = aplicar_recalibracion(res, settings)
+    ruta_curva = persistir_curva_pr(res, settings)
+    ruta_reg = agregar_puntos_a_registro(res, settings)
+
+    pred_despues, meta_despues = cargar_artefacto(ruta_art2)
+    # Umbral actualizado en artefacto y meta.
+    assert pred_despues.umbral == res.umbral
+    assert meta_despues["umbral"] == res.umbral
+    assert "puntos_operacion" in meta_despues
+    assert meta_despues["curva_pr_ref"].endswith("curva_pr_clasificacion_2b.csv")
+    # El booster NO cambio: mismas probabilidades (modelo intacto).
+    p_despues = pred_despues.predecir_proba(analitico_clasificacion).to_numpy()
+    np.testing.assert_allclose(p_antes, p_despues)
+
+    # Curva PR persistida con (umbral, precision, recall).
+    curva = pd.read_csv(ruta_curva)
+    assert list(curva.columns) == ["umbral", "precision", "recall"]
+    assert len(curva) > 0
+
+    # Registro: 3 puntos x 2 splits = 6 filas de operacion; comparacion conservada.
+    reg = pd.read_csv(ruta_reg)
+    assert "punto" in reg.columns
+    op = reg[reg["punto"].notna()]
+    assert len(op) == 6
+    assert set(op["split"]) == {"op_valid", "op_test"}
+    assert reg["punto"].isna().sum() > 0
 
 
 def test_artefacto_recarga_y_predice(analitico_clasificacion, settings):

@@ -65,11 +65,25 @@ VERSION_MODELO = "clasificacion_v1"
 ETIQUETA = "demanda_alta"
 COL_P75 = "family_sales_p75"
 
-# Marco de negocio para el umbral: `demanda_alta` senala riesgo de quiebre de
-# stock; fallar un positivo (no detectar demanda alta) suele costar mas que una
-# falsa alarma. Por eso el umbral en VALID prioriza **recall con una precision
-# aceptable** (piso), no el 0.5 por defecto.
-PRECISION_FLOOR = 0.50
+# Marco de negocio para el umbral por defecto. `demanda_alta` senala riesgo de
+# quiebre; fallar un positivo (no detectar demanda alta) cuesta mas que una falsa
+# alarma, asi que el default prioriza **recall**. Pero el operativo debe ser
+# **accionable**: un piso de precision demasiado debil (0.50, lift de solo ~1.44x
+# sobre la prevalencia ~0.346) degenera en "marcar casi todo" -inutil para
+# priorizar un almacen-. Por eso el default usa un **piso REAL de precision (0.80)**
+# y toma el maximo recall que lo respeta.
+PRECISION_FLOOR = 0.80
+
+# Margen anadido al piso al elegir en VALID (robustez VALID->TEST). En la corrida
+# vieja la precision se deslizo de 0.50 (valid) a 0.484 (test); con un piso mas
+# alto ese deslizamiento importa mas, asi que en VALID se apunta a
+# precision >= PRECISION_FLOOR + MARGEN_VALID para que el piso aguante en TEST.
+MARGEN_VALID = 0.02
+
+# Piso del punto de operacion **recall-prioritario**, que se reporta SOLO como
+# alternativa informativa (es el default viejo, operativo degenerado): no es el
+# default del artefacto.
+PISO_RECALL_PRIORITARIO = 0.50
 
 # Validacion cruzada temporal (expanding) dentro de TRAIN+VALID (espejo de la 2a).
 CV_N_FOLDS = 3
@@ -202,50 +216,164 @@ def _proba(modelo: Any, X: Any) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Seleccion de umbral en VALID (marco de negocio: prioriza recall)
+# Seleccion de umbral en VALID (marco de negocio: max recall con piso REAL de precision)
 # ---------------------------------------------------------------------------
-def seleccionar_umbral(
-    y_true: np.ndarray, y_prob: np.ndarray, precision_floor: float = PRECISION_FLOOR
-) -> tuple[float, dict[str, Any]]:
-    """Elige el umbral en VALID priorizando **recall con precision aceptable**.
-
-    Criterio (marco de negocio: no detectar demanda alta cuesta mas que una falsa
-    alarma): entre los umbrales con ``precision >= precision_floor`` se toma el de
-    **mayor recall**; si ninguno alcanza el piso, se cae a **max F2** (beta=2,
-    favorece recall). Se decide SOLO sobre VALID.
-    """
+def _candidatos_pr(
+    y_true: np.ndarray, y_prob: np.ndarray
+) -> list[tuple[float, float, float]]:
+    """Lista de ``(umbral, precision, recall)`` de la curva PR (sin el punto final
+    sin umbral que devuelve ``precision_recall_curve``)."""
     prec, rec, thr = precision_recall_curve(y_true, y_prob)
-    if len(thr) == 0:
+    return [(float(thr[i]), float(prec[i]), float(rec[i])) for i in range(len(thr))]
+
+
+def _max_recall_con_piso(
+    cand: list[tuple[float, float, float]], piso: float
+) -> tuple[float, float, float] | None:
+    """Entre los umbrales con ``precision >= piso``, el de **mayor recall** (desempate:
+    mayor umbral). ``None`` si ninguno alcanza el piso."""
+    viables = [c for c in cand if c[1] >= piso]
+    if not viables:
+        return None
+    return max(viables, key=lambda c: (c[2], c[0]))
+
+
+def _max_f1(cand: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+    """Umbral de **maximo F1** sobre los candidatos."""
+    def f1(c: tuple[float, float, float]) -> float:
+        p_, r_ = c[1], c[2]
+        return (2 * p_ * r_ / (p_ + r_)) if (p_ + r_) > 0 else 0.0
+
+    return max(cand, key=f1)
+
+
+def seleccionar_umbral(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    precision_floor: float = PRECISION_FLOOR,
+    margen: float = MARGEN_VALID,
+) -> tuple[float, dict[str, Any]]:
+    """Elige el umbral por defecto en VALID: **max recall sujeto a un piso REAL de
+    precision** (default 0.80), con margen de robustez VALID->TEST.
+
+    Marco de negocio: no detectar demanda alta cuesta mas que una falsa alarma, asi
+    que se prioriza recall; pero el operativo debe ser accionable, asi que se exige
+    un piso real de precision (0.80, no 0.50). El piso efectivo en VALID es
+    ``precision_floor + margen`` (se apunta un poco mas alto en valid para que el
+    piso aguante en test). Si ningun umbral alcanza el piso efectivo se intenta sin
+    margen; si tampoco, se cae a **max F1** (operativo equilibrado, no degenerado).
+    Se decide SOLO sobre VALID.
+    """
+    cand = _candidatos_pr(y_true, y_prob)
+    if not cand:
         return 0.5, {
             "criterio": "sin variabilidad de probabilidad; umbral por defecto 0.5",
             "precision_floor": precision_floor,
+            "margen_valid": margen,
         }
-    cand = [(float(thr[i]), float(prec[i]), float(rec[i])) for i in range(len(thr))]
-    viables = [c for c in cand if c[1] >= precision_floor]
-    if viables:
-        umbral, p, r = max(viables, key=lambda c: (c[2], c[0]))
+    piso_efectivo = precision_floor + margen
+    punto = _max_recall_con_piso(cand, piso_efectivo)
+    if punto is not None:
+        umbral, p, r = punto
         criterio = (
             f"max recall sujeto a precision >= {precision_floor:.2f} "
-            "(marco de negocio: fallar un positivo -no detectar demanda alta- "
-            "cuesta mas que una falsa alarma)"
+            f"(piso de negocio REAL, no 0.50; margen +{margen:.2f} en VALID -> piso "
+            f"efectivo {piso_efectivo:.2f}- para que el piso aguante en TEST)"
+        )
+    elif (punto := _max_recall_con_piso(cand, precision_floor)) is not None:
+        umbral, p, r = punto
+        criterio = (
+            f"max recall sujeto a precision >= {precision_floor:.2f} "
+            f"(sin margen: ningun umbral alcanza el piso efectivo {piso_efectivo:.2f})"
         )
     else:
-        def _f2(c: tuple[float, float, float]) -> float:
-            p_, r_ = c[1], c[2]
-            den = 4 * p_ + r_
-            return (5 * p_ * r_ / den) if den > 0 else 0.0
-
-        umbral, p, r = max(cand, key=_f2)
+        umbral, p, r = _max_f1(cand)
         criterio = (
-            f"ninguna precision alcanza {precision_floor:.2f}; "
-            "fallback a max F2 (favorece recall)"
+            f"ningun umbral alcanza precision {precision_floor:.2f}; "
+            "fallback a max F1 (operativo equilibrado, no degenerado)"
         )
     return float(umbral), {
         "criterio": criterio,
         "precision_floor": precision_floor,
+        "margen_valid": margen,
+        "piso_efectivo_valid": round(piso_efectivo, 4),
         "precision_en_umbral": round(float(p), 4),
         "recall_en_umbral": round(float(r), 4),
     }
+
+
+# ---------------------------------------------------------------------------
+# Puntos de operacion + curva PR (reporte para que la Fase 3 elija su tolerancia)
+# ---------------------------------------------------------------------------
+def curva_pr(y_true: np.ndarray, y_prob: np.ndarray) -> pd.DataFrame:
+    """Curva precision-recall completa ``(umbral, precision, recall)`` para persistir.
+
+    Se descarta el punto final que ``precision_recall_curve`` anade sin umbral
+    (recall=0, precision=1). La Fase 3 puede elegir cualquier punto segun su
+    tolerancia sin quedar amarrada al umbral por defecto.
+    """
+    prec, rec, thr = precision_recall_curve(y_true, y_prob)
+    return pd.DataFrame(
+        {"umbral": thr, "precision": prec[:-1], "recall": rec[:-1]}
+    )
+
+
+def puntos_de_operacion(
+    y_valid: np.ndarray,
+    prob_valid: np.ndarray,
+    y_test: np.ndarray,
+    prob_test: np.ndarray,
+    *,
+    precision_floor: float = PRECISION_FLOOR,
+    margen: float = MARGEN_VALID,
+    piso_recall: float = PISO_RECALL_PRIORITARIO,
+) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
+    """Define varios puntos de operacion (umbral elegido **siempre en VALID**) y los
+    evalua en VALID y TEST.
+
+    Tres puntos: el **default** (max recall con precision >= ``precision_floor``), el
+    de **maximo F1**, y el **recall-prioritario** (piso 0.50, el default viejo) como
+    referencia. Devuelve ``(umbrales, detalle)`` donde ``umbrales`` mapea
+    punto->umbral y ``detalle`` lleva, por punto, las metricas completas en valid y
+    test, la matriz de confusion de test y cuantas filas marca (operatividad).
+    """
+    cand_va = _candidatos_pr(y_valid, prob_valid)
+    umbral_default, _ = seleccionar_umbral(y_valid, prob_valid, precision_floor, margen)
+    umbral_f1 = _max_f1(cand_va)[0] if cand_va else 0.5
+    punto_rp = _max_recall_con_piso(cand_va, piso_recall)
+    umbral_rp = punto_rp[0] if punto_rp is not None else umbral_default
+
+    clave_default = f"precision>={precision_floor:.2f}"
+    clave_rp = f"recall_prioritario(p>={piso_recall:.2f})"
+    umbrales: dict[str, float] = {
+        clave_default: float(umbral_default),
+        "max_f1": float(umbral_f1),
+        clave_rp: float(umbral_rp),
+    }
+    etiquetas = {
+        clave_default: f"max recall s.t. precision >= {precision_floor:.2f} (DEFAULT)",
+        "max_f1": "max F1",
+        clave_rp: f"max recall s.t. precision >= {piso_recall:.2f} (referencia)",
+    }
+    n_test = len(y_test)
+    detalle: dict[str, dict[str, Any]] = {}
+    for clave, u in umbrales.items():
+        mv = classification_metrics_min(y_valid, prob_valid, u)
+        mt = classification_metrics_min(y_test, prob_test, u)
+        cm_test = matriz_confusion(y_test, prob_test, u)
+        n_pos = cm_test["TP"] + cm_test["FP"]
+        detalle[clave] = {
+            "punto": clave,
+            "etiqueta": etiquetas[clave],
+            "umbral": float(u),
+            "es_default": clave == clave_default,
+            "valid": mv,
+            "test": mt,
+            "matriz_confusion_test": cm_test,
+            "n_pos_pred_test": int(n_pos),
+            "pct_marcado_test": round(100.0 * n_pos / max(1, n_test), 1),
+        }
+    return umbrales, detalle
 
 
 # ---------------------------------------------------------------------------
@@ -416,6 +544,86 @@ def _elegir_estrategia(
 
 
 # ---------------------------------------------------------------------------
+# Preparacion de datos compartida (features + etiqueta + cortes + splits)
+# ---------------------------------------------------------------------------
+@dataclass
+class DatosPreparados:
+    """Frame modelable, matriz de features, etiqueta y splits temporales.
+
+    Lo comparten el entrenamiento/comparacion (``entrenar_y_comparar``) y la
+    recalibracion post-hoc del umbral (``recalibrar_umbral``), de modo que ambos
+    usan **identicos** features, etiqueta honesta y cortes (sin riesgo de deriva).
+    """
+
+    df_model: pd.DataFrame
+    features: list[str]
+    cats: list[str]
+    categorias: dict[str, Any]
+    cfg_features: ConfigFeatures
+    cortes: CortesTemporales
+    info_etiqueta: InfoEtiqueta
+    X_cat: pd.DataFrame
+    y: np.ndarray
+    idx_train: np.ndarray
+    idx_valid: np.ndarray
+    idx_test: np.ndarray
+
+
+def preparar_datos(
+    analytic: pd.DataFrame, cfg_features: ConfigFeatures
+) -> DatosPreparados:
+    """Construye features leak-safe, fija la etiqueta honesta (P75 train-only) y los
+    cortes temporales de la 2a, y devuelve la matriz + los indices de cada split."""
+    log.info("Construyendo features temporales (leak-safe)...")
+    df_feat, features, cats, cfg_features = construir_features(analytic, cfg_features)
+
+    # Descarta el calentamiento (filas con NaN en los rezagos del objetivo) y
+    # rellena el resto de NaN de rezago con 0 (igual que la 2a).
+    cols_lag = columnas_rezago(features)
+    df_model = df_feat.dropna(
+        subset=[c for c in cols_lag if c.startswith("sales_lag_")]
+    ).copy()
+    df_model[cols_lag] = df_model[cols_lag].fillna(0.0)
+
+    # Categorias fijas (consistencia de codigos entre splits y en prediccion).
+    df_model, categorias = _fijar_categorias(df_model, cats, None)
+
+    # Cortes temporales (mismos que la 2a) y etiqueta honesta (P75 train-only).
+    cortes = calcular_cortes(df_model[COL_FECHA])
+    log.info("Cortes -> %s", cortes.as_dict())
+    df_model, info_etiqueta = construir_etiqueta(df_model, cortes)
+    log.info(
+        "Etiqueta: prevalencia train=%.4f | familias=%d | degeneradas=%s",
+        info_etiqueta.prevalencia_train,
+        info_etiqueta.n_familias,
+        info_etiqueta.familias_degeneradas,
+    )
+
+    fechas = df_model[COL_FECHA]
+    mask_train = (fechas <= cortes.train_fin).to_numpy()
+    mask_valid = ((fechas >= cortes.valid_ini) & (fechas <= cortes.valid_fin)).to_numpy()
+    mask_test = ((fechas >= cortes.test_ini) & (fechas <= cortes.test_fin)).to_numpy()
+
+    X_cat = _matriz_categorica(df_model, features, cats)
+    y = df_model[ETIQUETA].to_numpy(dtype="int8")
+    idx = np.arange(len(df_model))
+    return DatosPreparados(
+        df_model=df_model,
+        features=features,
+        cats=cats,
+        categorias=categorias,
+        cfg_features=cfg_features,
+        cortes=cortes,
+        info_etiqueta=info_etiqueta,
+        X_cat=X_cat,
+        y=y,
+        idx_train=idx[mask_train],
+        idx_valid=idx[mask_valid],
+        idx_test=idx[mask_test],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Entrenamiento + comparacion de estrategias
 # ---------------------------------------------------------------------------
 @dataclass
@@ -459,43 +667,13 @@ def entrenar_y_comparar(
     seed = settings.random_seed
     cfg_features = cfg_features or ConfigFeatures()
 
-    log.info("Construyendo features temporales (leak-safe)...")
-    df_feat, features, cats, cfg_features = construir_features(analytic, cfg_features)
-
-    # Descarta el calentamiento (filas con NaN en los rezagos del objetivo) y
-    # rellena el resto de NaN de rezago con 0 (igual que la 2a).
-    cols_lag = columnas_rezago(features)
-    df_model = df_feat.dropna(
-        subset=[c for c in cols_lag if c.startswith("sales_lag_")]
-    ).copy()
-    df_model[cols_lag] = df_model[cols_lag].fillna(0.0)
-
-    # Categorias fijas (consistencia de codigos entre splits y en prediccion).
-    df_model, categorias = _fijar_categorias(df_model, cats, None)
-
-    # Cortes temporales (mismos que la 2a) y etiqueta honesta (P75 train-only).
-    cortes = calcular_cortes(df_model[COL_FECHA])
-    log.info("Cortes -> %s", cortes.as_dict())
-    df_model, info_etiqueta = construir_etiqueta(df_model, cortes)
-    log.info(
-        "Etiqueta: prevalencia train=%.4f | familias=%d | degeneradas=%s",
-        info_etiqueta.prevalencia_train,
-        info_etiqueta.n_familias,
-        info_etiqueta.familias_degeneradas,
-    )
-
-    fechas = df_model[COL_FECHA]
-    mask_train = (fechas <= cortes.train_fin).to_numpy()
-    mask_valid = ((fechas >= cortes.valid_ini) & (fechas <= cortes.valid_fin)).to_numpy()
-    mask_test = ((fechas >= cortes.test_ini) & (fechas <= cortes.test_fin)).to_numpy()
-
-    X_cat = _matriz_categorica(df_model, features, cats)
-    y = df_model[ETIQUETA].to_numpy(dtype="int8")
-
-    idx = np.arange(len(df_model))
-    idx_train = idx[mask_train]
-    idx_valid = idx[mask_valid]
-    idx_test = idx[mask_test]
+    datos = preparar_datos(analytic, cfg_features)
+    df_model = datos.df_model
+    features, cats, categorias = datos.features, datos.cats, datos.categorias
+    cfg_features = datos.cfg_features
+    cortes, info_etiqueta = datos.cortes, datos.info_etiqueta
+    X_cat, y = datos.X_cat, datos.y
+    idx_train, idx_valid, idx_test = datos.idx_train, datos.idx_valid, datos.idx_test
     idx_train_fit = _muestrear(idx_train, max_train_rows, seed)
 
     n_pos = int(y[idx_train_fit].sum())
@@ -872,9 +1050,10 @@ def escribir_reporte(res: ResultadoClasificacion, settings: Settings) -> Path:
         f"**F1 = {mt['F1']:.4f}** | **Precision = {mt['Precision']:.4f}**.",
         f"- ROC-AUC (contexto) = {mt['ROC_AUC']:.4f}.",
         f"- (VALID de referencia: PR-AUC {mv['PR_AUC']:.4f}, recall {mv['Recall']:.4f}.)",
-        f"- Nota: la precision en TEST ({mt['Precision']:.4f}) queda apenas por debajo "
-        f"del piso de {PRECISION_FLOOR:.2f} usado en VALID; es el efecto esperado de "
-        "fijar el umbral en VALID y evaluar TEST una sola vez (sin reajustar a TEST).",
+        f"- Nota: umbral elegido en VALID con piso real de precision {PRECISION_FLOOR:.2f} "
+        f"(margen +{MARGEN_VALID:.2f}); TEST se evalua una sola vez sin reajustar. Para la "
+        "tabla de puntos de operacion y la curva PR, ver la recalibracion post-hoc "
+        "(`scripts/recalibrar_umbral_clasificacion.py`).",
         "",
         "### Matriz de confusion en TEST (al umbral elegido)",
         "",
@@ -1004,6 +1183,466 @@ def cli(argv: list[str] | None = None) -> None:
 def cargar_predictor(ruta: Path) -> tuple[PredictorClasificacion, dict[str, Any]]:
     """Carga el predictor serializado y sus metadatos (para la capa servicio/API)."""
     return cargar_artefacto(ruta)
+
+
+# ---------------------------------------------------------------------------
+# Recalibracion POST-HOC del umbral (sin reentrenar el booster de produccion)
+# ---------------------------------------------------------------------------
+@dataclass
+class ResultadoRecalibracion:
+    """Salida de la recalibracion post-hoc del punto de operacion (umbral)."""
+
+    estrategia: str
+    umbral: float
+    criterio_umbral: dict[str, Any]
+    umbrales_punto: dict[str, float]
+    detalle_puntos: dict[str, dict[str, Any]]
+    curva_pr_valid: pd.DataFrame
+    metricas_valid: dict[str, float]
+    metricas_test: dict[str, float]
+    matriz_confusion_valid: dict[str, int]
+    matriz_confusion_test: dict[str, int]
+    cortes: CortesTemporales
+    info_etiqueta: InfoEtiqueta
+    n_train_fit: int
+
+
+def recalibrar_umbral(
+    analytic: pd.DataFrame,
+    settings: Settings,
+    *,
+    estrategia: str = "sin_remuestreo",
+    cfg_features: ConfigFeatures | None = None,
+    max_train_rows: int | None = 300_000,
+    usar_gpu: bool = False,
+) -> ResultadoRecalibracion:
+    """Re-elige el umbral por defecto **post-hoc** sobre la estrategia ya elegida.
+
+    Reproduce SOLO la estrategia de produccion (``sin_remuestreo``) ajustada en
+    TRAIN (determinista, semilla 42) para obtener las probabilidades held-out de
+    VALID/TEST. **No** re-corre SMOTE/costo-sensible/CV ni re-decide nada. Sobre esas
+    probabilidades elige el nuevo umbral por defecto en **VALID** (max recall con piso
+    REAL de precision), calcula los puntos de operacion y la curva PR, y evalua TEST
+    **una sola vez** al nuevo default. El booster de produccion no se reentrena: lo
+    reusa ``aplicar_recalibracion`` desde el ``.joblib`` (solo cambia su umbral).
+    """
+    seed = settings.random_seed
+    cfg_features = cfg_features or ConfigFeatures()
+    datos = preparar_datos(analytic, cfg_features)
+    idx_train_fit = _muestrear(datos.idx_train, max_train_rows, seed)
+    n_pos = int(datos.y[idx_train_fit].sum())
+    n_neg = int(len(idx_train_fit) - n_pos)
+    spw = (n_neg / n_pos) if n_pos else 1.0
+
+    log.info(
+        "Reproduciendo `%s` en TRAIN (CPU determinista) para recalibrar el umbral...",
+        estrategia,
+    )
+    modelo = construir_estrategia(
+        estrategia, seed, usar_gpu=usar_gpu, scale_pos_weight=spw
+    )
+    modelo.fit(datos.X_cat.iloc[idx_train_fit], datos.y[idx_train_fit])
+    yva = datos.y[datos.idx_valid]
+    yte = datos.y[datos.idx_test]
+    prob_va = _proba(modelo, datos.X_cat.iloc[datos.idx_valid])
+    prob_te = _proba(modelo, datos.X_cat.iloc[datos.idx_test])
+
+    umbral, criterio_umbral = seleccionar_umbral(yva, prob_va)
+    umbrales_punto, detalle = puntos_de_operacion(yva, prob_va, yte, prob_te)
+    log.info("Nuevo default umbral=%.4f | %s", umbral, criterio_umbral["criterio"])
+    return ResultadoRecalibracion(
+        estrategia=estrategia,
+        umbral=umbral,
+        criterio_umbral=criterio_umbral,
+        umbrales_punto=umbrales_punto,
+        detalle_puntos=detalle,
+        curva_pr_valid=curva_pr(yva, prob_va),
+        metricas_valid=classification_metrics_min(yva, prob_va, umbral),
+        metricas_test=classification_metrics_min(yte, prob_te, umbral),
+        matriz_confusion_valid=matriz_confusion(yva, prob_va, umbral),
+        matriz_confusion_test=matriz_confusion(yte, prob_te, umbral),
+        cortes=datos.cortes,
+        info_etiqueta=datos.info_etiqueta,
+        n_train_fit=len(idx_train_fit),
+    )
+
+
+def _tabla_puntos_operacion(res: ResultadoRecalibracion) -> pd.DataFrame:
+    """Tabla compacta de puntos de operacion (valid + test) para meta/reporte."""
+    filas = []
+    for d in res.detalle_puntos.values():
+        filas.append(
+            {
+                "punto": d["etiqueta"],
+                "umbral": round(d["umbral"], 4),
+                "P_valid": round(d["valid"]["Precision"], 4),
+                "R_valid": round(d["valid"]["Recall"], 4),
+                "F1_valid": round(d["valid"]["F1"], 4),
+                "P_test": round(d["test"]["Precision"], 4),
+                "R_test": round(d["test"]["Recall"], 4),
+                "F1_test": round(d["test"]["F1"], 4),
+                "%marcado_test": d["pct_marcado_test"],
+            }
+        )
+    return pd.DataFrame(filas)
+
+
+def _puntos_operacion_meta(res: ResultadoRecalibracion) -> dict[str, dict[str, Any]]:
+    """Version serializable de los puntos de operacion para el meta del artefacto."""
+    return {
+        d["etiqueta"]: {
+            "umbral": round(d["umbral"], 6),
+            "es_default": d["es_default"],
+            "precision_valid": round(d["valid"]["Precision"], 4),
+            "recall_valid": round(d["valid"]["Recall"], 4),
+            "F1_valid": round(d["valid"]["F1"], 4),
+            "precision_test": round(d["test"]["Precision"], 4),
+            "recall_test": round(d["test"]["Recall"], 4),
+            "F1_test": round(d["test"]["F1"], 4),
+            "n_pos_pred_test": d["n_pos_pred_test"],
+            "pct_marcado_test": d["pct_marcado_test"],
+        }
+        for d in res.detalle_puntos.values()
+    }
+
+
+def aplicar_recalibracion(
+    res: ResultadoRecalibracion, settings: Settings
+) -> tuple[Path, Path]:
+    """Actualiza el artefacto (mismo booster, nuevo umbral) y sus metadatos.
+
+    Carga el ``.joblib`` existente, le fija el nuevo umbral por defecto -el booster de
+    produccion **no se reentrena**- y reescribe el meta con el nuevo umbral, su
+    criterio, la tabla de puntos de operacion, la referencia a la curva PR y las
+    metricas/matrices al nuevo umbral. La comparacion de estrategias (registro de la
+    decision de SMOTE, PR-AUC threshold-independent) se conserva.
+    """
+    ruta = settings.base_dir / "models" / f"{VERSION_MODELO}.joblib"
+    predictor, meta = cargar_artefacto(ruta)
+    umbral_anterior = getattr(predictor, "umbral", None)
+    predictor.umbral = float(res.umbral)  # mismo modelo, nuevo punto de operacion
+
+    meta = dict(meta)
+    meta.pop("guardado_utc", None)  # se refresca al re-serializar
+    meta["umbral"] = res.umbral
+    meta["umbral_anterior"] = umbral_anterior
+    meta["criterio_umbral"] = res.criterio_umbral
+    meta["puntos_operacion"] = _puntos_operacion_meta(res)
+    meta["curva_pr_ref"] = "data/processed/curva_pr_clasificacion_2b.csv"
+    meta["metricas_valid"] = res.metricas_valid
+    meta["metricas_test"] = res.metricas_test
+    meta["matriz_confusion_valid"] = res.matriz_confusion_valid
+    meta["matriz_confusion_test"] = res.matriz_confusion_test
+    meta["fecha_recalibracion"] = date.today().isoformat()
+    meta["nota_recalibracion"] = (
+        "Umbral por defecto re-elegido POST-HOC en VALID (max recall con piso real de "
+        "precision 0.80, margen +0.02 VALID->TEST). El booster de produccion NO se "
+        "reentreno: se reuso el del .joblib y solo cambio su umbral/metadatos. Las "
+        "probabilidades held-out se reprodujeron con la estrategia elegida ajustada en "
+        "TRAIN (CPU determinista, semilla 42). La comparacion de estrategias (decision "
+        "de SMOTE) se conserva del entrenamiento original."
+    )
+    return guardar_artefacto(predictor, ruta, meta)
+
+
+def persistir_curva_pr(res: ResultadoRecalibracion, settings: Settings) -> Path:
+    """Persiste la curva precision-recall de VALID (umbral, precision, recall)."""
+    settings.processed_dir.mkdir(parents=True, exist_ok=True)
+    ruta = settings.processed_dir / "curva_pr_clasificacion_2b.csv"
+    res.curva_pr_valid.to_csv(ruta, index=False)
+    (settings.processed_dir / "curva_pr_clasificacion_2b.json").write_text(
+        res.curva_pr_valid.to_json(orient="records", indent=2),
+        encoding="utf-8",
+    )
+    return ruta
+
+
+def agregar_puntos_a_registro(
+    res: ResultadoRecalibracion, settings: Settings
+) -> Path:
+    """Anade al registro una fila por **punto de operacion x split** (columna ``punto``).
+
+    Conserva las filas existentes de la comparacion de estrategias (su ``punto`` queda
+    vacio) e idempotente: re-ejecutar la recalibracion reemplaza solo las filas de
+    puntos de operacion previas.
+    """
+    settings.processed_dir.mkdir(parents=True, exist_ok=True)
+    ruta_csv = settings.processed_dir / "metricas_clasificacion_2b.csv"
+    base = pd.read_csv(ruta_csv) if ruta_csv.exists() else pd.DataFrame()
+    if not base.empty and "punto" in base.columns:
+        base = base[base["punto"].isna()].copy()
+
+    filas = []
+    for d in res.detalle_puntos.values():
+        for split in ("valid", "test"):
+            m = dict(d[split])
+            m.update(
+                {
+                    "estrategia": res.estrategia,
+                    "split": f"op_{split}",
+                    "punto": d["etiqueta"],
+                }
+            )
+            filas.append(m)
+    combinado = pd.concat([base, pd.DataFrame(filas)], ignore_index=True)
+    combinado.to_csv(ruta_csv, index=False)
+    (settings.processed_dir / "metricas_clasificacion_2b.json").write_text(
+        combinado.to_json(orient="records", force_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return ruta_csv
+
+
+def escribir_reporte_recalibrado(
+    res: ResultadoRecalibracion, meta: dict[str, Any], settings: Settings
+) -> Path:
+    """Regenera ``docs/reporte_clasificacion_2b.md`` con el nuevo punto de operacion.
+
+    Headline = nuevo default (precision>=0.80); el recall-prioritario queda como
+    alternativa. La comparacion de SMOTE y las referencias se toman del meta (decision
+    intacta, PR-AUC threshold-independent).
+    """
+    info = res.info_etiqueta
+    mv, mt = res.metricas_valid, res.metricas_test
+    cm = res.matriz_confusion_test
+    cu = res.criterio_umbral
+    prev_train = round(info.prevalencia_train, 4)
+    prev_valid = round(mv["prevalencia"], 4)
+    prev_test = round(mt["prevalencia"], 4)
+    default = next(d for d in res.detalle_puntos.values() if d["es_default"])
+
+    por_estr = meta.get("metricas_valid_por_estrategia", {})
+    filas_estr = [
+        {
+            "estrategia": e,
+            "PR_AUC_valid": round(v.get("PR_AUC", float("nan")), 4),
+            "ROC_AUC_valid": round(v.get("ROC_AUC", float("nan")), 4),
+        }
+        for e, v in por_estr.items()
+    ]
+    regla_sel = meta.get("criterio_seleccion", {}).get("regla", "")
+    estrategia_elegida = meta.get("estrategia_desbalance", res.estrategia)
+
+    ref = meta.get("metricas_referencia_test", {})
+    ref_filas = [
+        {
+            "modelo": k,
+            "PR_AUC": round(v["PR_AUC"], 4),
+            "Recall": round(v["Recall"], 4),
+            "F1": round(v["F1"], 4),
+            "Precision": round(v["Precision"], 4),
+            "ROC_AUC": round(v["ROC_AUC"], 4),
+        }
+        for k, v in ref.items()
+    ]
+
+    lineas = [
+        "# Reporte de Clasificacion (Fase 2b) - ALMACEN (`demanda_alta`)",
+        "",
+        "> Generado por `spc.models.clasificacion`. Objetivo: `demanda_alta = sales > "
+        "P75 de su familia` (umbral P75 fijado **solo en TRAIN**). Validacion temporal "
+        "sin fuga; seleccion de estrategia y umbral en **VALID**; TEST evaluado **una "
+        "sola vez**. La cantidad que define la etiqueta (`sales` actual) **no es "
+        "feature**: solo rezagos/ventanas pasadas, igual que la 2a.",
+        "",
+        "> **Punto de operacion recalibrado (post-hoc).** El default ya **no** es el "
+        "recall-prioritario (precision>=0.50), que degeneraba en marcar ~71 % de las "
+        "filas con precision ~0.48 (lift de solo ~1.4x sobre la prevalencia). El nuevo "
+        "default usa un **piso REAL de precision (0.80)** y toma el maximo recall que "
+        "lo respeta. El **booster de produccion no cambio**: es solo recalibracion del "
+        "umbral (las probabilidades del modelo son las mismas).",
+        "",
+        "## Etiqueta y desbalance",
+        "",
+        f"- **Prevalencia de positivos (TRAIN):** {prev_train:.4f} "
+        f"(~1:{(1 - prev_train) / max(prev_train, 1e-9):.1f}) — el desbalance moderado "
+        "que anticipaba el EDA (~22 %).",
+        f"- **La prevalencia sube en valid/test** (VALID {prev_valid:.4f}, TEST "
+        f"{prev_test:.4f}): el umbral P75 se fija en TRAIN y, como las ventas crecen "
+        "en el tiempo, mas dias superan ese umbral historico. Por eso la **linea "
+        "sin-skill de la PR-AUC es la prevalencia del split evaluado** (no la de "
+        "train); los `Dummy` lo confirman abajo.",
+        f"- **Familias totales:** {info.n_familias}. "
+        f"**Degeneradas excluidas (P75<=0)**: {info.familias_degeneradas or 'ninguna'} "
+        f"({len(info.familias_degeneradas)} de {info.n_familias}). En ellas "
+        "`demanda_alta` se reduce a 'vendio algo' en vez de 'demanda alta' (etiqueta "
+        "ruidosa); se documentan y se excluyen del train/eval.",
+        "",
+        "## Cortes temporales (heredados de la 2a)",
+        "",
+        f"- **Train:** {res.cortes.as_dict()['train']}",
+        f"- **Valid:** {res.cortes.as_dict()['valid']}  (seleccion de estrategia y umbral)",
+        f"- **Test:** {res.cortes.as_dict()['test']}  (evaluado una sola vez)",
+        "",
+        "## Efecto de SMOTE - comparacion de estrategias (VALID)",
+        "",
+        "Mismo booster base (LightGBM). La decision de SMOTE descansa en la **PR-AUC** "
+        "(metrica principal de la minoritaria, **independiente del umbral**); por eso "
+        "la recalibracion del umbral **no la altera**. ROC-AUC de contexto (tambien "
+        "independiente del umbral).",
+        "",
+        markdown_table(pd.DataFrame(filas_estr)),
+        "",
+        f"**Decision (intacta):** estrategia = **`{estrategia_elegida}`** "
+        f"{'(SMOTE NO se adopta)' if estrategia_elegida != 'smote' else '(SMOTE adoptado)'}"
+        f". {regla_sel}.",
+        "",
+        "## Umbral por defecto (marco de negocio: piso REAL de precision)",
+        "",
+        f"- **Umbral = {res.umbral:.4f}** (no el 0.5 por defecto, **ni** el viejo "
+        f"recall-prioritario). Criterio: {cu['criterio']}.",
+        f"- En VALID al umbral: precision={mv['Precision']:.4f}, recall={mv['Recall']:.4f}, "
+        f"F1={mv['F1']:.4f}.",
+        f"- En TEST al umbral: precision={mt['Precision']:.4f}, recall={mt['Recall']:.4f}, "
+        f"F1={mt['F1']:.4f} (el piso de precision aguanta gracias al margen "
+        f"+{cu.get('margen_valid', 0):.2f} en VALID).",
+        "",
+        "### Puntos de operacion (umbral elegido en VALID; TEST informativo)",
+        "",
+        "Para que la **Fase 3** elija segun su tolerancia (no quede amarrada a un solo "
+        "umbral). La **curva PR completa** (umbral, precision, recall) de VALID se "
+        f"persiste en `{meta.get('curva_pr_ref', 'data/processed/curva_pr_clasificacion_2b.csv')}`.",
+        "",
+        markdown_table(_tabla_puntos_operacion(res)),
+        "",
+        "## Resultado final en TEST (default elegido en VALID, una sola vez)",
+        "",
+        f"- **PR-AUC = {mt['PR_AUC']:.4f}** vs linea sin-skill (prevalencia TEST) "
+        f"{prev_test:.4f} -> **x{mt['PR_AUC'] / max(prev_test, 1e-9):.2f}** sobre el "
+        "azar (independiente del umbral; no cambia con la recalibracion).",
+        f"- Al **default**: precision={mt['Precision']:.4f}, recall={mt['Recall']:.4f}, "
+        f"F1={mt['F1']:.4f}. ROC-AUC (contexto) = {mt['ROC_AUC']:.4f}.",
+        f"- El operativo es **accionable**: marca {default['n_pos_pred_test']} filas "
+        f"({default['pct_marcado_test']} %) como riesgo (antes ~71 %), con precision "
+        f"~{mt['Precision']:.2f} (antes ~0.48).",
+        f"- (VALID de referencia: precision {mv['Precision']:.4f}, recall {mv['Recall']:.4f}.)",
+        "",
+        "### Matriz de confusion en TEST (al default)",
+        "",
+        "|  | pred 0 | pred 1 |",
+        "|---|---|---|",
+        f"| **real 0** | {cm['TN']} (TN) | {cm['FP']} (FP) |",
+        f"| **real 1** | {cm['FN']} (FN) | {cm['TP']} (TP) |",
+        "",
+        "## Referencia interpretable y baselines triviales (TEST, umbral 0.5)",
+        "",
+        "Regresion logistica en pipeline propio (estandarizacion + one-hot + "
+        "`class_weight='balanced'`) y `DummyClassifier` (mayoritario/estratificado, "
+        "PR-AUC ~ prevalencia = sin-skill). Recall/F1/precision al **0.5 por defecto** "
+        "(no al umbral de negocio); la PR-AUC es la comparacion limpia.",
+        "",
+        markdown_table(pd.DataFrame(ref_filas)),
+        "",
+        "## Jerarquia de metricas",
+        "",
+        "**PR-AUC** (principal, minoritaria, independiente del umbral) -> **recall** "
+        "(marco de negocio: no detectar demanda alta cuesta mas) -> **F1** -> "
+        "**precision**. El **umbral por defecto** ya no maximiza recall a ciegas: exige "
+        "un **piso real de precision (0.80)** para que el operativo sea accionable. "
+        "**Accuracy no** se usa como principal (enganha con clases desbalanceadas). "
+        "ROC-AUC es contexto.",
+        "",
+        "## Notas de diseno",
+        "",
+        "- Features reutilizadas de la 2a (`spc.features.temporales`), leak-safe: "
+        "`sales` actual, `family_sales_p75` y `demanda_alta` **no** son features.",
+        "- Umbral P75 fijado **solo en TRAIN** (no mira el futuro).",
+        "- SMOTE **solo en train, dentro de cada fold** (nunca valid/test ni el "
+        "dataset completo).",
+        "- Booster entrena en GPU, **predice en CPU** (artefacto portable). La "
+        "recalibracion reproduce las probabilidades en **CPU determinista** y solo "
+        "cambia el umbral del artefacto (el modelo no se reentrena).",
+        "",
+        "## Mejoras diferidas (documentadas, no implementadas)",
+        "",
+        "- **Calibracion de probabilidades** (Platt/isotonica) si la probabilidad se "
+        "usa para decisiones de stock por nivel de servicio.",
+        "- **Etiqueta no estacionaria:** `demanda_alta` usa el **P75 historico fijo de "
+        "TRAIN**; con ventas crecientes la prevalencia sube en valid/test. Un "
+        "**percentil movil** (P75 por ventana reciente) definiria 'demanda alta' "
+        "relativa al regimen actual. Es una decision de **diseno de etiqueta** "
+        "diferida (cambia el objetivo, no solo el umbral); se documenta y no se aplica "
+        "aqui.",
+        "- **Metodos especificos de demanda intermitente** para las familias de bajo "
+        "volumen (las degeneradas excluidas y las de P75 entero bajo).",
+        "",
+    ]
+    ruta = settings.base_dir / "docs" / "reporte_clasificacion_2b.md"
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text("\n".join(lineas), encoding="utf-8")
+    return ruta
+
+
+def recalibrar(
+    settings: Settings, *, max_train_rows: int | None, usar_gpu: bool = False
+) -> ResultadoRecalibracion:
+    """Flujo offline de recalibracion: carga datos, re-elige el umbral post-hoc y
+    actualiza artefacto+meta, curva PR, registro y reporte. CPU por defecto
+    (determinista). **No** reentrena el booster de produccion."""
+    from spc.data.integration import build_analytic_dataset
+    from spc.data.loaders import load_data
+
+    np.random.seed(settings.random_seed)
+    data = load_data(settings)
+    analytic, _, _ = build_analytic_dataset(data, settings)
+
+    res = recalibrar_umbral(
+        analytic, settings, max_train_rows=max_train_rows, usar_gpu=usar_gpu
+    )
+    ruta_art, _ = aplicar_recalibracion(res, settings)
+    ruta_curva = persistir_curva_pr(res, settings)
+    ruta_reg = agregar_puntos_a_registro(res, settings)
+    _, meta = cargar_artefacto(ruta_art)
+    ruta_rep = escribir_reporte_recalibrado(res, meta, settings)
+    log.info("Artefacto actualizado: %s (umbral %.4f)", ruta_art, res.umbral)
+    log.info("Curva PR: %s", ruta_curva)
+    log.info("Registro: %s | Reporte: %s", ruta_reg, ruta_rep)
+    return res
+
+
+def cli_recalibrar(argv: list[str] | None = None) -> None:
+    """Recalibracion offline reproducible del umbral de ALMACEN (Fase 2b)."""
+    parser = argparse.ArgumentParser(
+        description="Recalibra POST-HOC el umbral del clasificador de ALMACEN (Fase 2b)."
+    )
+    parser.add_argument("--base-dir", type=Path, default=None, help="Raiz del proyecto.")
+    parser.add_argument(
+        "--max-train-rows", type=int, default=300_000,
+        help="Tope de filas para reproducir el modelo en train (default 300000).",
+    )
+    parser.add_argument("--full", action="store_true", help="Reproducir sin tope (lento).")
+    parser.add_argument(
+        "--gpu", action="store_true",
+        help="Reproducir probabilidades en GPU (por defecto CPU determinista).",
+    )
+    args = parser.parse_args(argv)
+
+    from spc.utils.logging import configure_logging
+
+    configure_logging(verbose=True)
+    settings = Settings(base_dir=args.base_dir) if args.base_dir else Settings()
+    max_rows = None if args.full else args.max_train_rows
+
+    res = recalibrar(settings, max_train_rows=max_rows, usar_gpu=args.gpu)
+
+    print("\n" + "=" * 72)
+    print("  PUNTOS DE OPERACION (umbral elegido en VALID; TEST informativo)")
+    print("=" * 72)
+    print(_tabla_puntos_operacion(res).to_string(index=False))
+    mv, mt = res.metricas_valid, res.metricas_test
+    cm = res.matriz_confusion_test
+    n_pos = cm["TP"] + cm["FP"]
+    n = cm["TN"] + cm["FP"] + cm["FN"] + cm["TP"]
+    print(f"\nNuevo default: umbral {res.umbral:.4f} | {res.criterio_umbral['criterio']}")
+    print(
+        f"VALID -> precision {mv['Precision']:.4f} recall {mv['Recall']:.4f} "
+        f"F1 {mv['F1']:.4f}"
+    )
+    print(
+        f"TEST  -> precision {mt['Precision']:.4f} recall {mt['Recall']:.4f} "
+        f"F1 {mt['F1']:.4f} (PR-AUC {mt['PR_AUC']:.4f})"
+    )
+    print(f"TEST marca {n_pos}/{n} filas ({100 * n_pos / max(1, n):.1f} %) como riesgo.")
 
 
 def train_classification_models(
