@@ -125,19 +125,27 @@ def test_pronostico_recursivo_multihorizonte(analitico_sintetico, tmp_path):
     assert (vals >= 0).all()
 
 
-def test_ensemble_no_degrada_metrica_honesta(analitico_sintetico):
-    """Activar el ensemble nunca empeora el WAPE honesto frente a desactivarlo."""
-    base = entrenar_y_comparar(
-        analitico_sintetico, Settings(), max_train_rows=None,
-        con_cv=False, ensemble=False,
-    )
-    con_ens = entrenar_y_comparar(
+def test_gate_ensemble_se_decide_en_valid(analitico_sintetico):
+    """El gate ensemble-vs-individual se decide sobre VALID, no sobre TEST.
+
+    TEST queda intacto: solo se evalua una vez sobre el modelo ya elegido. Por eso
+    la garantia ya no es "el ensemble no empeora TEST" (eso seria seleccionar sobre
+    TEST), sino: la decision se tomo en VALID y, si gano el ensemble, fue por menor
+    WAPE honesto recursivo en VALID.
+    """
+    res = entrenar_y_comparar(
         analitico_sintetico, Settings(), max_train_rows=None,
         con_cv=False, ensemble=True,
     )
-    # El ensemble solo reemplaza al ganador si baja el WAPE honesto: por
-    # construccion la metrica guia no puede empeorar.
-    assert (
-        con_ens.metricas_test_recursivo["WAPE"]
-        <= base.metricas_test_recursivo["WAPE"] + 1e-9
-    )
+    crit = res.criterio_seleccion
+    assert crit.get("decision_en") == "valid"
+
+    # La metrica honesta de TEST sigue siendo finita y mejor que el baseline.
+    rec = res.metricas_test_recursivo
+    base = res.metricas_baseline_recursivo
+    assert np.isfinite(rec["WAPE"])
+    assert rec["WAPE"] < min(v["WAPE"] for v in base.values())
+
+    # Si se eligio el ensemble, fue por menor WAPE honesto en VALID (no en TEST).
+    if crit.get("miembros"):
+        assert crit["wape_valid_ensemble"] <= crit["wape_valid_individual"] + 1e-9
