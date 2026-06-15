@@ -1,0 +1,261 @@
+{
+  "version": "clustering_tiendas_v1",
+  "fecha_entrenamiento": "2026-06-15",
+  "tarea": "tiendas",
+  "entidad": "tienda",
+  "campo": "almacen",
+  "uso_en_contrato": "segmento_tienda de la respuesta de ALMACEN",
+  "modelo": "KMeans (k-means++) sobre perfiles agregados, escalados (StandardScaler)",
+  "k_elegido": 2,
+  "k_maxima_silueta": 2,
+  "criterio_k": "maxima silueta sobre el rango (k=2): corte limpio grande/pequena; k=3 baja la silueta (0.58) sin aportar un tercer segmento accionable",
+  "silueta": 0.6742,
+  "silueta_es_oficial": true,
+  "curva_silueta_vs_k": [
+    {
+      "k": 2,
+      "silueta": 0.6742,
+      "inercia": 62.37,
+      "davies_bouldin": 0.5062,
+      "calinski_harabasz": 128.1
+    },
+    {
+      "k": 3,
+      "silueta": 0.5801,
+      "inercia": 28.05,
+      "davies_bouldin": 0.5493,
+      "calinski_harabasz": 170.85
+    },
+    {
+      "k": 4,
+      "silueta": 0.5078,
+      "inercia": 17.91,
+      "davies_bouldin": 0.5905,
+      "calinski_harabasz": 184.34
+    },
+    {
+      "k": 5,
+      "silueta": 0.4494,
+      "inercia": 13.25,
+      "davies_bouldin": 0.6539,
+      "calinski_harabasz": 187.39
+    },
+    {
+      "k": 6,
+      "silueta": 0.4149,
+      "inercia": 10.4,
+      "davies_bouldin": 0.6702,
+      "calinski_harabasz": 189.8
+    },
+    {
+      "k": 7,
+      "silueta": 0.3742,
+      "inercia": 8.41,
+      "davies_bouldin": 0.7551,
+      "calinski_harabasz": 193.33
+    },
+    {
+      "k": 8,
+      "silueta": 0.3685,
+      "inercia": 6.94,
+      "davies_bouldin": 0.6746,
+      "calinski_harabasz": 197.87
+    },
+    {
+      "k": 9,
+      "silueta": 0.3811,
+      "inercia": 5.63,
+      "davies_bouldin": 0.6518,
+      "calinski_harabasz": 210.04
+    },
+    {
+      "k": 10,
+      "silueta": 0.4034,
+      "inercia": 4.77,
+      "davies_bouldin": 0.6521,
+      "calinski_harabasz": 216.49
+    }
+  ],
+  "diagnostico_features": {
+    "k_diagnostico": 2,
+    "pc1_varianza": 0.6914,
+    "pc1_pc2_varianza": 0.8519,
+    "leave_one_out": [
+      {
+        "feature": "tasa_ceros",
+        "delta_silueta": 0.0644,
+        "polizon": true
+      },
+      {
+        "feature": "promo_media",
+        "delta_silueta": 0.062,
+        "polizon": true
+      },
+      {
+        "feature": "ratio_finde",
+        "delta_silueta": 0.0407,
+        "polizon": true
+      },
+      {
+        "feature": "cv_ventas",
+        "delta_silueta": 0.0203,
+        "polizon": true
+      },
+      {
+        "feature": "transacciones_media",
+        "delta_silueta": 0.0005,
+        "polizon": true
+      },
+      {
+        "feature": "venta_mediana",
+        "delta_silueta": -0.0098,
+        "polizon": false
+      },
+      {
+        "feature": "venta_media",
+        "delta_silueta": -0.021,
+        "polizon": false
+      },
+      {
+        "feature": "ventas_total",
+        "delta_silueta": -0.021,
+        "polizon": false
+      },
+      {
+        "feature": "pct_demanda_alta",
+        "delta_silueta": -0.0255,
+        "polizon": false
+      }
+    ],
+    "correlaciones": [
+      {
+        "feature": "venta_media",
+        "corr_etiqueta": 0.831,
+        "corr_volumen": 1.0
+      },
+      {
+        "feature": "venta_mediana",
+        "corr_etiqueta": 0.776,
+        "corr_volumen": 0.957
+      },
+      {
+        "feature": "cv_ventas",
+        "corr_etiqueta": 0.22,
+        "corr_volumen": 0.372
+      },
+      {
+        "feature": "tasa_ceros",
+        "corr_etiqueta": 0.429,
+        "corr_volumen": 0.596
+      },
+      {
+        "feature": "ventas_total",
+        "corr_etiqueta": 0.831,
+        "corr_volumen": 1.0
+      },
+      {
+        "feature": "promo_media",
+        "corr_etiqueta": 0.623,
+        "corr_volumen": 0.748
+      },
+      {
+        "feature": "transacciones_media",
+        "corr_etiqueta": 0.806,
+        "corr_volumen": 0.953
+      },
+      {
+        "feature": "ratio_finde",
+        "corr_etiqueta": 0.415,
+        "corr_volumen": 0.337
+      },
+      {
+        "feature": "pct_demanda_alta",
+        "corr_etiqueta": 0.86,
+        "corr_volumen": 0.969
+      }
+    ],
+    "silueta_por_set_kdiag": {
+      "rico": 0.4615,
+      "eda": 0.6075,
+      "desplegado": 0.6742
+    },
+    "nota": "delta_silueta>0 => quitar la feature MEJORA la silueta (polizon, no separa). PC1 alto + features de volumen colineales => la separacion es por volumen."
+  },
+  "segmentacion_dominada_por_volumen": true,
+  "nota_transparencia": "La separacion es por VOLUMEN (diagnostico: PC1 concentra la mayor parte de la varianza y las features de volumen son colineales). Las features descriptivas (promo, demanda alta, intermitencia, transacciones) son co-variables que correlacionan con el segmento, NO ejes de separacion independientes.",
+  "reproduccion_eda": {
+    "silueta_set_eda": 0.6075,
+    "k_set_eda": 2,
+    "silueta_referencia_eda": 0.6075,
+    "nota": "VALIDACION DE PLOMERIA: el set EXACTO del EDA recupera la silueta del EDA a 4 decimales. Es independiente del modelo desplegado (otro set/k); la metrica oficial es 'silueta' (set desplegado)."
+  },
+  "features_perfil": [
+    "venta_media",
+    "venta_mediana",
+    "ventas_total",
+    "pct_demanda_alta"
+  ],
+  "features_descriptivas": [
+    "cv_ventas",
+    "tasa_ceros",
+    "promo_media",
+    "transacciones_media",
+    "ratio_finde"
+  ],
+  "diccionario_features": {
+    "venta_media": "Venta media diaria de la tienda (unidades). Nivel de demanda.",
+    "venta_mediana": "Venta mediana diaria (robusta a la cola larga). Nivel tipico.",
+    "cv_ventas": "Coef. de variacion (std/media) de la venta. Dispersion/volatilidad.",
+    "tasa_ceros": "Fraccion de observaciones tienda-familia-dia con venta 0. Intermitencia.",
+    "ventas_total": "Volumen total historico (suma de unidades). Tamano de la tienda.",
+    "promo_media": "Intensidad de promocion (`onpromotion` medio). Apoyo comercial.",
+    "transacciones_media": "Transacciones medias diarias. Flujo de clientes.",
+    "ratio_finde": "Venta media de fin de semana / entre semana. Estacionalidad operativa.",
+    "pct_demanda_alta": "Fraccion de filas con `demanda_alta=1` (>P75 de su familia)."
+  },
+  "n_entidades": 54,
+  "n_por_cluster": {
+    "0": 44,
+    "1": 10
+  },
+  "centroides_unidades": {
+    "0": {
+      "venta_media": 262.69,
+      "venta_mediana": 10.3059,
+      "ventas_total": 14598207.0,
+      "pct_demanda_alta": 0.1367
+    },
+    "1": {
+      "venta_media": 776.1532,
+      "venta_mediana": 46.4,
+      "ventas_total": 43132388.0,
+      "pct_demanda_alta": 0.6064
+    }
+  },
+  "covariables_descriptivas_por_segmento": {
+    "0": {
+      "cv_ventas": 2.9376,
+      "tasa_ceros": 0.3397,
+      "promo_media": 2.4495,
+      "transacciones_media": 1194.8627,
+      "ratio_finde": 1.3202
+    },
+    "1": {
+      "cv_ventas": 2.4228,
+      "tasa_ceros": 0.1951,
+      "promo_media": 3.277,
+      "transacciones_media": 3143.9666,
+      "ratio_finde": 1.5341
+    }
+  },
+  "etiquetas_narrativas": {
+    "0": "Tiendas: bajo volumen, intermitente",
+    "1": "Tiendas: alto volumen, venta continua"
+  },
+  "semilla": 42,
+  "n_init": 25,
+  "alcance_temporal": "descriptivo/estatico: el perfil se calcula sobre el historico disponible y es recomputable desde el historico que envie el cliente. Mejora diferida: perfil as-of-time si el segmento se usa como feature predictiva en t.",
+  "nota_portabilidad": "scaler + KMeans dentro del pipeline; CPU puro y determinista (sin GPU). El artefacto carga y asigna segmento a una entidad nueva sin reentrenar.",
+  "guardado_utc": "2026-06-15T06:28:59.921739+00:00",
+  "artefacto": "clustering_tiendas_v1.joblib"
+}

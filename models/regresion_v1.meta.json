@@ -1,0 +1,105 @@
+{
+  "version": "regresion_v1",
+  "fecha_entrenamiento": "2026-06-13",
+  "modelo": "XGBoost",
+  "transformacion_objetivo": "log1p",
+  "escala_metricas": "unidades",
+  "techo_log_prediccion": 11.73381046768262,
+  "semilla": 42,
+  "features": [
+    "sales_lag_1",
+    "sales_lag_7",
+    "sales_lag_14",
+    "sales_rmean_7",
+    "sales_rmean_28",
+    "sales_rmed_7",
+    "trans_lag_1",
+    "trans_lag_7",
+    "trans_rmean_7",
+    "onpromotion",
+    "promo_lag_1",
+    "promo_lag_7",
+    "year",
+    "month",
+    "day",
+    "dayofweek",
+    "is_weekend",
+    "is_month_end",
+    "is_payday",
+    "holiday_national",
+    "holiday_regional",
+    "holiday_local",
+    "holiday_event_count",
+    "holiday_any",
+    "dcoilwtico",
+    "store_nbr",
+    "family",
+    "type",
+    "city",
+    "state",
+    "cluster"
+  ],
+  "features_categoricas": [
+    "store_nbr",
+    "family",
+    "type",
+    "city",
+    "state",
+    "cluster"
+  ],
+  "config_features": {
+    "lags_objetivo": [
+      1,
+      7,
+      14
+    ],
+    "ventanas_media_objetivo": [
+      7,
+      28
+    ],
+    "ventanas_mediana_objetivo": [
+      7
+    ],
+    "lags_transacciones": [
+      1,
+      7
+    ],
+    "ventanas_media_transacciones": [
+      7
+    ],
+    "lags_promocion": [
+      1,
+      7
+    ]
+  },
+  "cortes_temporales": {
+    "train": "<= 2017-07-14",
+    "valid": "2017-07-15 .. 2017-07-30",
+    "test": "2017-07-31 .. 2017-08-15"
+  },
+  "metricas_test": {
+    "MAE": 64.64151644227117,
+    "RMSE": 233.3926718738126
+  },
+  "metricas_test_baseline": {
+    "BASELINE naive_estacional(t-7)": {
+      "MAE": 100.23036447976843,
+      "RMSE": 350.0605138075077,
+      "RMSLE": 0.5693670635778206,
+      "MAPE": 49.49865492693751,
+      "WAPE": 21.45603707819916,
+      "R2": 0.9213677374213056
+    },
+    "BASELINE media_movil_7": {
+      "MAE": 90.83953483864552,
+      "RMSE": 297.30631495154694,
+      "RMSLE": 0.44893710601982617,
+      "MAPE": 44.03907178635981,
+      "WAPE": 19.44576813404446,
+      "R2": 0.9432817544540347
+    }
+  },
+  "n_filas_entrenamiento_fit": 300000,
+  "guardado_utc": "2026-06-13T17:19:30.904795+00:00",
+  "artefacto": "regresion_v1.joblib"
+}

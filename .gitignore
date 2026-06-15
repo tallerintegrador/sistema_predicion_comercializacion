@@ -29,10 +29,6 @@ figures/
 data/synthetic/*
 !data/synthetic/.gitkeep
 
-# Artefactos de modelos entrenados (Fase 2, pesados; se versionan por metadatos)
-models/*
-!models/.gitkeep
-
 # IDE / SO
 .vscode/
 .idea/
