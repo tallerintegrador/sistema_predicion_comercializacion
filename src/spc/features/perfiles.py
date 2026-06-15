@@ -49,14 +49,39 @@ PERFIL_FAMILIAS_DICT: dict[str, str] = {
     "pct_demanda_alta": "Fraccion de filas con `demanda_alta=1` (>P75 de su familia).",
 }
 
-# Columnas que entran a KMeans (orden estable). El perfilador las congela en el
-# artefacto para construir el vector de una entidad nueva en el mismo orden.
-COLS_TIENDAS: list[str] = list(PERFIL_TIENDAS_DICT)
-COLS_FAMILIAS: list[str] = list(PERFIL_FAMILIAS_DICT)
+# --- Set RICO: universo de features que produce la agregacion (perfiles_*) ---
+# Es el conjunto del que el diagnostico de contribucion (Fase 2c, refinamiento) elige
+# el set DESPLEGADO. perfiles_tiendas/perfiles_familias devuelven estas columnas.
+COLS_TIENDAS_RICO: list[str] = list(PERFIL_TIENDAS_DICT)
+COLS_FAMILIAS_RICO: list[str] = list(PERFIL_FAMILIAS_DICT)
+
+# --- Set DESPLEGADO: features que entran a KMeans (orden estable) ---
+# Elegido por DIAGNOSTICO de contribucion (leave-one-out de silueta + correlacion con
+# el volumen + PCA), no por "mas features por defecto". Solo las que SEPARAN; las demas
+# bajan la silueta (polizones del volumen) y quedan como co-variables descriptivas.
+#  - Tiendas: set depurado -> mejor silueta (0.67 vs 0.46 del set rico), corte limpio
+#    por volumen. `cv_ventas`/`tasa_ceros`/`ratio_finde`/`promo_media`/`transacciones_media`
+#    suben la silueta al quitarse (LOO delta>0) -> fuera del clustering.
+#  - Familias: set alineado al EDA -> a k=3 aisla las familias intermitentes en su
+#    propio segmento (accionable). Coincide con `COLS_FAMILIAS_EDA`.
+# El perfilador congela estas columnas en el artefacto para construir el vector de una
+# entidad nueva en el mismo orden.
+COLS_TIENDAS: list[str] = ["venta_media", "venta_mediana", "ventas_total", "pct_demanda_alta"]
+COLS_FAMILIAS: list[str] = ["ventas_total", "venta_media", "promo_media", "pct_demanda_alta"]
+
+# --- Co-variables descriptivas: se reportan por segmento pero NO entran a KMeans ---
+# Correlacionan con el volumen (son el mismo eje medido distinto) o no separan; el
+# diagnostico las descarto del clustering. Se muestran en la tabla de perfiles como
+# co-variables para transparencia (la separacion es por volumen, no multidimensional).
+COLS_TIENDAS_DESC: list[str] = [c for c in COLS_TIENDAS_RICO if c not in COLS_TIENDAS]
+COLS_FAMILIAS_DESC: list[str] = [c for c in COLS_FAMILIAS_RICO if c not in COLS_FAMILIAS]
 
 # --- Sets EXACTOS del EDA (para reproducir la silueta ~0.61 / ~0.71) ---
 # El EDA (`spc.eda.analysis.clustering`) agrupo con estas columnas; el reporte 2c
 # las recalcula para mostrar que el pipeline recupera el orden de magnitud del EDA.
+# Nota: en FAMILIAS el set desplegado (`COLS_FAMILIAS`) coincide con el del EDA
+# (`COLS_FAMILIAS_EDA`); la diferencia desplegado vs validacion esta en el **k** (k=3
+# desplegado por accionabilidad vs k=2 del EDA), no en las features.
 COLS_TIENDAS_EDA: list[str] = [
     "ventas_total",
     "venta_media",
@@ -153,32 +178,34 @@ def _sensibilidad_promo(df: pd.DataFrame, clave: str) -> pd.Series:
 # Perfiles de produccion (set rico, interpretable)
 # ---------------------------------------------------------------------------
 def perfiles_tiendas(analytic: pd.DataFrame) -> pd.DataFrame:
-    """Un perfil por ``store_nbr`` con el set rico de features (``COLS_TIENDAS``).
+    """Un perfil por ``store_nbr`` con el set RICO de features (``COLS_TIENDAS_RICO``).
 
-    Devuelve un frame con la clave ``store_nbr`` como columna mas las features de
-    perfil, listo para escalar + agrupar. Reutilizable en prediccion (1 tienda ->
-    1 fila).
+    Devuelve un frame con la clave ``store_nbr`` como columna mas **todas** las features
+    de perfil (universo del diagnostico). El clustering usa solo el subconjunto desplegado
+    (``COLS_TIENDAS``); el resto se reporta como co-variables descriptivas. Reutilizable
+    en prediccion (1 tienda -> 1 fila): el perfilador selecciona ``COLS_TIENDAS`` de aqui.
     """
     prof = _agregados_base(analytic, CLAVE_TIENDA)
     prof = prof.join(_ratio_finde(analytic, CLAVE_TIENDA))
     prof["ratio_finde"] = prof["ratio_finde"].fillna(1.0)
-    prof = prof.reindex(columns=COLS_TIENDAS)
+    prof = prof.reindex(columns=COLS_TIENDAS_RICO)
     return prof.reset_index()
 
 
 def perfiles_familias(analytic: pd.DataFrame) -> pd.DataFrame:
-    """Un perfil por ``family`` con el set rico de features (``COLS_FAMILIAS``).
+    """Un perfil por ``family`` con el set RICO de features (``COLS_FAMILIAS_RICO``).
 
     Incluye ``sensibilidad_promo`` (contraste de venta con/sin promo) y
     ``ventas_total`` (volumen absoluto, **self-contained**: se calcula desde el
     historico de la propia familia, sin depender del catalogo completo, de modo que el
-    perfilador asigna una familia nueva sin reagregar el resto). Reutilizable en
-    prediccion (1 familia -> 1 fila).
+    perfilador asigna una familia nueva sin reagregar el resto). Devuelve todas las
+    features; el clustering usa solo el subconjunto desplegado (``COLS_FAMILIAS``) y el
+    resto se reporta como co-variables descriptivas. Reutilizable en prediccion.
     """
     prof = _agregados_base(analytic, CLAVE_FAMILIA)
     prof = prof.join(_sensibilidad_promo(analytic, CLAVE_FAMILIA))
     prof["sensibilidad_promo"] = prof["sensibilidad_promo"].fillna(0.0)
-    prof = prof.reindex(columns=COLS_FAMILIAS)
+    prof = prof.reindex(columns=COLS_FAMILIAS_RICO)
     return prof.reset_index()
 
 

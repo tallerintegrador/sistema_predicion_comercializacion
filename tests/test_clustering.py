@@ -14,7 +14,15 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from spc.config import Settings
-from spc.features.perfiles import COLS_FAMILIAS, COLS_TIENDAS, perfiles_tiendas
+from spc.features.perfiles import (
+    COLS_FAMILIAS,
+    COLS_FAMILIAS_DESC,
+    COLS_FAMILIAS_RICO,
+    COLS_TIENDAS,
+    COLS_TIENDAS_DESC,
+    COLS_TIENDAS_RICO,
+    perfiles_tiendas,
+)
 from spc.models.clustering import (
     CONFIGS,
     PerfiladorClustering,
@@ -23,6 +31,11 @@ from spc.models.clustering import (
 )
 
 import pandas as pd
+
+# Piso de silueta del modelo desplegado: estructura de cluster minima razonable. El
+# refinamiento 2c (set depurado/alineado al EDA) supera 0.65 en datos reales; en la
+# fixture sintetica (separable a proposito) se supera con holgura.
+PISO_SILUETA = 0.50
 
 
 def test_scaler_dentro_del_pipeline(analitico_clustering):
@@ -44,15 +57,60 @@ def test_reproducibilidad_misma_semilla(analitico_clustering):
     assert abs(r1.silueta - r2.silueta) < 1e-9
 
 
-def test_silueta_valida_y_separa(analitico_clustering):
-    """La silueta es un float valido en (-1, 1] y hay separacion real (>0.3) en ambas
-    tareas (el fixture esta disenado separable)."""
+def test_silueta_desplegada_valida_y_supera_piso(analitico_clustering):
+    """La silueta del modelo DESPLEGADO es un float valido en (-1, 1] y supera el piso
+    minimo de estructura (PISO_SILUETA) en ambas tareas."""
     for tarea in ("tiendas", "familias"):
         res = entrenar_tarea(analitico_clustering, CONFIGS[tarea], seed=42)
         assert -1.0 < res.silueta <= 1.0
-        assert res.silueta > 0.3, f"{tarea}: silueta demasiado baja ({res.silueta})"
-        # El set EDA tambien produce una silueta valida (reproduccion del pipeline).
+        assert res.silueta >= PISO_SILUETA, (
+            f"{tarea}: silueta desplegada {res.silueta:.4f} < piso {PISO_SILUETA}"
+        )
+        # El set EDA (validacion de plomeria) tambien produce una silueta valida.
         assert -1.0 < res.silueta_eda <= 1.0
+
+
+def test_set_desplegado_es_el_decidido_no_el_descartado(analitico_clustering):
+    """El modelo desplegado usa el set de features DECIDIDO por el diagnostico, no el
+    set rico completo: las co-variables descartadas NO entran al clustering."""
+    casos = {
+        "tiendas": (COLS_TIENDAS, COLS_TIENDAS_DESC, COLS_TIENDAS_RICO),
+        "familias": (COLS_FAMILIAS, COLS_FAMILIAS_DESC, COLS_FAMILIAS_RICO),
+    }
+    for tarea, (deploy, desc, rico) in casos.items():
+        res = entrenar_tarea(analitico_clustering, CONFIGS[tarea], seed=42)
+        # El perfilador agrupa exactamente con el set desplegado (no el rico).
+        assert res.perfilador.cols == deploy
+        assert res.cols == deploy
+        # Las co-variables descartadas no estan en el clustering.
+        assert not (set(desc) & set(res.perfilador.cols)), f"{tarea}: feature descartada en clustering"
+        # El desplegado es subconjunto propio del rico (se quito ruido).
+        assert set(deploy) < set(rico)
+
+
+def test_k_familias_deliberado_sobre_max_silueta(analitico_clustering):
+    """En familias k es DELIBERADO (k_fijo=3), apartandose del k de maxima silueta para
+    aislar las intermitentes (decision documentada en el criterio)."""
+    assert CONFIGS["familias"].k_fijo == 3
+    res = entrenar_tarea(analitico_clustering, CONFIGS["familias"], seed=42)
+    assert res.best_k == 3
+    # El k auto (maxima silueta) difiere del desplegado: por eso es deliberado.
+    assert res.best_k_auto != res.best_k
+    assert "DELIBERADO" in res.motivo_k or "aisla" in res.motivo_k.lower()
+
+
+def test_diagnostico_contribucion_presente_y_dominado_por_volumen(analitico_clustering):
+    """El resultado trae el diagnostico de contribucion (LOO/corr/PCA) y muestra que la
+    estructura esta dominada por el volumen (PC1 concentra la varianza)."""
+    for tarea in ("tiendas", "familias"):
+        res = entrenar_tarea(analitico_clustering, CONFIGS[tarea], seed=42)
+        diag = res.diagnostico
+        assert {"leave_one_out", "correlaciones", "pc1_varianza", "silueta_por_set_kdiag"} <= set(diag)
+        # Estructura casi unidimensional: PC1 explica gran parte de la varianza.
+        assert diag["pc1_varianza"] >= 0.40
+        # El diagnostico cubre TODO el set rico (no solo el desplegado).
+        feats_loo = {r["feature"] for r in diag["leave_one_out"]}
+        assert feats_loo == set(res.cols) | set(res.cols_desc)
 
 
 def test_familias_intermitentes_en_su_cluster(analitico_clustering):
@@ -129,9 +187,43 @@ def test_etiquetar_clusters_legible():
 
 
 def test_cols_perfil_coherentes():
-    """Las features de cada tarea coinciden con las columnas que produce la agregacion."""
+    """El set desplegado de cada tarea es un subconjunto del set rico que produce la
+    agregacion (perfiles_* devuelven el rico; el clustering usa el desplegado)."""
     assert CONFIGS["tiendas"].cols == COLS_TIENDAS
     assert CONFIGS["familias"].cols == COLS_FAMILIAS
+    assert set(COLS_TIENDAS) < set(COLS_TIENDAS_RICO)
+    assert set(COLS_FAMILIAS) < set(COLS_FAMILIAS_RICO)
+    # rico = desplegado + descriptivas (particion exacta).
+    assert set(COLS_TIENDAS) | set(COLS_TIENDAS_DESC) == set(COLS_TIENDAS_RICO)
+    assert set(COLS_FAMILIAS) | set(COLS_FAMILIAS_DESC) == set(COLS_FAMILIAS_RICO)
+
+
+def test_artefacto_real_desplegado_si_existe():
+    """Guarda el ARTEFACTO REAL desplegado (si esta en models/): usa el set decidido y
+    su silueta oficial supera el piso. Se omite si los artefactos no estan presentes."""
+    import json
+    from pathlib import Path
+
+    import pytest
+
+    base = Path(__file__).resolve().parent.parent
+    casos = {
+        "tiendas": COLS_TIENDAS,
+        "familias": COLS_FAMILIAS,
+    }
+    revisados = 0
+    for tarea, deploy in casos.items():
+        meta_path = base / "models" / f"clustering_{tarea}_v1.meta.json"
+        if not meta_path.exists():
+            continue
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert meta["features_perfil"] == deploy, f"{tarea}: artefacto no usa el set desplegado"
+        assert meta["silueta"] >= PISO_SILUETA, f"{tarea}: silueta oficial {meta['silueta']} < piso"
+        assert meta["k_elegido"] == len(meta["n_por_cluster"])
+        assert meta["segmentacion_dominada_por_volumen"] is True
+        revisados += 1
+    if revisados == 0:
+        pytest.skip("artefactos de clustering no presentes en models/")
 
 
 def test_serializacion_artefacto(analitico_clustering, tmp_path):
@@ -150,3 +242,11 @@ def test_serializacion_artefacto(analitico_clustering, tmp_path):
     assert isinstance(perfilador, PerfiladorClustering)
     assert meta["k_elegido"] == perfilador.k
     assert "silueta" in meta and "curva_silueta_vs_k" in meta
+    # Refinamiento 2c: el meta documenta el set desplegado vs descriptivas, el
+    # diagnostico de contribucion y la nota de transparencia (dominado por volumen).
+    assert meta["features_perfil"] == perfilador.cols
+    assert "features_descriptivas" in meta
+    assert "diagnostico_features" in meta
+    assert meta["segmentacion_dominada_por_volumen"] is True
+    assert "nota_transparencia" in meta
+    assert meta["criterio_k"]  # criterio del k explicitado
