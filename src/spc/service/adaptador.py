@@ -38,6 +38,28 @@ _SENTINEL_TEXTO = "DESCONOCIDO"
 _SENTINEL_CLUSTER = -1
 
 
+def _a_store_nbr(valor: Any) -> Any:
+    """Mapea el ``store_id`` del contrato (str/int) al ``store_nbr`` del motor.
+
+    El motor entrenó ``store_nbr`` como **entero** (categórica ``int16``). Si el id
+    es un entero (p. ej. ``"1"``), se convierte a ``int`` para que **case con las
+    categorías del artefacto** y la tienda aporte a la predicción; enviarlo como
+    texto (``"1"``) no casa con la categoría ``1`` y degrada a NaN (la tienda no
+    aportaría).
+
+    Solo se convierte cuando el texto representa **exactamente** ese entero
+    (``str(int(s)) == s``): así se preserva la identidad del id en los agrupamientos
+    y en la salida (un id como ``"007"`` o ``"STORE_A"`` se deja tal cual y cae a
+    cold-start, la degradación esperada de un cliente con vocabulario propio).
+    """
+    s = str(valor)
+    try:
+        n = int(s)
+    except ValueError:
+        return s
+    return n if str(n) == s else s
+
+
 def historico_a_analitico(historico: Iterable[Mapping[str, Any]]) -> pd.DataFrame:
     """Traduce el bloque ``historico`` del contrato al esquema del dataset analítico.
 
@@ -54,9 +76,10 @@ def historico_a_analitico(historico: Iterable[Mapping[str, Any]]) -> pd.DataFram
     df = pd.DataFrame(
         {
             "date": pd.to_datetime([f["date"] for f in filas]),
-            # Identificadores como texto: el contrato los admite str/int y la API ya
-            # los normalizó a str. El motor agrupa la serie por (store_nbr, family).
-            "store_nbr": [str(f["store_id"]) for f in filas],
+            # store_nbr: entero si el id es entero (para casar con la categórica int
+            # del motor; ver _a_store_nbr), texto en otro caso. family es texto: el
+            # motor entrenó esa categórica con cadenas (p. ej. "BEVERAGES").
+            "store_nbr": [_a_store_nbr(f["store_id"]) for f in filas],
             "family": [str(f["product_id"]) for f in filas],
             "sales": np.asarray([float(f["units_sold"]) for f in filas], dtype="float64"),
             "onpromotion": np.asarray(

@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
+from spc.service import adaptador
+
 CLAVES_PRONOSTICO = {"date", "store_id", "product_id", "forecast_demand"}
+
+
+def test_store_id_casa_con_categorica_del_artefacto(registro, historico_contrato):
+    """Regresión del bug texto vs número: el ``store_id`` del contrato casa con la
+    categórica de tienda **entrenada en el artefacto real**, así que la tienda
+    aporta (no degrada a NaN). Antes del arreglo, ``store_nbr`` viajaba como texto
+    ("1") y no casaba con la categoría entera ``1`` → todas las filas caían a NaN.
+    """
+    analitico = adaptador.historico_a_analitico(historico_contrato)
+    dtype_store = registro.regresion.objeto.categorias["store_nbr"]
+    casteado = analitico["store_nbr"].astype(object).astype(dtype_store)
+    # Las tiendas "1" y "2" existen en el set sintético de entrenamiento → sin NaN.
+    assert not casteado.isna().any()
+    assert (casteado.cat.codes >= 0).all()
 
 
 def test_ventas_valido_forma_contrato(client, historico_contrato):
