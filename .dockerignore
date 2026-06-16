@@ -1,0 +1,45 @@
+# Contexto de build minimo: fuera todo lo pesado o innecesario para servir la API.
+# La imagen solo necesita src/, models/ y requirements-api.txt.
+
+# Entornos virtuales (enormes; nunca van a la imagen)
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Datos y salidas del EDA (no los usa la API)
+data/
+figures/
+notebooks/
+
+# Tests y caches de herramientas
+tests/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Docs (no necesarias en runtime)
+docs/
+*.md
+
+# Git / IDE / SO
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker (no se copian a si mismos)
+Dockerfile
+.dockerignore
+docker-compose*.yml

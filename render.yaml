@@ -1,0 +1,20 @@
+# Render Blueprint para la API del SPC (Fase 3).
+# Despliega el servicio desde el Dockerfile de la raiz.
+# Spec: https://render.com/docs/blueprint-spec
+#
+# Uso: en Render -> New -> Blueprint, apunta al repo. Render lee este archivo,
+# construye la imagen e inyecta $PORT (el Dockerfile ya hace bind a 0.0.0.0:$PORT).
+
+services:
+  - type: web
+    name: spc-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Origenes permitidos por CORS. En produccion, cambia "*" por el origen
+      # real del frontend (p. ej. https://mi-front.vercel.app).
+      - key: SPC_CORS_ORIGINS
+        value: "*"

@@ -109,6 +109,42 @@ ni GPU**):
 venv\Scripts\python -m pytest tests/api      # solo la API
 ```
 
+### Despliegue (Docker)
+
+La API se empaqueta en una imagen lista para Render / Railway. Los artefactos del
+motor (`models/`) se **hornean en la imagen**: el contenedor arranca sin volúmenes
+ni descargas y solo carga y predice (no reentrena).
+
+Archivos:
+
+- `Dockerfile` — imagen de servicio (`python:3.11-slim` + `libgomp1` para
+  LightGBM/XGBoost). Usa `requirements-api.txt`, no las deps de entrenamiento/EDA.
+- `requirements-api.txt` — subconjunto de runtime con **pines exactos** (deben
+  coincidir con los de `pyproject.toml`: con otras versiones de numpy/pandas/
+  scikit-learn el `.joblib` puede no cargar).
+- `.dockerignore` — deja fuera `venv/`, `data/`, `figures/`, `tests/`, etc.
+- `render.yaml` — blueprint de Render (runtime docker, health `/health`).
+
+El servidor hace bind a `0.0.0.0:$PORT` (puerto inyectado por la plataforma; `8000`
+por defecto en local).
+
+Probar la imagen en local:
+
+```powershell
+docker build -t spc-api .
+docker run --rm -p 8000:8000 spc-api
+# Swagger: http://127.0.0.1:8000/docs   ;   salud: http://127.0.0.1:8000/health
+```
+
+**Render:** New → Blueprint (usa `render.yaml`), o New → Web Service con runtime
+Docker. Health check `/health`.
+
+**Railway:** New Project → Deploy from repo; detecta el `Dockerfile` solo. Inyecta
+`$PORT` automáticamente (ya contemplado en el `CMD`).
+
+Variable de entorno relevante en ambas: `SPC_CORS_ORIGINS` (orígenes del frontend,
+coma-separados; `*` por defecto).
+
 ## Calidad
 
 ```powershell
