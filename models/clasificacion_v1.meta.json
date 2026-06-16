@@ -1,0 +1,318 @@
+{
+  "version": "clasificacion_v1",
+  "fecha_entrenamiento": "2026-06-14",
+  "campo": "almacen",
+  "objetivo": "demanda_alta = sales > P75 de su familia (P75 fijado solo en TRAIN)",
+  "modelo_base": "LightGBM (binary)",
+  "estrategia_desbalance": "sin_remuestreo",
+  "usa_smote": false,
+  "umbral": 0.31849113885246816,
+  "criterio_umbral": {
+    "criterio": "max recall sujeto a precision >= 0.80 (piso de negocio REAL, no 0.50; margen +0.02 en VALID -> piso efectivo 0.82- para que el piso aguante en TEST)",
+    "precision_floor": 0.8,
+    "margen_valid": 0.02,
+    "piso_efectivo_valid": 0.82,
+    "precision_en_umbral": 0.8201,
+    "recall_en_umbral": 0.8658
+  },
+  "criterio_seleccion": {
+    "decision_en": "valid",
+    "metrica_principal": "PR_AUC",
+    "tol_prauc": 0.005,
+    "pr_auc_valid": {
+      "sin_remuestreo": 0.933,
+      "costo_sensible": 0.9331,
+      "smote": 0.9327
+    },
+    "recall_valid": {
+      "sin_remuestreo": 0.9935,
+      "costo_sensible": 0.993,
+      "smote": 0.9914
+    },
+    "empatadas_dentro_tol": [
+      "sin_remuestreo",
+      "costo_sensible",
+      "smote"
+    ],
+    "regla": "estrategia mas simple (sin_remuestreo < costo_sensible < smote) cuya PR-AUC en VALID esta dentro de 0.005 de la mejor; SMOTE solo se adopta si SUPERA a la costo-sensible por mas de esa tolerancia"
+  },
+  "semilla": 42,
+  "features": [
+    "sales_lag_1",
+    "sales_lag_7",
+    "sales_lag_14",
+    "sales_lag_21",
+    "sales_lag_28",
+    "sales_rmean_7",
+    "sales_rmean_14",
+    "sales_rmean_28",
+    "sales_rmean_56",
+    "sales_rmed_7",
+    "sales_rmed_28",
+    "sales_rstd_7",
+    "sales_rstd_28",
+    "sales_rmin_28",
+    "sales_rmax_28",
+    "sales_ewm_7",
+    "sales_ewm_28",
+    "dias_desde_venta",
+    "frac_venta_28",
+    "ceros_rsum_7",
+    "trans_lag_1",
+    "trans_lag_7",
+    "trans_rmean_7",
+    "trans_rmean_28",
+    "onpromotion",
+    "promo_lag_1",
+    "promo_lag_7",
+    "promo_rsum_7",
+    "promo_rsum_28",
+    "dow_sin",
+    "dow_cos",
+    "month_sin",
+    "month_cos",
+    "woy_sin",
+    "woy_cos",
+    "dias_a_fin_mes",
+    "dias_desde_inicio_mes",
+    "dist_quincena",
+    "oil_lag_7",
+    "oil_tend_7",
+    "year",
+    "month",
+    "day",
+    "dayofweek",
+    "is_weekend",
+    "is_month_end",
+    "is_payday",
+    "holiday_national",
+    "holiday_regional",
+    "holiday_local",
+    "holiday_event_count",
+    "holiday_any",
+    "dcoilwtico",
+    "store_nbr",
+    "family",
+    "type",
+    "city",
+    "state",
+    "cluster"
+  ],
+  "features_categoricas": [
+    "store_nbr",
+    "family",
+    "type",
+    "city",
+    "state",
+    "cluster"
+  ],
+  "config_features": {
+    "lags_objetivo": [
+      1,
+      7,
+      14,
+      21,
+      28
+    ],
+    "ventanas_media_objetivo": [
+      7,
+      14,
+      28,
+      56
+    ],
+    "ventanas_mediana_objetivo": [
+      7,
+      28
+    ],
+    "ventanas_std_objetivo": [
+      7,
+      28
+    ],
+    "ventanas_minmax_objetivo": [
+      28
+    ],
+    "ewm_halflives": [
+      7,
+      28
+    ],
+    "lags_transacciones": [
+      1,
+      7
+    ],
+    "ventanas_media_transacciones": [
+      7,
+      28
+    ],
+    "lags_promocion": [
+      1,
+      7
+    ],
+    "ventanas_suma_promocion": [
+      7,
+      28
+    ],
+    "intermitencia": true,
+    "calendario_ciclico": true,
+    "proximidad_calendario": true,
+    "macro_oil": true
+  },
+  "cortes_temporales": {
+    "train": "<= 2017-07-14",
+    "valid": "2017-07-15 .. 2017-07-30",
+    "test": "2017-07-31 .. 2017-08-15"
+  },
+  "prevalencia_train": 0.2244,
+  "prevalencia_valid": 0.3488,
+  "prevalencia_test": 0.3465,
+  "linea_sin_skill_pr_auc": 0.3465,
+  "nota_prevalencia": "El umbral P75 se fija en TRAIN; como las ventas crecen en el tiempo, la prevalencia de positivos sube de ~0.224 (train) a ~0.347 (valid/test). La linea sin-skill de la PR-AUC es la prevalencia del split evaluado.",
+  "familias_degeneradas_excluidas": [
+    "BABY CARE",
+    "BOOKS"
+  ],
+  "n_familias_total": 33,
+  "metricas_valid": {
+    "PR_AUC": 0.9331612238697081,
+    "Recall": 0.8657531313563859,
+    "F1": 0.8423080929069888,
+    "Precision": 0.8200993814014805,
+    "ROC_AUC": 0.9556652824321796,
+    "Accuracy": 0.88694743130227,
+    "prevalencia": 0.3487529868578256,
+    "umbral": 0.31849113885246816
+  },
+  "metricas_test": {
+    "PR_AUC": 0.9343492781073578,
+    "Recall": 0.8741514922960888,
+    "F1": 0.8402900051786639,
+    "Precision": 0.8089540333034201,
+    "ROC_AUC": 0.9582268664974901,
+    "Accuracy": 0.8848566308243727,
+    "prevalencia": 0.3465128434886499,
+    "umbral": 0.31849113885246816
+  },
+  "matriz_confusion_valid": {
+    "TN": 15669,
+    "FP": 1774,
+    "FN": 1254,
+    "TP": 8087
+  },
+  "matriz_confusion_test": {
+    "TN": 15587,
+    "FP": 1916,
+    "FN": 1168,
+    "TP": 8113
+  },
+  "metricas_valid_por_estrategia": {
+    "sin_remuestreo": {
+      "PR_AUC": 0.9330068965311974,
+      "Recall": 0.9934696499304143,
+      "F1": 0.6654237774272193,
+      "Precision": 0.5002425745242844,
+      "ROC_AUC": 0.9556045895412949,
+      "Accuracy": 0.6515830346475507,
+      "prevalencia": 0.3487529868578256,
+      "umbral": 0.017469583452769947
+    },
+    "costo_sensible": {
+      "PR_AUC": 0.9330548916863307,
+      "Recall": 0.9930414302537202,
+      "F1": 0.6656142365097589,
+      "Precision": 0.500566618099401,
+      "ROC_AUC": 0.9555690600494015,
+      "Accuracy": 0.6520310633213859,
+      "prevalencia": 0.3487529868578256,
+      "umbral": 0.03386439377791899
+    },
+    "smote": {
+      "PR_AUC": 0.9327093174460194,
+      "Recall": 0.9914356064661172,
+      "F1": 0.6658039469427369,
+      "Precision": 0.501190605043836,
+      "ROC_AUC": 0.9551338375828903,
+      "Accuracy": 0.6528897849462365,
+      "prevalencia": 0.3487529868578256,
+      "umbral": 0.019153428504171253
+    }
+  },
+  "metricas_referencia_test": {
+    "LogisticReg(balanced)": {
+      "PR_AUC": 0.8695808716187349,
+      "Recall": 0.9284559853464066,
+      "F1": 0.7489787049109083,
+      "Precision": 0.6276495010561585,
+      "ROC_AUC": 0.9215426754339151,
+      "Accuracy": 0.7843488649940262,
+      "prevalencia": 0.3465128434886499,
+      "umbral": 0.5
+    },
+    "Dummy(mayoritario)": {
+      "PR_AUC": 0.3465128434886499,
+      "Recall": 0.0,
+      "F1": 0.0,
+      "Precision": 0.0,
+      "ROC_AUC": 0.5,
+      "Accuracy": 0.65348715651135,
+      "prevalencia": 0.3465128434886499,
+      "umbral": 0.5
+    },
+    "Dummy(estratificado)": {
+      "PR_AUC": 0.3485724843893601,
+      "Recall": 0.23952160327550912,
+      "F1": 0.2860819767067756,
+      "Precision": 0.355111821086262,
+      "ROC_AUC": 0.5044377141670353,
+      "Accuracy": 0.585760155316607,
+      "prevalencia": 0.3465128434886499,
+      "umbral": 0.5
+    }
+  },
+  "nota_evaluacion": "estrategia y umbral elegidos en VALID; TEST evaluado una sola vez sobre la configuracion elegida. PR-AUC es la metrica principal (minoritaria); se contextualiza contra la linea sin-skill = prevalencia.",
+  "nota_portabilidad": "el booster entrena en GPU y predice en CPU (LightGBM nativo); el artefacto carga y predice sin GPU.",
+  "n_filas_comparacion": 300000,
+  "n_filas_artefacto_final": 2772144,
+  "artefacto": "clasificacion_v1.joblib",
+  "umbral_anterior": 0.017469583452769947,
+  "puntos_operacion": {
+    "max recall s.t. precision >= 0.80 (DEFAULT)": {
+      "umbral": 0.318491,
+      "es_default": true,
+      "precision_valid": 0.8201,
+      "recall_valid": 0.8658,
+      "F1_valid": 0.8423,
+      "precision_test": 0.809,
+      "recall_test": 0.8742,
+      "F1_test": 0.8403,
+      "n_pos_pred_test": 10029,
+      "pct_marcado_test": 37.4
+    },
+    "max F1": {
+      "umbral": 0.402171,
+      "es_default": false,
+      "precision_valid": 0.8558,
+      "recall_valid": 0.8347,
+      "F1_valid": 0.8451,
+      "precision_test": 0.8483,
+      "recall_test": 0.8387,
+      "F1_test": 0.8435,
+      "n_pos_pred_test": 9176,
+      "pct_marcado_test": 34.3
+    },
+    "max recall s.t. precision >= 0.50 (referencia)": {
+      "umbral": 0.017361,
+      "es_default": false,
+      "precision_valid": 0.5001,
+      "recall_valid": 0.9934,
+      "F1_valid": 0.6653,
+      "precision_test": 0.4818,
+      "recall_test": 0.9959,
+      "F1_test": 0.6494,
+      "n_pos_pred_test": 19186,
+      "pct_marcado_test": 71.6
+    }
+  },
+  "curva_pr_ref": "data/processed/curva_pr_clasificacion_2b.csv",
+  "fecha_recalibracion": "2026-06-14",
+  "nota_recalibracion": "Umbral por defecto re-elegido POST-HOC en VALID (max recall con piso real de precision 0.80, margen +0.02 VALID->TEST). El booster de produccion NO se reentreno: se reuso el del .joblib y solo cambio su umbral/metadatos. Las probabilidades held-out se reprodujeron con la estrategia elegida ajustada en TRAIN (CPU determinista, semilla 42). La comparacion de estrategias (decision de SMOTE) se conserva del entrenamiento original.",
+  "guardado_utc": "2026-06-15T04:38:55.420630+00:00"
+}

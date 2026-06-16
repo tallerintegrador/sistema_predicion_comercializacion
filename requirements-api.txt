@@ -1,0 +1,25 @@
+# Dependencias de RUNTIME para SERVIR la API (Fase 3).
+#
+# Subconjunto de pyproject.toml: SOLO lo que se importa al cargar y predecir.
+# Se excluyen a proposito las dependencias de entrenamiento/EDA (matplotlib,
+# seaborn, optuna, nbformat): no participan en la inferencia y solo engordan la
+# imagen.
+#
+# Pines EXACTOS, identicos a pyproject.toml: los artefactos .joblib de models/ se
+# serializaron con estas versiones. Cargarlos con otras (sobre todo numpy/pandas/
+# scikit-learn/lightgbm/xgboost) puede romper el unpickle o cambiar predicciones.
+
+# --- Capa API ---
+fastapi==0.137.1
+uvicorn==0.49.0
+pydantic==2.13.4
+
+# --- Carga/inferencia del motor ---
+pandas==3.0.3
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.0
+joblib==1.5.3
+lightgbm==4.6.0
+xgboost==3.2.0
+imbalanced-learn==0.14.2

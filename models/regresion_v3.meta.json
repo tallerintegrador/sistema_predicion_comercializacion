@@ -1,0 +1,212 @@
+{
+  "version": "regresion_v3",
+  "fecha_entrenamiento": "2026-06-14",
+  "modelo": "Ensemble(XGBoost+XGBoost_Tweedie+LightGBM+LightGBM_Poisson)",
+  "criterio_seleccion": {
+    "regla": "ensemble convexo de boosters elegido por **menor WAPE honesto (recursivo) sobre VALID** frente al ganador individual `LightGBM_Tweedie`; TEST no se uso para seleccionar",
+    "decision_en": "valid",
+    "ganador_individual": "LightGBM_Tweedie",
+    "wape_valid_individual": 14.249,
+    "wape_valid_ensemble": 12.177,
+    "miembros": [
+      "XGBoost",
+      "XGBoost_Tweedie",
+      "LightGBM",
+      "LightGBM_Poisson"
+    ],
+    "pesos": [
+      0.2562,
+      0.2536,
+      0.2504,
+      0.2398
+    ]
+  },
+  "transformacion_objetivo": "identidad",
+  "espacio_objetivo": "unidades",
+  "nota_transformacion": "transformacion_objetivo='identidad' significa que el modelo de produccion predice en UNIDADES directamente (objetivo Tweedie u otro del espacio 'unidades', sin log a la salida). Los submodelos del espacio 'log' SI entrenan en log1p(sales) e invierten internamente con expm1 antes de combinarse en el ensemble; el log1p aplica a esos submodelos, no a la salida final del predictor. 'log1p' aparece aqui solo si el modelo de produccion es un individual del espacio 'log'.",
+  "escala_metricas": "unidades",
+  "techo_log_prediccion": null,
+  "techo_unidades_prediccion": 124717.0,
+  "semilla": 42,
+  "features": [
+    "sales_lag_1",
+    "sales_lag_7",
+    "sales_lag_14",
+    "sales_lag_21",
+    "sales_lag_28",
+    "sales_rmean_7",
+    "sales_rmean_14",
+    "sales_rmean_28",
+    "sales_rmean_56",
+    "sales_rmed_7",
+    "sales_rmed_28",
+    "sales_rstd_7",
+    "sales_rstd_28",
+    "sales_rmin_28",
+    "sales_rmax_28",
+    "sales_ewm_7",
+    "sales_ewm_28",
+    "dias_desde_venta",
+    "frac_venta_28",
+    "ceros_rsum_7",
+    "trans_lag_1",
+    "trans_lag_7",
+    "trans_rmean_7",
+    "trans_rmean_28",
+    "onpromotion",
+    "promo_lag_1",
+    "promo_lag_7",
+    "promo_rsum_7",
+    "promo_rsum_28",
+    "dow_sin",
+    "dow_cos",
+    "month_sin",
+    "month_cos",
+    "woy_sin",
+    "woy_cos",
+    "dias_a_fin_mes",
+    "dias_desde_inicio_mes",
+    "dist_quincena",
+    "oil_lag_7",
+    "oil_tend_7",
+    "year",
+    "month",
+    "day",
+    "dayofweek",
+    "is_weekend",
+    "is_month_end",
+    "is_payday",
+    "holiday_national",
+    "holiday_regional",
+    "holiday_local",
+    "holiday_event_count",
+    "holiday_any",
+    "dcoilwtico",
+    "store_nbr",
+    "family",
+    "type",
+    "city",
+    "state",
+    "cluster"
+  ],
+  "features_categoricas": [
+    "store_nbr",
+    "family",
+    "type",
+    "city",
+    "state",
+    "cluster"
+  ],
+  "config_features": {
+    "lags_objetivo": [
+      1,
+      7,
+      14,
+      21,
+      28
+    ],
+    "ventanas_media_objetivo": [
+      7,
+      14,
+      28,
+      56
+    ],
+    "ventanas_mediana_objetivo": [
+      7,
+      28
+    ],
+    "ventanas_std_objetivo": [
+      7,
+      28
+    ],
+    "ventanas_minmax_objetivo": [
+      28
+    ],
+    "ewm_halflives": [
+      7,
+      28
+    ],
+    "lags_transacciones": [
+      1,
+      7
+    ],
+    "ventanas_media_transacciones": [
+      7,
+      28
+    ],
+    "lags_promocion": [
+      1,
+      7
+    ],
+    "ventanas_suma_promocion": [
+      7,
+      28
+    ],
+    "intermitencia": true,
+    "calendario_ciclico": true,
+    "proximidad_calendario": true,
+    "macro_oil": true
+  },
+  "cortes_temporales": {
+    "train": "<= 2017-07-14",
+    "valid": "2017-07-15 .. 2017-07-30",
+    "test": "2017-07-31 .. 2017-08-15"
+  },
+  "metricas_test": {
+    "MAE": 57.91381430234954,
+    "RMSE": 202.38621665444737,
+    "RMSLE": 0.3807270574634541,
+    "MAPE": 32.651497936754375,
+    "WAPE": 12.397450148572219,
+    "R2": 0.9737169122908019
+  },
+  "metricas_test_baseline": {
+    "BASELINE naive_estacional(t-7)": {
+      "MAE": 100.23036447976843,
+      "RMSE": 350.0605138075077,
+      "RMSLE": 0.5693670635778206,
+      "MAPE": 49.49865492693751,
+      "WAPE": 21.45603707819916,
+      "R2": 0.9213677374213056
+    },
+    "BASELINE media_movil_7": {
+      "MAE": 90.83953483864552,
+      "RMSE": 297.30631495154694,
+      "RMSLE": 0.44893710601982617,
+      "MAPE": 44.03907178635981,
+      "WAPE": 19.44576813404446,
+      "R2": 0.9432817544540347
+    }
+  },
+  "metricas_test_recursivo": {
+    "MAE": 68.15094282050313,
+    "RMSE": 235.73067866852097,
+    "RMSLE": 0.42270904600495873,
+    "MAPE": 34.062749616430274,
+    "WAPE": 14.588883954084617,
+    "R2": 0.9643428413300745
+  },
+  "metricas_test_recursivo_baseline": {
+    "BASELINE naive_estacional(t-7)": {
+      "MAE": 96.53539104383401,
+      "RMSE": 348.38174654466945,
+      "RMSLE": 0.6170404161336513,
+      "MAPE": 49.97502173360991,
+      "WAPE": 20.665064328016534,
+      "R2": 0.9221201144394297
+    },
+    "BASELINE media_movil_7": {
+      "MAE": 108.66191004602008,
+      "RMSE": 359.8237073320883,
+      "RMSLE": 0.5311130728137563,
+      "MAPE": 50.974480235811605,
+      "WAPE": 23.260954731995955,
+      "R2": 0.9169204628683173
+    }
+  },
+  "nota_evaluacion": "metricas_test usan teacher forcing (rezagos reales); metricas_test_recursivo son el pronostico autorregresivo honesto (metrica guia del proyecto).",
+  "n_filas_comparacion": 250000,
+  "n_filas_artefacto_final": 2950992,
+  "guardado_utc": "2026-06-14T22:39:09.990391+00:00",
+  "artefacto": "regresion_v3.joblib"
+}
