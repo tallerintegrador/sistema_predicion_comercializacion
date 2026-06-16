@@ -97,7 +97,7 @@ Levantar el servidor (requiere los artefactos en `models/`):
 ```powershell
 venv\Scripts\uvicorn spc.api.main:app --reload
 # Swagger interactivo: http://127.0.0.1:8000/docs
-# Endpoints: POST /ventas, POST /compras, POST /almacen ; salud: GET /salud
+# Endpoints: POST /sales, POST /purchases, POST /inventory ; salud: GET /health
 ```
 
 CORS configurable con `SPC_CORS_ORIGINS` (orígenes separados por coma; `*` por defecto).
