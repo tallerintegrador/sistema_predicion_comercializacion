@@ -84,6 +84,31 @@ Las figuras se rehicieron para que cada una sustente correctamente su afirmacion
 - **Resto:** tema, paleta, tamanos y dpi unificados; acentos correctos; etiquetas de
   valor donde aportan.
 
+## API (Fase 3)
+
+Servicio FastAPI que expone el **contrato de datos** (`docs/contrato_datos.md`) por tres
+campos —**VENTAS**, **COMPRAS**, **ALMACÉN**— cargando los artefactos del motor (Fase 2)
+sin reentrenar. La capa de servicio (`src/spc/service/`) traduce el contrato genérico al
+esquema del motor; la capa API (`src/spc/api/`) valida, documenta y maneja errores. La
+decisión de diseño está en `docs/decisiones/0007-capa-api-fase3.md`.
+
+Levantar el servidor (requiere los artefactos en `models/`):
+
+```powershell
+venv\Scripts\uvicorn spc.api.main:app --reload
+# Swagger interactivo: http://127.0.0.1:8000/docs
+# Endpoints: POST /ventas, POST /compras, POST /almacen ; salud: GET /salud
+```
+
+CORS configurable con `SPC_CORS_ORIGINS` (orígenes separados por coma; `*` por defecto).
+
+Tests de la API (entrenan artefactos diminutos sobre datos sintéticos; **sin `data/raw`
+ni GPU**):
+
+```powershell
+venv\Scripts\python -m pytest tests/api      # solo la API
+```
+
 ## Calidad
 
 ```powershell

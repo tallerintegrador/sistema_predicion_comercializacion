@@ -10,6 +10,7 @@ portabilidad del artefacto en proceso limpio vive en `test_portabilidad.py`.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
@@ -21,7 +22,6 @@ from spc.features.perfiles import (
     COLS_TIENDAS,
     COLS_TIENDAS_DESC,
     COLS_TIENDAS_RICO,
-    perfiles_tiendas,
 )
 from spc.models.clustering import (
     CONFIGS,
@@ -29,8 +29,6 @@ from spc.models.clustering import (
     entrenar_tarea,
     etiquetar_clusters,
 )
-
-import pandas as pd
 
 # Piso de silueta del modelo desplegado: estructura de cluster minima razonable. El
 # refinamiento 2c (set depurado/alineado al EDA) supera 0.65 en datos reales; en la
