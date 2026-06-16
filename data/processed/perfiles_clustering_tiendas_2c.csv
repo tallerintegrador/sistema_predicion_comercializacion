@@ -1,0 +1,3 @@
+segmento,n_entidades,venta_media,venta_mediana,ventas_total,pct_demanda_alta,cv_ventas,tasa_ceros,promo_media,transacciones_media,ratio_finde,etiqueta_narrativa
+0,44,262.68997,10.305898,1.4598207e+07,0.1367063531013002,2.9375974507036373,0.33973575639792436,2.4495286213462633,1194.8627051392787,1.3202268,"Tiendas: bajo volumen, intermitente"
+1,10,776.1532,46.4,4.3132388e+07,0.6064151011300656,2.42281986908108,0.1950964514503707,3.2770333981141584,3143.9666270783846,1.5340624,"Tiendas: alto volumen, venta continua"

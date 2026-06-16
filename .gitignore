@@ -17,14 +17,6 @@ dist/
 .ruff_cache/
 .ipynb_checkpoints/
 
-# Datos crudos (pesados, no versionar)
-data/raw/*
-!data/raw/.gitkeep
-
-# Artefactos generados por el EDA
-data/processed/
-figures/
-
 # Datos sinteticos generados (SMOTE / sinteticos de apoyo)
 data/synthetic/*
 !data/synthetic/.gitkeep
@@ -34,3 +26,5 @@ data/synthetic/*
 .idea/
 .DS_Store
 Thumbs.db
+
+data/raw/train.csv

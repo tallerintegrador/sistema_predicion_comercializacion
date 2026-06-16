@@ -1,0 +1,35 @@
+{
+  "train_store_not_in_stores":[
+
+  ],
+  "test_store_not_in_stores":[
+
+  ],
+  "transactions_store_not_in_stores":[
+
+  ],
+  "sales_negative":0,
+  "sales_zero":939130,
+  "onpromotion_negative_train":0,
+  "onpromotion_negative_test":0,
+  "transactions_negative":0,
+  "oil_non_positive":0,
+  "oil_null_original":43,
+  "holidays_transferred_true":12,
+  "test_overlap_train_dates":0,
+  "train_date_min":"2013-01-01",
+  "train_date_max":"2017-08-15",
+  "train_missing_dates_in_range":4,
+  "test_date_min":"2017-08-16",
+  "test_date_max":"2017-08-31",
+  "test_missing_dates_in_range":0,
+  "transactions_date_min":"2013-01-01",
+  "transactions_date_max":"2017-08-15",
+  "transactions_missing_dates_in_range":6,
+  "oil_date_min":"2013-01-01",
+  "oil_date_max":"2017-08-31",
+  "oil_missing_dates_in_range":486,
+  "holidays_events_date_min":"2012-03-02",
+  "holidays_events_date_max":"2017-12-26",
+  "holidays_events_missing_dates_in_range":1814
+}
