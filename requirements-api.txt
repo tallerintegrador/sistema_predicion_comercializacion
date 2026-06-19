@@ -13,6 +13,8 @@
 fastapi==0.137.1
 uvicorn==0.49.0
 pydantic==2.13.4
+python-multipart==0.0.29  # carga de archivos (UploadFile) del canal Excel
+openpyxl==3.1.5           # lectura/escritura .xlsx del canal Excel (Fase 3.3)
 
 # --- Carga/inferencia del motor ---
 pandas==3.0.3

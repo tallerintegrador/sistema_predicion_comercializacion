@@ -21,8 +21,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from spc.api.errors import registrar_manejadores
-from spc.api.routers import almacen, compras, ventas
-from spc.config import Settings
+from spc.api.jobs import GestorTrabajos
+from spc.api.routers import almacen, catalog, compras, excel, jobs, ventas
+from spc.config import Settings, batch_workers
 from spc.service.artefactos import RegistroArtefactos
 from spc.utils.logging import get_logger
 
@@ -38,6 +39,9 @@ campos:
 - **PURCHASES** (`/purchases`) — reposición sugerida (derivada del pronóstico + parámetros logísticos).
 - **INVENTORY** (`/inventory`) — riesgo de quiebre y stock recomendado (clasificación + perfilado).
 
+El **catálogo de predicciones** (`GET /catalog`) describe, por dominio, qué entra,
+qué sale y qué limitaciones tiene cada servicio, derivado de los esquemas reales.
+
 La entrada se valida contra el contrato; las entradas mal formadas devuelven un
 error controlado y uniforme.
 """
@@ -46,6 +50,9 @@ TAGS_METADATA = [
     {"name": "SALES", "description": "Pronóstico de demanda por período, punto de venta y producto."},
     {"name": "PURCHASES", "description": "Cantidad a reponer y punto de reorden, derivados del pronóstico."},
     {"name": "INVENTORY", "description": "Clase de demanda, riesgo de quiebre, stock recomendado y segmento de tienda."},
+    {"name": "catalog", "description": "Catálogo de predicciones por dominio (qué entra, qué sale, qué limita)."},
+    {"name": "excel", "description": "Canal Excel: descarga de plantilla y carga de datos por dominio (mismo contrato)."},
+    {"name": "batch", "description": "Modo por lote (asíncrono): estado y resultado de los envíos grandes (job_id)."},
     {"name": "status", "description": "Salud del servicio."},
 ]
 
@@ -84,7 +91,11 @@ def crear_app(
                 app.state.registro.clasificacion.ruta.name,
                 app.state.registro.clustering_tiendas.ruta.name,
             )
-        yield
+        try:
+            yield
+        finally:
+            # Apaga el executor de lote esperando a los trabajos en curso.
+            app.state.jobs.cerrar()
 
     app = FastAPI(
         title="SPC — Sistema Predictivo de Comercialización",
@@ -98,6 +109,10 @@ def crear_app(
     if registro is not None:
         app.state.registro = registro
 
+    # Gestor de trabajos por lote (in-process): se crea siempre, de modo que esté
+    # disponible aunque el registro se inyecte directamente. Se cierra en el lifespan.
+    app.state.jobs = GestorTrabajos(max_workers=batch_workers())
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins if cors_origins is not None else _origenes_cors(),
@@ -110,6 +125,9 @@ def crear_app(
     app.include_router(ventas.router)
     app.include_router(compras.router)
     app.include_router(almacen.router)
+    app.include_router(catalog.router)
+    app.include_router(excel.router)
+    app.include_router(jobs.router)
 
     @app.get("/health", tags=["status"], summary="Salud del servicio")
     def salud() -> dict[str, str]:

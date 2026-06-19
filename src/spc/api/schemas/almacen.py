@@ -18,9 +18,12 @@ from spc.api.schemas.comunes import EJEMPLO_HISTORICO, HistoricoItem, IdContrato
 
 
 class EstadoInventarioItem(BaseModel):
-    """Estado de inventario de un producto en un punto de venta."""
+    """Estado de inventario de un producto en un punto de venta.
 
-    model_config = ConfigDict(extra="forbid")
+    Validación **estricta** (``strict=True``): sin coerciones silenciosas de tipo.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     store_id: IdContrato
     product_id: IdContrato
@@ -33,10 +36,14 @@ class EstadoInventarioItem(BaseModel):
 
 
 class AlmacenRequest(BaseModel):
-    """Petición del campo ALMACEN."""
+    """Petición del campo ALMACEN.
+
+    Validación **estricta** (``strict=True``): sin coerciones silenciosas de tipo.
+    """
 
     model_config = ConfigDict(
         extra="forbid",
+        strict=True,
         json_schema_extra={
             "example": {
                 "history": EJEMPLO_HISTORICO,
@@ -84,13 +91,22 @@ class AlertaItem(BaseModel):
 
 
 class MetadatosAlmacen(BaseModel):
-    """Metadatos informativos (definición del umbral de demanda alta)."""
+    """Metadatos informativos (definición del umbral de demanda alta).
 
-    model_config = ConfigDict(extra="allow")
+    Declara **todos** los campos que el servicio produce hoy (sin ``extra="allow"``),
+    de modo que el catálogo derivado de este esquema describa la salida completa.
+    """
 
     threshold: str = Field(
         default="high_demand = sales > P75 of its family",
         description="Definición del umbral de demanda alta.",
+    )
+    probability_threshold: float | None = Field(
+        default=None,
+        description=(
+            "Umbral numérico de probabilidad de demanda alta (leído del meta del "
+            "artefacto, no hard-codeado; null si el artefacto no lo expone)."
+        ),
     )
 
 

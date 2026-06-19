@@ -108,6 +108,12 @@ El entrenamiento ocurre **offline** (Fases 1–2) y produce artefactos serializa
 
 ## 3. Contrato de datos por campo
 
+> **Nota (v0.1 histórica).** Los nombres de campo y los ejemplos JSON de esta sección son
+> el **borrador en español v0.1**. El contrato **canónico vigente está en inglés** (v1.0.1)
+> y es la única fuente de verdad: ver [`contrato_datos.md`](contrato_datos.md), con el
+> mapeo `v0.1 (es)` → `v1.0.0 (en)` en su **sección 9**. Esta sección se conserva como
+> registro de la génesis del contrato; no se reescribe.
+
 El contrato usa nombres **genéricos y agnósticos al sector**. El cliente mapea su vocabulario (SKU, local, sucursal…) a estos campos. Granularidad por defecto: diaria; configurable a semanal/mensual.
 
 ### Convención común de campos

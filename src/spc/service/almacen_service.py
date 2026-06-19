@@ -16,28 +16,38 @@ No conoce HTTP: recibe/devuelve estructuras de Python.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from spc.service import adaptador
+from spc import config
+from spc.service import adaptador, politica
 from spc.service.artefactos import ArtefactoCargado, RegistroArtefactos
 from spc.service.errores import SolicitudInvalida
 
-# Lead time por defecto si el cliente no lo envía (días). Constante de negocio.
-LEAD_TIME_DEFAULT = 7
-# Ventana reciente (días) para estimar la demanda diaria desde el histórico.
-VENTANA_DEMANDA = 28
-# Niveles de servicio (z) para el stock de seguridad. El segmento de **alto volumen**
-# recibe un nivel de servicio más exigente (política afinada por el clustering).
-Z_BASE = 1.28  # ~90 %
-Z_ALTO_VOLUMEN = 1.65  # ~95 %
-# Si no hay desviación (serie demasiado corta), el stock de seguridad cae a este
-# porcentaje de la demanda en lead time. Constante de política, no de artefacto.
-FACTOR_SEGURIDAD_FALLBACK = 0.5
+# Nivel del cuantil que define "demanda alta" (P75). Es **model-adjacent**: debe coincidir
+# con el cuantil contra el que se entrenó el clasificador. [PENDIENTE] La metadata del
+# artefacto aún NO lo expone como número (solo lo menciona en prosa en su campo
+# "objetivo"); mientras tanto se usa este fallback documentado y se lee de
+# meta["objetivo_cuantil"] en cuanto el equipo de modelado lo agregue (ver ADR-0010).
+CUANTIL_DEMANDA_ALTA_FALLBACK = 0.75
+META_CLAVE_CUANTIL = "objetivo_cuantil"
+
+
+def _cuantil_demanda_alta(meta: Mapping[str, Any]) -> float:
+    """Nivel del cuantil de "demanda alta", leído del meta del artefacto si lo expone.
+
+    Igual que el ``umbral`` de probabilidad: se prefiere la metadata. [PENDIENTE /
+    model-adjacent] Hoy la metadata del clasificador NO expone el nivel como número, así
+    que cae al fallback documentado ``0.75``. En cuanto el artefacto exponga
+    ``objetivo_cuantil`` (coordinación con el equipo de modelado), se leerá de ahí.
+    """
+    valor = meta.get(META_CLAVE_CUANTIL)
+    if isinstance(valor, int | float) and not isinstance(valor, bool) and 0.0 < float(valor) < 1.0:
+        return float(valor)
+    return CUANTIL_DEMANDA_ALTA_FALLBACK
 
 
 def _segmento_alto_volumen(meta: Mapping[str, Any]) -> int | None:
@@ -83,12 +93,16 @@ def _clases_por_serie(
 
 
 def _demanda_reciente(
-    analitico: pd.DataFrame,
+    analitico: pd.DataFrame, ventana: int
 ) -> dict[tuple[str, str], tuple[float, float]]:
-    """Media y desviación de la demanda diaria reciente por serie (proxy de demanda)."""
+    """Media y desviación de la demanda diaria reciente por serie (proxy de demanda).
+
+    ``ventana`` es el nº de días recientes considerados (constante de política
+    configurable, ``SPC_INVENTORY_DEMAND_WINDOW``).
+    """
     proxy: dict[tuple[str, str], tuple[float, float]] = {}
     for (store, fam), g in analitico.groupby(["store_nbr", "family"], observed=True):
-        ventas = g.sort_values("date")["sales"].to_numpy(dtype="float64")[-VENTANA_DEMANDA:]
+        ventas = g.sort_values("date")["sales"].to_numpy(dtype="float64")[-ventana:]
         media = float(np.mean(ventas)) if len(ventas) else 0.0
         std = float(np.std(ventas, ddof=1)) if len(ventas) >= 2 else float("nan")
         proxy[(str(store), str(fam))] = (media, std)
@@ -131,9 +145,19 @@ def alertas(
             f"{detalle}."
         )
 
+    # Política leída de config (defaults = comportamiento histórico; ADR-0010).
+    metodo = config.inventory_safety_method()
+    lead_default = config.inventory_lead_time_default()
+    ventana = config.inventory_demand_window()
+    z_base = config.inventory_z_base()
+    z_alto = config.inventory_z_high_volume()
+    factor_fallback = config.inventory_safety_fallback_factor()
+    factor_cobertura = config.inventory_coverage_factor()
+    cuantil = _cuantil_demanda_alta(registro.clasificacion.meta)
+
     clases = _clases_por_serie(analitico, registro.clasificacion)
-    demanda = _demanda_reciente(analitico)
-    analitico_da = adaptador.marcar_demanda_alta(analitico)
+    demanda = _demanda_reciente(analitico, ventana)
+    analitico_da = adaptador.marcar_demanda_alta(analitico, cuantil)
     segmentos = _segmentos_por_tienda(analitico_da, registro.clustering_tiendas)
     seg_alto = _segmento_alto_volumen(registro.clustering_tiendas.meta)
 
@@ -142,7 +166,7 @@ def alertas(
         pv, prod = str(it["store_id"]), str(it["product_id"])
         clave = (pv, prod)
         stock_actual = float(it["current_stock"])
-        lead = int(it["lead_time_days"]) if it.get("lead_time_days") else LEAD_TIME_DEFAULT
+        lead = int(it["lead_time_days"]) if it.get("lead_time_days") else lead_default
 
         clase, prob = clases[clave]
         media_diaria, std_diaria = demanda[clave]
@@ -150,11 +174,16 @@ def alertas(
 
         demanda_lead = media_diaria * lead
         # Nivel de servicio afinado por el segmento (el de alto volumen, más exigente).
-        z = Z_ALTO_VOLUMEN if (seg_alto is not None and segmento == seg_alto) else Z_BASE
-        if math.isfinite(std_diaria) and std_diaria > 0:
-            stock_seguridad = z * std_diaria * math.sqrt(lead)
-        else:
-            stock_seguridad = FACTOR_SEGURIDAD_FALLBACK * demanda_lead
+        z = z_alto if (seg_alto is not None and segmento == seg_alto) else z_base
+        stock_seguridad = politica.stock_seguridad(
+            metodo,
+            demanda_lead=demanda_lead,
+            lead=lead,
+            factor_cobertura=factor_cobertura,
+            z=z,
+            sigma_diaria=std_diaria,
+            factor_fallback=factor_fallback,
+        )
         stock_recomendado = demanda_lead + stock_seguridad
         riesgo = bool(stock_actual < stock_recomendado)
 
@@ -173,11 +202,12 @@ def alertas(
 
     meta_clf = registro.clasificacion.meta
     umbral_prob = meta_clf.get("umbral")
+    pct = int(round(cuantil * 100))
     return {
         "field": "inventory",
         "alerts": alertas_salida,
         "metadata": {
-            "threshold": "high_demand = sales > P75 of its family",
+            "threshold": f"high_demand = sales > P{pct} of its family",
             # Umbral numérico de probabilidad (del meta del artefacto, no hard-codeado).
             "probability_threshold": round(float(umbral_prob), 4) if umbral_prob is not None else None,
         },

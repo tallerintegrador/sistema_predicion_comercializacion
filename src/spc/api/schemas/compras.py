@@ -22,9 +22,11 @@ class ParametroReposicion(BaseModel):
 
     Son **del cliente** (SPC no los inventa): el stock que tiene hoy, el tiempo de
     entrega del proveedor y los días de cobertura objetivo de su política.
+
+    Validación **estricta** (``strict=True``): sin coerciones silenciosas de tipo.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     store_id: IdContrato
     product_id: IdContrato
@@ -38,10 +40,14 @@ class ParametroReposicion(BaseModel):
 
 
 class ComprasRequest(BaseModel):
-    """Petición de reposición de COMPRAS."""
+    """Petición de reposición de COMPRAS.
+
+    Validación **estricta** (``strict=True``): sin coerciones silenciosas de tipo.
+    """
 
     model_config = ConfigDict(
         extra="forbid",
+        strict=True,
         json_schema_extra={
             "example": {
                 "history": EJEMPLO_HISTORICO,
@@ -86,13 +92,19 @@ class RecomendacionItem(BaseModel):
 
 
 class MetadatosCompras(BaseModel):
-    """Metadatos informativos (supuestos de la derivación)."""
+    """Metadatos informativos (supuestos de la derivación).
 
-    model_config = ConfigDict(extra="allow")
+    Declara **todos** los campos que el servicio produce hoy (sin ``extra="allow"``),
+    de modo que el catálogo derivado de este esquema describa la salida completa.
+    """
 
     assumption: str = Field(
         default="demanda y lead time aproximados; revisar política del cliente",
         description="Supuestos de la lógica de reposición.",
+    )
+    policy: str = Field(
+        default="coverage_days",
+        description="Política de reposición aplicada (días de cobertura).",
     )
 
 

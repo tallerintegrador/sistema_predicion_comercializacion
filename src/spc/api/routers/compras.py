@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
-from spc.api.dependencies import obtener_registro
+from spc.api.dependencies import obtener_jobs, obtener_registro
+from spc.api.jobs import GestorTrabajos
+from spc.api.ruteo import responder_segun_volumen
 from spc.api.schemas.compras import ComprasRequest, ComprasResponse
 from spc.api.schemas.comunes import ErrorResponse
-from spc.service import compras_service
+from spc.api.schemas.jobs import JobAccepted
 from spc.service.artefactos import RegistroArtefactos
 
 router = APIRouter(tags=["PURCHASES"])
@@ -21,6 +24,7 @@ router = APIRouter(tags=["PURCHASES"])
     response_model_exclude_none=True,
     summary="Reposición sugerida (derivada del pronóstico)",
     responses={
+        202: {"model": JobAccepted, "description": "Envío grande: aceptado como trabajo por lote"},
         400: {"model": ErrorResponse, "description": "Producto sin histórico u otra regla de negocio"},
         422: {"model": ErrorResponse, "description": "Entrada mal formada"},
     },
@@ -28,14 +32,19 @@ router = APIRouter(tags=["PURCHASES"])
 def recomendar_compras(
     peticion: ComprasRequest,
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
-) -> dict:
-    """Devuelve, por producto, la demanda esperada, el punto de reorden y la cantidad a reponer.
+    jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+) -> dict | JSONResponse:
+    """Reposición sugerida por producto, derivada del pronóstico de ventas.
 
-    No hay modelo propio: reutiliza el pronóstico de VENTAS y los parámetros
-    logísticos del cliente (lógica de negocio en la capa de servicio).
+    **Entra:** el bloque ``history`` (de donde se deriva la demanda) y, por producto,
+    ``replenishment_params`` (``current_stock``, ``lead_time_days``, ``target_coverage_days``).
+    **Sale:** por producto, ``expected_demand_horizon``, ``reorder_point``,
+    ``replenishment_quantity`` y su ``justification``.
+
+    No hay modelo propio (la respuesta **no** incluye ``model``): es lógica de negocio
+    que reutiliza el pronóstico de VENTAS y los parámetros logísticos del cliente. Un
+    producto sin histórico devuelve ``400``. **Modo de ejecución (Fase 3.4):** por
+    encima de ``SPC_ONLINE_MAX_ROWS`` filas se acepta como trabajo por lote (**202**
+    con ``job_id``). El catálogo completo está en ``GET /catalog``.
     """
-    return compras_service.reponer(
-        historico=[h.model_dump() for h in peticion.history],
-        parametros_reposicion=[p.model_dump() for p in peticion.replenishment_params],
-        registro=registro,
-    )
+    return responder_segun_volumen("purchases", peticion, registro, jobs)

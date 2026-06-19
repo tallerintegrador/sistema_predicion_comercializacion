@@ -8,8 +8,171 @@ de modo que las rutas se pueden sobreescribir desde la CLI sin tocar el codigo.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Tope de tamaño (bytes) para un archivo .xlsx subido por el canal Excel.
+# Es un límite plano de protección anti-abuso (DoS), NO el ruteo por volumen
+# (en línea/lote): esa frontera se mide por NÚMERO DE FILAS (ver online_max_rows()).
+# Como el modo lote (Fase 3.4) admite entradas grandes, este techo se sube a 25 MB
+# para que un .xlsx de lote quepa; hay que parsear el archivo para contar sus filas.
+# Configurable por entorno (igual que SPC_CORS_ORIGINS).
+EXCEL_MAX_BYTES_DEFAULT = 25 * 1024 * 1024  # 25 MB
+
+# Umbral de ruteo en línea/lote, medido por NÚMERO DE FILAS del bloque `history`
+# (P6, Fase 3.4). Una petición con `len(history) <= umbral` se procesa en línea
+# (síncrona, 200 con el resultado); por encima del umbral se acepta como trabajo por
+# lote (202 con job_id). El default se fijó MIDIENDO el tiempo de respuesta del flujo
+# síncrono (scripts/bench_umbral_online.py; ver ADR-0008): en la medición indicativa
+# (artefacto diminuto, máquina de desarrollo) ~2.000 filas se resuelven en ~2 s
+# (cómodamente por debajo de unos pocos segundos), mientras que 10.000 ya rondan ~7 s.
+# Es CONFIGURABLE: producción debería re-medir con el modelo y el hardware reales y
+# ajustar SPC_ONLINE_MAX_ROWS en consecuencia.
+ONLINE_MAX_ROWS_DEFAULT = 2_000
+
+# Nº de hilos del executor in-process que procesa los trabajos por lote (P5: sin
+# Celery/Redis). 1 por defecto: procesa FIFO y acota el uso de memoria.
+BATCH_WORKERS_DEFAULT = 1
+
+
+def _entero_positivo_env(nombre: str, por_defecto: int) -> int:
+    """Lee un entero positivo de la variable ``nombre`` (o ``por_defecto`` si falta/inválida)."""
+    valor = os.getenv(nombre, "").strip()
+    if not valor:
+        return por_defecto
+    try:
+        n = int(valor)
+    except ValueError:
+        return por_defecto
+    return n if n > 0 else por_defecto
+
+
+def _float_positivo_env(nombre: str, por_defecto: float) -> float:
+    """Lee un float positivo de la variable ``nombre`` (o ``por_defecto`` si falta/inválida)."""
+    valor = os.getenv(nombre, "").strip()
+    if not valor:
+        return por_defecto
+    try:
+        x = float(valor)
+    except ValueError:
+        return por_defecto
+    return x if x > 0 else por_defecto
+
+
+# Métodos válidos del stock de seguridad (knob de política, ADR-0010).
+SAFETY_METHODS: tuple[str, ...] = ("coverage_days", "service_level")
+
+
+def _metodo_safety_env(nombre: str, por_defecto: str) -> str:
+    """Lee el método de stock de seguridad (``coverage_days``|``service_level``).
+
+    Si la variable falta o trae un valor no reconocido, cae al ``por_defecto`` del dominio.
+    """
+    valor = os.getenv(nombre, "").strip().lower()
+    return valor if valor in SAFETY_METHODS else por_defecto
+
+
+def excel_max_bytes() -> int:
+    """Tope de tamaño del .xlsx subido, en bytes (``SPC_EXCEL_MAX_BYTES`` o 25 MB)."""
+    return _entero_positivo_env("SPC_EXCEL_MAX_BYTES", EXCEL_MAX_BYTES_DEFAULT)
+
+
+def online_max_rows() -> int:
+    """Máximo de filas (``len(history)``) que se procesan en línea (``SPC_ONLINE_MAX_ROWS``).
+
+    Por encima de este número, el envío se rutea al modo por lote (asíncrono). Es la
+    **frontera en línea/lote** de la Fase 3.4: configurable y medida en filas, no en
+    bytes (el tope de bytes es solo una guarda anti-abuso).
+    """
+    return _entero_positivo_env("SPC_ONLINE_MAX_ROWS", ONLINE_MAX_ROWS_DEFAULT)
+
+
+def batch_workers() -> int:
+    """Nº de hilos del executor in-process de lote (``SPC_BATCH_WORKERS`` o 1)."""
+    return _entero_positivo_env("SPC_BATCH_WORKERS", BATCH_WORKERS_DEFAULT)
+
+
+# ---------------------------------------------------------------------------
+# Constantes de POLÍTICA de inventario/compras (Fase 3.5, ADR-0010)
+# ---------------------------------------------------------------------------
+# Antes vivían clavadas en la capa de servicio (compras_service / almacen_service).
+# Ahora son configurables por entorno con el MISMO patrón que online_max_rows(). Los
+# defaults = los valores históricos, de modo que **sin configurar nada la salida NO
+# cambia** (regresión). NO son parámetros del modelo (esos se leen de la metadata del
+# artefacto): son decisiones de política de negocio del cliente.
+
+# Stock de seguridad de PURCHASES (método coverage_days) = este factor × demanda(lead).
+PURCHASES_SAFETY_FACTOR_DEFAULT = 0.30
+# Método de stock de seguridad por dominio (knob, ADR-0010). El default de cada dominio
+# es su método histórico: PURCHASES por días de cobertura; INVENTORY por nivel de
+# servicio (z·σ·√lead). Unificar INVENTORY con PURCHASES = poner su método en
+# coverage_days (un solo cambio de variable de entorno).
+PURCHASES_SAFETY_METHOD_DEFAULT = "coverage_days"
+INVENTORY_SAFETY_METHOD_DEFAULT = "service_level"
+# Lead time supuesto en INVENTORY cuando el cliente no envía lead_time_days (días).
+INVENTORY_LEAD_TIME_DEFAULT = 7
+# Ventana reciente (días) para estimar μ/σ de la demanda desde el histórico (INVENTORY).
+INVENTORY_DEMAND_WINDOW_DEFAULT = 28
+# Niveles de servicio (z) del método service_level de INVENTORY. El segmento de alto
+# volumen recibe un z más exigente (política afinada por el clustering).
+INVENTORY_Z_BASE_DEFAULT = 1.28  # ~90 %
+INVENTORY_Z_HIGH_VOLUME_DEFAULT = 1.65  # ~95 %
+# Si σ no es estimable (serie demasiado corta), el service_level cae a este factor ×
+# demanda(lead). Constante de política, no de artefacto.
+INVENTORY_SAFETY_FALLBACK_FACTOR_DEFAULT = 0.5
+# Factor de cobertura usado SOLO si INVENTORY se conmuta a coverage_days (puente de
+# unificación, ADR-0010). Default = el factor de PURCHASES, para que conmutar el método
+# deje a INVENTORY exactamente igual que PURCHASES con un único cambio de variable.
+INVENTORY_COVERAGE_FACTOR_DEFAULT = 0.30
+
+
+def purchases_safety_factor() -> float:
+    """Factor del colchón de COMPRAS (``SPC_PURCHASES_SAFETY_FACTOR`` o 0.30)."""
+    return _float_positivo_env("SPC_PURCHASES_SAFETY_FACTOR", PURCHASES_SAFETY_FACTOR_DEFAULT)
+
+
+def purchases_safety_method() -> str:
+    """Método de stock de seguridad de COMPRAS (``SPC_PURCHASES_SAFETY_METHOD`` o coverage_days)."""
+    return _metodo_safety_env("SPC_PURCHASES_SAFETY_METHOD", PURCHASES_SAFETY_METHOD_DEFAULT)
+
+
+def inventory_safety_method() -> str:
+    """Método de stock de seguridad de INVENTORY (``SPC_INVENTORY_SAFETY_METHOD`` o service_level)."""
+    return _metodo_safety_env("SPC_INVENTORY_SAFETY_METHOD", INVENTORY_SAFETY_METHOD_DEFAULT)
+
+
+def inventory_lead_time_default() -> int:
+    """Lead time por defecto de INVENTORY en días (``SPC_INVENTORY_LEAD_TIME_DEFAULT`` o 7)."""
+    return _entero_positivo_env("SPC_INVENTORY_LEAD_TIME_DEFAULT", INVENTORY_LEAD_TIME_DEFAULT)
+
+
+def inventory_demand_window() -> int:
+    """Ventana (días) para estimar μ/σ de la demanda (``SPC_INVENTORY_DEMAND_WINDOW`` o 28)."""
+    return _entero_positivo_env("SPC_INVENTORY_DEMAND_WINDOW", INVENTORY_DEMAND_WINDOW_DEFAULT)
+
+
+def inventory_z_base() -> float:
+    """z del nivel de servicio base de INVENTORY (``SPC_INVENTORY_Z_BASE`` o 1.28)."""
+    return _float_positivo_env("SPC_INVENTORY_Z_BASE", INVENTORY_Z_BASE_DEFAULT)
+
+
+def inventory_z_high_volume() -> float:
+    """z del nivel de servicio del segmento de alto volumen (``SPC_INVENTORY_Z_HIGH_VOLUME`` o 1.65)."""
+    return _float_positivo_env("SPC_INVENTORY_Z_HIGH_VOLUME", INVENTORY_Z_HIGH_VOLUME_DEFAULT)
+
+
+def inventory_safety_fallback_factor() -> float:
+    """Factor de respaldo del service_level cuando σ no es estimable (``SPC_INVENTORY_SAFETY_FALLBACK_FACTOR`` o 0.5)."""
+    return _float_positivo_env(
+        "SPC_INVENTORY_SAFETY_FALLBACK_FACTOR", INVENTORY_SAFETY_FALLBACK_FACTOR_DEFAULT
+    )
+
+
+def inventory_coverage_factor() -> float:
+    """Factor de cobertura de INVENTORY si se conmuta a coverage_days (``SPC_INVENTORY_COVERAGE_FACTOR`` o 0.30)."""
+    return _float_positivo_env("SPC_INVENTORY_COVERAGE_FACTOR", INVENTORY_COVERAGE_FACTOR_DEFAULT)
+
 
 # Nombre logico -> archivo esperado en data/raw.
 EXPECTED_FILES: dict[str, str] = {

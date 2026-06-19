@@ -6,10 +6,11 @@ logísticos del cliente (`current_stock`, `lead_time_days`, `target_coverage_day
 para derivar, por producto: la demanda esperada en la ventana, el punto de reorden
 y la cantidad a reponer.
 
-Política implementada (decidida con la validadora): **días de cobertura**. El stock
-de seguridad es un porcentaje de la demanda durante el *lead time*. La política por
-**nivel de servicio** (z-score sobre la variabilidad) queda diferida y documentada
-en el ADR.
+Política por defecto (ADR-0010): **días de cobertura** (``coverage_days``). El stock de
+seguridad es un porcentaje configurable de la demanda durante el *lead time*. El método
+es un **knob de configuración** (``SPC_PURCHASES_SAFETY_METHOD``): ``coverage_days`` por
+defecto y ``service_level`` (z·σ·√lead, con σ de la demanda pronosticada) como opción.
+Todas las constantes de política se leen de ``spc.config`` (no se clavan aquí).
 """
 
 from __future__ import annotations
@@ -17,15 +18,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from spc.service import adaptador, ventas_service
+import numpy as np
+
+from spc import config
+from spc.service import adaptador, politica, ventas_service
 from spc.service.artefactos import RegistroArtefactos
 from spc.service.errores import SolicitudInvalida
-
-# Stock de seguridad = este factor x demanda esperada durante el lead time. Es una
-# CONSTANTE DE POLÍTICA DE NEGOCIO (no un valor de artefacto): un colchón del 30 %
-# de la demanda del lead time. El cliente puede ajustar su política; SPC documenta
-# el supuesto en la respuesta.
-FACTOR_STOCK_SEGURIDAD = 0.30
 
 
 def reponer(
@@ -59,6 +57,13 @@ def reponer(
             f"{detalle}."
         )
 
+    # Política leída de config (defaults = comportamiento histórico; ADR-0010).
+    metodo = config.purchases_safety_method()
+    factor = config.purchases_safety_factor()
+    # z base del nivel de servicio (compartido; COMPRAS no tiene segmento de tienda, así
+    # que solo aplica el z base). Solo se usa si el método es service_level.
+    z = config.inventory_z_base()
+
     # Pronóstico diario hasta cubrir el horizonte más largo pedido (lead + cobertura).
     horizonte_max = max(int(p["lead_time_days"]) + int(p["target_coverage_days"]) for p in parametros)
     pred = ventas_service.forecast_diario(analitico, horizonte_max, registro.regresion)
@@ -77,7 +82,17 @@ def reponer(
 
         demanda_lead = float(demanda_diaria[:lead].sum())
         demanda_horizonte = float(demanda_diaria[: lead + cobertura].sum())
-        stock_seguridad = FACTOR_STOCK_SEGURIDAD * demanda_lead
+        # σ de la demanda pronosticada en el lead time (solo la usa service_level).
+        sigma = float(np.std(demanda_diaria[:lead], ddof=1)) if lead >= 2 else float("nan")
+        stock_seguridad = politica.stock_seguridad(
+            metodo,
+            demanda_lead=demanda_lead,
+            lead=lead,
+            factor_cobertura=factor,
+            z=z,
+            sigma_diaria=sigma,
+            factor_fallback=factor,  # mismo factor de cobertura como respaldo
+        )
         punto_reorden = demanda_lead + stock_seguridad
         cantidad = max(0.0, demanda_horizonte + stock_seguridad - stock_actual)
 
@@ -95,15 +110,20 @@ def reponer(
             }
         )
 
+    if metodo == politica.COVERAGE_DAYS:
+        assumption = (
+            "stock de seguridad = "
+            f"{factor:.0%} de la demanda en lead time; demanda y "
+            "lead time aproximados; revisar política del cliente"
+        )
+    else:
+        assumption = (
+            "stock de seguridad = z·σ·√lead_time "
+            f"(z={z:g}); σ de la demanda pronosticada; demanda y "
+            "lead time aproximados; revisar política del cliente"
+        )
     return {
         "field": "purchases",
         "recommendation": recomendacion,
-        "metadata": {
-            "assumption": (
-                "stock de seguridad = "
-                f"{FACTOR_STOCK_SEGURIDAD:.0%} de la demanda en lead time; demanda y "
-                "lead time aproximados; revisar política del cliente"
-            ),
-            "policy": "coverage_days",
-        },
+        "metadata": {"assumption": assumption, "policy": metodo},
     }

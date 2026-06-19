@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from spc.api.ingest.lector import ArchivoDemasiadoGrande, ErrorExcel
 from spc.api.schemas.comunes import CuerpoError, DetalleError, ErrorResponse
 from spc.service.errores import SolicitudInvalida
 from spc.utils.logging import get_logger
@@ -26,6 +27,10 @@ log = get_logger("api.errors")
 
 class ServicioNoDisponible(RuntimeError):
     """El motor de ML aún no está cargado (arranque incompleto o fallido)."""
+
+
+class TrabajoNoEncontrado(LookupError):
+    """No existe un trabajo por lote con el ``job_id`` consultado (→ HTTP 404)."""
 
 
 def _ruta_campo(loc: tuple[Any, ...]) -> str:
@@ -59,9 +64,28 @@ async def _manejar_solicitud_invalida(_: Request, exc: SolicitudInvalida) -> JSO
     return _json_error(400, "invalid_request", str(exc))
 
 
+async def _manejar_error_excel(_: Request, exc: ErrorExcel) -> JSONResponse:
+    """Excel mal formado o fuera del contrato → 422 con hoja/fila/columna por detalle.
+
+    Reutiliza el **mismo cuerpo de error** que el JSON: el canal Excel no inventa un
+    formato de error propio; solo añade la ubicación (hoja/fila/columna) en ``field``.
+    """
+    return _json_error(422, "validation", exc.mensaje, exc.detalles)
+
+
+async def _manejar_archivo_grande(_: Request, exc: ArchivoDemasiadoGrande) -> JSONResponse:
+    """Archivo Excel por encima del tope de tamaño → 413 controlado."""
+    return _json_error(413, "invalid_request", str(exc))
+
+
 async def _manejar_servicio_no_disponible(_: Request, exc: ServicioNoDisponible) -> JSONResponse:
     """Motor no cargado → 503."""
     return _json_error(503, "service_unavailable", str(exc))
+
+
+async def _manejar_trabajo_no_encontrado(_: Request, exc: TrabajoNoEncontrado) -> JSONResponse:
+    """``job_id`` inexistente → 404 con el cuerpo de error uniforme."""
+    return _json_error(404, "not_found", str(exc))
 
 
 async def _manejar_inesperado(_: Request, exc: Exception) -> JSONResponse:
@@ -76,5 +100,8 @@ def registrar_manejadores(app: FastAPI) -> None:
     """Registra todos los manejadores de error en la app."""
     app.add_exception_handler(RequestValidationError, _manejar_validacion)
     app.add_exception_handler(SolicitudInvalida, _manejar_solicitud_invalida)
+    app.add_exception_handler(ErrorExcel, _manejar_error_excel)
+    app.add_exception_handler(ArchivoDemasiadoGrande, _manejar_archivo_grande)
     app.add_exception_handler(ServicioNoDisponible, _manejar_servicio_no_disponible)
+    app.add_exception_handler(TrabajoNoEncontrado, _manejar_trabajo_no_encontrado)
     app.add_exception_handler(Exception, _manejar_inesperado)

@@ -49,11 +49,19 @@ class HistoricoItem(BaseModel):
     el EDA) pero son opcionales; ``event_active`` marca un feriado/evento relevante.
     Los campos opcionales ausentes **degradan con elegancia** (el motor usa lo que
     tenga).
+
+    Validación **estricta** (``strict=True``): se prohíben las coerciones silenciosas
+    de tipo (p. ej. ``units_sold="123"`` o ``on_promotion=5.0`` se **rechazan**, no se
+    convierten). El campo ``date`` es la única excepción (``strict=False``) porque
+    JSON no tiene tipo fecha nativo: llega como cadena ISO y debe parsearse.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
-    date: Date = Field(description="Fecha de la observación (ISO YYYY-MM-DD).")
+    date: Date = Field(
+        strict=False,
+        description="Fecha de la observación (ISO YYYY-MM-DD).",
+    )
     store_id: IdContrato = Field(description="Local, tienda o sucursal.")
     product_id: IdContrato = Field(description="Producto o familia/categoría.")
     units_sold: float = Field(
