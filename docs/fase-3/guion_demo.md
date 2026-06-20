@@ -23,8 +23,8 @@ cd "C:\Users\lucia\OneDrive\Documents\sistema_predicion_comercializacion"
 venv\Scripts\python -m uvicorn spc.api.main:app --workers 1
 ```
 
-Cuando veas `Uvicorn running on http://127.0.0.1:8000`, **déjalo corriendo**. Abre el
-navegador en **http://127.0.0.1:8000/docs** (Swagger). Eso es todo el setup.
+Cuando veas `Uvicorn running on http://127.0.0.1:8010`, **déjalo corriendo**. Abre el
+navegador en **http://127.0.0.1:8010/docs** (Swagger). Eso es todo el setup.
 
 > Para el paso 4 (lote) usarás una **segunda terminal** con el umbral bajo; lo indica ese paso.
 
@@ -33,7 +33,7 @@ navegador en **http://127.0.0.1:8000/docs** (Swagger). Eso es todo el setup.
 ## 1. El catálogo: "lista de servicios" honesta
 
 En Swagger, abre **GET /catalog → Try it out → Execute** (o ve a
-http://127.0.0.1:8000/catalog).
+http://127.0.0.1:8010/catalog).
 
 **Qué decir / señalar:**
 - Los **tres dominios**: `sales`, `purchases`, `inventory`, con qué entra y qué sale de cada uno.
@@ -99,7 +99,7 @@ En Swagger (cualquiera de los dos puertos), **POST /sales** con un cuerpo invál
 propósito. Por ejemplo, en PowerShell:
 
 ```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:8000/sales -Method Post `
+Invoke-RestMethod -Uri http://127.0.0.1:8010/sales -Method Post `
   -ContentType "application/json" -Body '{"horizon":0,"history":[]}'
 ```
 

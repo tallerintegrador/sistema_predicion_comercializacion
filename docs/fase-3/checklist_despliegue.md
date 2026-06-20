@@ -20,7 +20,7 @@
   en memoria** ([ADR-0008](../decisiones/0008-modos-ejecucion.md)): con `--workers > 1`
   un `job_id` creado por un proceso **no es visible** para otro. Lanzar exactamente:
   ```powershell
-  venv\Scripts\python -m uvicorn spc.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+  venv\Scripts\python -m uvicorn spc.api.main:app --host 0.0.0.0 --port 8010 --workers 1
   ```
   Escalar a más procesos exige primero un almacén compartido (p. ej. SQLite/Redis); hoy
   **no** está implementado.

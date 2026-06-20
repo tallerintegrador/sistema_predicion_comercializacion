@@ -95,8 +95,8 @@ decisión de diseño está en `docs/decisiones/0007-capa-api-fase3.md`.
 Levantar el servidor (requiere los artefactos en `models/`):
 
 ```powershell
-venv\Scripts\uvicorn spc.api.main:app --reload
-# Swagger interactivo: http://127.0.0.1:8000/docs
+venv\Scripts\uvicorn spc.api.main:app --reload --port 8010
+# Swagger interactivo: http://127.0.0.1:8010/docs
 # Endpoints: POST /sales, POST /purchases, POST /inventory ; salud: GET /health
 ```
 
@@ -144,6 +144,36 @@ Docker. Health check `/health`.
 
 Variable de entorno relevante en ambas: `SPC_CORS_ORIGINS` (orígenes del frontend,
 coma-separados; `*` por defecto).
+
+## Frontend (Fase 4.5 — Camino B)
+
+Interfaz web (React + Vite + TypeScript + Tailwind + recharts) en `frontend/`. Consume
+la API con el modelo congelado; habla solo el **contrato v1.0.1** (no toca el motor ni la
+capa interna). Cubre los tres dominios por JSON con datos de ejemplo, canal Excel
+(plantilla + subida), modo lote con *polling* de `/jobs/{id}`, página de catálogo y
+gráficos. Lo diferido se etiqueta (`interval_80`, `client_adjustment`).
+
+**Pasos clave** (dos terminales):
+
+1. Levantar la API permitiendo el origen del frontend por CORS:
+
+   ```powershell
+   $env:SPC_CORS_ORIGINS = "http://localhost:5173"
+   venv\Scripts\python -m uvicorn spc.api.main:app --port 8010 --workers 1
+   # salud: http://localhost:8010/health  ->  {"status":"ok"}
+   ```
+
+2. Levantar el frontend:
+
+   ```powershell
+   cd frontend
+   npm install
+   copy .env.example .env     # ajustar VITE_API_BASE_URL si la API no está en :8010
+   npm run dev                # http://localhost:5173
+   ```
+
+Build de producción: `npm run build` (typecheck `tsc -b` + `dist/`). Detalle y variables
+(`VITE_API_BASE_URL`, `VITE_CLIENT_ID`) en `frontend/README.md`.
 
 ## Calidad
 

@@ -1,0 +1,1137 @@
+{
+  "history": [
+    {
+      "date": "2017-06-01",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 987.9,
+      "on_promotion": 0,
+      "transactions": 1482.0
+    },
+    {
+      "date": "2017-06-02",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 768.5,
+      "on_promotion": 1,
+      "transactions": 1153.0
+    },
+    {
+      "date": "2017-06-03",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 771.8,
+      "on_promotion": 7,
+      "transactions": 1158.0
+    },
+    {
+      "date": "2017-06-04",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 810.2,
+      "on_promotion": 7,
+      "transactions": 1215.0
+    },
+    {
+      "date": "2017-06-05",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 751.6,
+      "on_promotion": 1,
+      "transactions": 1127.0
+    },
+    {
+      "date": "2017-06-06",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 657.1,
+      "on_promotion": 1,
+      "transactions": 986.0
+    },
+    {
+      "date": "2017-06-07",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 558.8,
+      "on_promotion": 3,
+      "transactions": 838.0
+    },
+    {
+      "date": "2017-06-08",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 485.2,
+      "on_promotion": 4,
+      "transactions": 728.0
+    },
+    {
+      "date": "2017-06-09",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 456.3,
+      "on_promotion": 3,
+      "transactions": 685.0
+    },
+    {
+      "date": "2017-06-10",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 489.6,
+      "on_promotion": 4,
+      "transactions": 734.0
+    },
+    {
+      "date": "2017-06-11",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 372.0,
+      "on_promotion": 0,
+      "transactions": 558.0
+    },
+    {
+      "date": "2017-06-12",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 393.5,
+      "on_promotion": 7,
+      "transactions": 590.0
+    },
+    {
+      "date": "2017-06-13",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 399.5,
+      "on_promotion": 2,
+      "transactions": 599.0
+    },
+    {
+      "date": "2017-06-14",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 296.9,
+      "on_promotion": 2,
+      "transactions": 445.0
+    },
+    {
+      "date": "2017-06-15",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 376.9,
+      "on_promotion": 6,
+      "transactions": 565.0
+    },
+    {
+      "date": "2017-06-16",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 315.5,
+      "on_promotion": 2,
+      "transactions": 473.0
+    },
+    {
+      "date": "2017-06-17",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 308.4,
+      "on_promotion": 3,
+      "transactions": 463.0
+    },
+    {
+      "date": "2017-06-18",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 309.5,
+      "on_promotion": 2,
+      "transactions": 464.0
+    },
+    {
+      "date": "2017-06-19",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 391.9,
+      "on_promotion": 6,
+      "transactions": 588.0
+    },
+    {
+      "date": "2017-06-20",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 382.1,
+      "on_promotion": 3,
+      "transactions": 573.0
+    },
+    {
+      "date": "2017-06-21",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 403.8,
+      "on_promotion": 4,
+      "transactions": 606.0
+    },
+    {
+      "date": "2017-06-22",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 441.6,
+      "on_promotion": 2,
+      "transactions": 662.0
+    },
+    {
+      "date": "2017-06-23",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 473.2,
+      "on_promotion": 3,
+      "transactions": 710.0
+    },
+    {
+      "date": "2017-06-24",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 426.5,
+      "on_promotion": 3,
+      "transactions": 640.0
+    },
+    {
+      "date": "2017-06-25",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 417.7,
+      "on_promotion": 1,
+      "transactions": 627.0
+    },
+    {
+      "date": "2017-06-26",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 314.4,
+      "on_promotion": 0,
+      "transactions": 472.0
+    },
+    {
+      "date": "2017-06-27",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 211.0,
+      "on_promotion": 1,
+      "transactions": 317.0
+    },
+    {
+      "date": "2017-06-28",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 228.4,
+      "on_promotion": 7,
+      "transactions": 343.0
+    },
+    {
+      "date": "2017-06-29",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 130.3,
+      "on_promotion": 0,
+      "transactions": 195.0
+    },
+    {
+      "date": "2017-06-30",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 271.2,
+      "on_promotion": 6,
+      "transactions": 407.0
+    },
+    {
+      "date": "2017-07-01",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 211.8,
+      "on_promotion": 0,
+      "transactions": 318.0
+    },
+    {
+      "date": "2017-07-02",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 140.8,
+      "on_promotion": 1,
+      "transactions": 211.0
+    },
+    {
+      "date": "2017-07-03",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 234.9,
+      "on_promotion": 4,
+      "transactions": 352.0
+    },
+    {
+      "date": "2017-07-04",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 220.1,
+      "on_promotion": 2,
+      "transactions": 330.0
+    },
+    {
+      "date": "2017-07-05",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 346.2,
+      "on_promotion": 5,
+      "transactions": 519.0
+    },
+    {
+      "date": "2017-07-06",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 377.9,
+      "on_promotion": 2,
+      "transactions": 567.0
+    },
+    {
+      "date": "2017-07-07",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 263.3,
+      "on_promotion": 0,
+      "transactions": 395.0
+    },
+    {
+      "date": "2017-07-08",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 274.2,
+      "on_promotion": 3,
+      "transactions": 411.0
+    },
+    {
+      "date": "2017-07-09",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 275.9,
+      "on_promotion": 3,
+      "transactions": 414.0
+    },
+    {
+      "date": "2017-07-10",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 281.2,
+      "on_promotion": 4,
+      "transactions": 422.0
+    },
+    {
+      "date": "2017-07-11",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 350.6,
+      "on_promotion": 7,
+      "transactions": 526.0
+    },
+    {
+      "date": "2017-07-12",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 404.2,
+      "on_promotion": 7,
+      "transactions": 606.0
+    },
+    {
+      "date": "2017-07-13",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 484.9,
+      "on_promotion": 5,
+      "transactions": 727.0
+    },
+    {
+      "date": "2017-07-14",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 439.9,
+      "on_promotion": 4,
+      "transactions": 660.0
+    },
+    {
+      "date": "2017-07-15",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 370.7,
+      "on_promotion": 0,
+      "transactions": 556.0
+    },
+    {
+      "date": "2017-07-16",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 324.9,
+      "on_promotion": 1,
+      "transactions": 487.0
+    },
+    {
+      "date": "2017-07-17",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 239.3,
+      "on_promotion": 0,
+      "transactions": 359.0
+    },
+    {
+      "date": "2017-07-18",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 324.3,
+      "on_promotion": 2,
+      "transactions": 486.0
+    },
+    {
+      "date": "2017-07-19",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 349.6,
+      "on_promotion": 3,
+      "transactions": 524.0
+    },
+    {
+      "date": "2017-07-20",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 309.6,
+      "on_promotion": 0,
+      "transactions": 464.0
+    },
+    {
+      "date": "2017-07-21",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 347.0,
+      "on_promotion": 5,
+      "transactions": 520.0
+    },
+    {
+      "date": "2017-07-22",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 338.1,
+      "on_promotion": 4,
+      "transactions": 507.0
+    },
+    {
+      "date": "2017-07-23",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 346.7,
+      "on_promotion": 4,
+      "transactions": 520.0
+    },
+    {
+      "date": "2017-07-24",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 379.0,
+      "on_promotion": 3,
+      "transactions": 568.0
+    },
+    {
+      "date": "2017-07-25",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 335.9,
+      "on_promotion": 1,
+      "transactions": 504.0
+    },
+    {
+      "date": "2017-07-26",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 319.3,
+      "on_promotion": 2,
+      "transactions": 479.0
+    },
+    {
+      "date": "2017-07-27",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 341.0,
+      "on_promotion": 5,
+      "transactions": 512.0
+    },
+    {
+      "date": "2017-07-28",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 361.3,
+      "on_promotion": 5,
+      "transactions": 542.0
+    },
+    {
+      "date": "2017-07-29",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 350.2,
+      "on_promotion": 3,
+      "transactions": 525.0
+    },
+    {
+      "date": "2017-07-30",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 318.4,
+      "on_promotion": 1,
+      "transactions": 478.0
+    },
+    {
+      "date": "2017-07-31",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 343.8,
+      "on_promotion": 4,
+      "transactions": 516.0
+    },
+    {
+      "date": "2017-08-01",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 316.5,
+      "on_promotion": 1,
+      "transactions": 475.0
+    },
+    {
+      "date": "2017-08-02",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 221.9,
+      "on_promotion": 0,
+      "transactions": 333.0
+    },
+    {
+      "date": "2017-08-03",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 350.6,
+      "on_promotion": 7,
+      "transactions": 526.0
+    },
+    {
+      "date": "2017-08-04",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 389.3,
+      "on_promotion": 4,
+      "transactions": 584.0
+    },
+    {
+      "date": "2017-08-05",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 396.7,
+      "on_promotion": 4,
+      "transactions": 595.0
+    },
+    {
+      "date": "2017-08-06",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 423.0,
+      "on_promotion": 4,
+      "transactions": 635.0
+    },
+    {
+      "date": "2017-08-07",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 247.9,
+      "on_promotion": 1,
+      "transactions": 372.0
+    },
+    {
+      "date": "2017-08-08",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 249.4,
+      "on_promotion": 3,
+      "transactions": 374.0
+    },
+    {
+      "date": "2017-08-09",
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "units_sold": 264.2,
+      "on_promotion": 4,
+      "transactions": 396.0
+    },
+    {
+      "date": "2017-06-01",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 864.0,
+      "on_promotion": 3,
+      "transactions": 1296.0
+    },
+    {
+      "date": "2017-06-02",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 760.3,
+      "on_promotion": 3,
+      "transactions": 1140.0
+    },
+    {
+      "date": "2017-06-03",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 536.2,
+      "on_promotion": 0,
+      "transactions": 804.0
+    },
+    {
+      "date": "2017-06-04",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 539.9,
+      "on_promotion": 6,
+      "transactions": 810.0
+    },
+    {
+      "date": "2017-06-05",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 536.2,
+      "on_promotion": 5,
+      "transactions": 804.0
+    },
+    {
+      "date": "2017-06-06",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 525.8,
+      "on_promotion": 4,
+      "transactions": 789.0
+    },
+    {
+      "date": "2017-06-07",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 543.7,
+      "on_promotion": 6,
+      "transactions": 816.0
+    },
+    {
+      "date": "2017-06-08",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 531.3,
+      "on_promotion": 4,
+      "transactions": 797.0
+    },
+    {
+      "date": "2017-06-09",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 465.3,
+      "on_promotion": 1,
+      "transactions": 698.0
+    },
+    {
+      "date": "2017-06-10",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 483.4,
+      "on_promotion": 5,
+      "transactions": 725.0
+    },
+    {
+      "date": "2017-06-11",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 504.0,
+      "on_promotion": 7,
+      "transactions": 756.0
+    },
+    {
+      "date": "2017-06-12",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 440.8,
+      "on_promotion": 1,
+      "transactions": 661.0
+    },
+    {
+      "date": "2017-06-13",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 382.7,
+      "on_promotion": 3,
+      "transactions": 574.0
+    },
+    {
+      "date": "2017-06-14",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 333.3,
+      "on_promotion": 1,
+      "transactions": 500.0
+    },
+    {
+      "date": "2017-06-15",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 328.8,
+      "on_promotion": 1,
+      "transactions": 493.0
+    },
+    {
+      "date": "2017-06-16",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 308.1,
+      "on_promotion": 1,
+      "transactions": 462.0
+    },
+    {
+      "date": "2017-06-17",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 295.6,
+      "on_promotion": 2,
+      "transactions": 443.0
+    },
+    {
+      "date": "2017-06-18",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 107.8,
+      "on_promotion": 0,
+      "transactions": 162.0
+    },
+    {
+      "date": "2017-06-19",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 79.6,
+      "on_promotion": 0,
+      "transactions": 119.0
+    },
+    {
+      "date": "2017-06-20",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 44.3,
+      "on_promotion": 4,
+      "transactions": 66.0
+    },
+    {
+      "date": "2017-06-21",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 178.8,
+      "on_promotion": 6,
+      "transactions": 268.0
+    },
+    {
+      "date": "2017-06-22",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 211.6,
+      "on_promotion": 1,
+      "transactions": 317.0
+    },
+    {
+      "date": "2017-06-23",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 342.1,
+      "on_promotion": 4,
+      "transactions": 513.0
+    },
+    {
+      "date": "2017-06-24",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 364.4,
+      "on_promotion": 1,
+      "transactions": 547.0
+    },
+    {
+      "date": "2017-06-25",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 369.3,
+      "on_promotion": 4,
+      "transactions": 554.0
+    },
+    {
+      "date": "2017-06-26",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 420.5,
+      "on_promotion": 6,
+      "transactions": 631.0
+    },
+    {
+      "date": "2017-06-27",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 442.6,
+      "on_promotion": 6,
+      "transactions": 664.0
+    },
+    {
+      "date": "2017-06-28",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 381.5,
+      "on_promotion": 0,
+      "transactions": 572.0
+    },
+    {
+      "date": "2017-06-29",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 280.6,
+      "on_promotion": 2,
+      "transactions": 421.0
+    },
+    {
+      "date": "2017-06-30",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 311.1,
+      "on_promotion": 2,
+      "transactions": 467.0
+    },
+    {
+      "date": "2017-07-01",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 406.4,
+      "on_promotion": 5,
+      "transactions": 610.0
+    },
+    {
+      "date": "2017-07-02",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 504.5,
+      "on_promotion": 7,
+      "transactions": 757.0
+    },
+    {
+      "date": "2017-07-03",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 603.1,
+      "on_promotion": 5,
+      "transactions": 905.0
+    },
+    {
+      "date": "2017-07-04",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 610.5,
+      "on_promotion": 4,
+      "transactions": 916.0
+    },
+    {
+      "date": "2017-07-05",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 631.6,
+      "on_promotion": 6,
+      "transactions": 947.0
+    },
+    {
+      "date": "2017-07-06",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 724.0,
+      "on_promotion": 5,
+      "transactions": 1086.0
+    },
+    {
+      "date": "2017-07-07",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 621.9,
+      "on_promotion": 0,
+      "transactions": 933.0
+    },
+    {
+      "date": "2017-07-08",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 529.2,
+      "on_promotion": 1,
+      "transactions": 794.0
+    },
+    {
+      "date": "2017-07-09",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 540.1,
+      "on_promotion": 5,
+      "transactions": 810.0
+    },
+    {
+      "date": "2017-07-10",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 363.4,
+      "on_promotion": 0,
+      "transactions": 545.0
+    },
+    {
+      "date": "2017-07-11",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 309.4,
+      "on_promotion": 0,
+      "transactions": 464.0
+    },
+    {
+      "date": "2017-07-12",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 274.7,
+      "on_promotion": 4,
+      "transactions": 412.0
+    },
+    {
+      "date": "2017-07-13",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 208.6,
+      "on_promotion": 0,
+      "transactions": 313.0
+    },
+    {
+      "date": "2017-07-14",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 313.6,
+      "on_promotion": 6,
+      "transactions": 470.0
+    },
+    {
+      "date": "2017-07-15",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 251.6,
+      "on_promotion": 0,
+      "transactions": 377.0
+    },
+    {
+      "date": "2017-07-16",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 202.0,
+      "on_promotion": 4,
+      "transactions": 303.0
+    },
+    {
+      "date": "2017-07-17",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 242.0,
+      "on_promotion": 4,
+      "transactions": 363.0
+    },
+    {
+      "date": "2017-07-18",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 159.2,
+      "on_promotion": 2,
+      "transactions": 239.0
+    },
+    {
+      "date": "2017-07-19",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 123.4,
+      "on_promotion": 2,
+      "transactions": 185.0
+    },
+    {
+      "date": "2017-07-20",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 115.8,
+      "on_promotion": 0,
+      "transactions": 174.0
+    },
+    {
+      "date": "2017-07-21",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 229.6,
+      "on_promotion": 5,
+      "transactions": 344.0
+    },
+    {
+      "date": "2017-07-22",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 171.0,
+      "on_promotion": 0,
+      "transactions": 257.0
+    },
+    {
+      "date": "2017-07-23",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 190.5,
+      "on_promotion": 1,
+      "transactions": 286.0
+    },
+    {
+      "date": "2017-07-24",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 200.4,
+      "on_promotion": 1,
+      "transactions": 301.0
+    },
+    {
+      "date": "2017-07-25",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 357.1,
+      "on_promotion": 5,
+      "transactions": 536.0
+    },
+    {
+      "date": "2017-07-26",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 328.7,
+      "on_promotion": 6,
+      "transactions": 493.0
+    },
+    {
+      "date": "2017-07-27",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 371.0,
+      "on_promotion": 7,
+      "transactions": 556.0
+    },
+    {
+      "date": "2017-07-28",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 482.3,
+      "on_promotion": 6,
+      "transactions": 724.0
+    },
+    {
+      "date": "2017-07-29",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 339.3,
+      "on_promotion": 0,
+      "transactions": 509.0
+    },
+    {
+      "date": "2017-07-30",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 374.2,
+      "on_promotion": 7,
+      "transactions": 561.0
+    },
+    {
+      "date": "2017-07-31",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 339.6,
+      "on_promotion": 3,
+      "transactions": 509.0
+    },
+    {
+      "date": "2017-08-01",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 389.8,
+      "on_promotion": 5,
+      "transactions": 585.0
+    },
+    {
+      "date": "2017-08-02",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 345.6,
+      "on_promotion": 5,
+      "transactions": 518.0
+    },
+    {
+      "date": "2017-08-03",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 351.8,
+      "on_promotion": 4,
+      "transactions": 528.0
+    },
+    {
+      "date": "2017-08-04",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 378.8,
+      "on_promotion": 3,
+      "transactions": 568.0
+    },
+    {
+      "date": "2017-08-05",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 419.9,
+      "on_promotion": 7,
+      "transactions": 630.0
+    },
+    {
+      "date": "2017-08-06",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 420.1,
+      "on_promotion": 2,
+      "transactions": 630.0
+    },
+    {
+      "date": "2017-08-07",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 422.7,
+      "on_promotion": 6,
+      "transactions": 634.0
+    },
+    {
+      "date": "2017-08-08",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 387.3,
+      "on_promotion": 3,
+      "transactions": 581.0
+    },
+    {
+      "date": "2017-08-09",
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "units_sold": 310.4,
+      "on_promotion": 3,
+      "transactions": 466.0
+    }
+  ],
+  "inventory_status": [
+    {
+      "store_id": "1",
+      "product_id": "BEVERAGES",
+      "current_stock": 300,
+      "lead_time_days": 3
+    },
+    {
+      "store_id": "2",
+      "product_id": "BEVERAGES",
+      "current_stock": 8000
+    }
+  ]
+}

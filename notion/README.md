@@ -67,7 +67,7 @@ Decisiones de diseño: `docs/decisiones/` (ADR 0002–0007). Contrato de datos: 
 ## Convención de las capturas
 
 En cada HU, la sección **📸 Capturas sugeridas** indica exactamente qué pantalla tomar y desde
-dónde. Recomendado: ejecutar los comandos / abrir Swagger en `http://127.0.0.1:8000/docs` y
+dónde. Recomendado: ejecutar los comandos / abrir Swagger en `http://127.0.0.1:8010/docs` y
 capturar las respuestas `200` reales.
 </content>
 </invoke>
