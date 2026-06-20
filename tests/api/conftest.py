@@ -27,6 +27,17 @@ from spc.config import Settings
 from spc.service.artefactos import RegistroArtefactos
 
 
+@pytest.fixture(autouse=True)
+def _persistencia_desactivada_por_defecto(monkeypatch) -> None:
+    """Por defecto los tests de la API **no** persisten (no tocan ``data/spc.db``).
+
+    Los tests de persistencia (``test_persistencia.py``) inyectan su propio repositorio
+    temporal, que tiene prioridad sobre esta variable (la inyección directa evita abrir
+    archivo en el lifespan). Así el resto de la suite queda aislada y sin efectos.
+    """
+    monkeypatch.setenv("SPC_PERSIST_ENABLED", "0")
+
+
 @pytest.fixture(scope="session")
 def directorio_modelos(tmp_path_factory) -> object:
     """Entrena y serializa los tres artefactos diminutos en un ``models/`` temporal."""
