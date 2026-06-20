@@ -197,6 +197,18 @@ class RepositorioPredicciones:
         """Conexión subyacente (para lectura en scripts de export). Úsese con cuidado."""
         return self._con
 
+    def leer_corpus(self, *, client_id: str | None = None, dedup: bool = True) -> Any:
+        """Lee el corpus acumulado como ``DataFrame`` (deduplicado por defecto).
+
+        Delega en ``spc.service.corpus`` (regla de dedup única, compartida con el export
+        y el entrenamiento por cliente, ADR-0013). Toma el ``_lock`` para leer de forma
+        segura mientras otro hilo (predicción/lote) podría estar escribiendo.
+        """
+        from spc.service import corpus
+
+        with self._lock:
+            return corpus.leer_observaciones(self._con, client_id, dedup=dedup)
+
     # -- Ciclo de vida -----------------------------------------------------
     def cerrar(self) -> None:
         """Cierra la conexión SQLite (idempotente ante errores)."""

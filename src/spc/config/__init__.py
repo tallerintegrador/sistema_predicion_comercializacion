@@ -44,6 +44,41 @@ BATCH_WORKERS_DEFAULT = 1
 PERSIST_ENABLED_DEFAULT = True
 DB_FILE_DEFAULT = "spc.db"
 
+# ---------------------------------------------------------------------------
+# Entrenamiento por cliente bajo demanda (Camino A completo, ADR-0013)
+# ---------------------------------------------------------------------------
+# OPT-IN: solo se reentrena cuando el cliente lo pide; el camino por defecto (modelo
+# CONGELADO) queda intacto para todos los demás. El entrenamiento corre como trabajo
+# asíncrono LOCAL, desacoplado del flujo de predicción. Un modelo por cliente solo se
+# adopta (y se sirve a ESE cliente) si **supera al congelado** en validación temporal
+# honesta (WAPE recursivo); "no mejora" es un resultado válido que se reporta.
+CLIENT_ADJ_ENABLED_DEFAULT = True
+# Carpeta raíz de los artefactos por cliente (namespaced por client_id). Conviven con
+# los congelados de ``models/`` sin reemplazarlos.
+CLIENT_MODELS_SUBDIR_DEFAULT = "clientes"
+# Nº de hilos del executor de entrenamiento (SEPARADO del de lote, para no competir con
+# la predicción). 1 por defecto: entrena FIFO y acota memoria/CPU.
+TRAINING_WORKERS_DEFAULT = 1
+# Gate de datos mínimos para entrenar (si no se cumple → aviso honesto, NO se entrena):
+# días de historia distintos, nº de observaciones y nº de series (store×product).
+CLIENT_ADJ_MIN_DAYS_DEFAULT = 60
+CLIENT_ADJ_MIN_ROWS_DEFAULT = 120
+CLIENT_ADJ_MIN_SERIES_DEFAULT = 1
+# Ventana de validación temporal ADAPTATIVA a la historia: cada holdout (valid y test)
+# dura ``round(dias_utiles * FRAC)``, recortado a [MIN_W, MAX_W]. MAX_W = 16 = la ventana
+# del modelo congelado (espejo del test de Favorita); así clientes con mucha historia se
+# validan igual que el congelado y los de poca con ventanas más cortas pero honestas.
+CLIENT_ADJ_VALID_FRAC_DEFAULT = 0.15
+CLIENT_ADJ_MIN_WINDOW_DEFAULT = 7
+CLIENT_ADJ_MAX_WINDOW_DEFAULT = 16
+# Mejora mínima de WAPE (puntos absolutos) del candidato sobre el congelado para
+# adoptar. Default 0.0 = **cualquier mejora estricta** (el candidato debe además no ser
+# peor que el mejor baseline ingenuo). Subirlo exige mejoras más claras.
+CLIENT_ADJ_MIN_IMPROVEMENT_DEFAULT = 0.0
+# Los boosters del entrenamiento por cliente usan GPU solo si se activa explícitamente;
+# por defecto CPU (el trabajo es local y debe correr sin GPU, igual que los tests).
+CLIENT_ADJ_USE_GPU_DEFAULT = False
+
 
 def _entero_positivo_env(nombre: str, por_defecto: int) -> int:
     """Lee un entero positivo de la variable ``nombre`` (o ``por_defecto`` si falta/inválida)."""
@@ -136,6 +171,86 @@ def db_path() -> Path:
     if valor:
         return Path(valor)
     return Settings().base_dir / "data" / DB_FILE_DEFAULT
+
+
+def _float_no_negativo_env(nombre: str, por_defecto: float) -> float:
+    """Lee un float ``>= 0`` de la variable ``nombre`` (o ``por_defecto`` si falta/inválida)."""
+    valor = os.getenv(nombre, "").strip()
+    if not valor:
+        return por_defecto
+    try:
+        x = float(valor)
+    except ValueError:
+        return por_defecto
+    return x if x >= 0 else por_defecto
+
+
+# ---------------------------------------------------------------------------
+# Accesores del entrenamiento por cliente bajo demanda (ADR-0013)
+# ---------------------------------------------------------------------------
+def client_adjustment_enabled() -> bool:
+    """¿Está activo el entrenamiento por cliente bajo demanda? (``SPC_CLIENT_ADJ_ENABLED``).
+
+    Si es ``False``, los endpoints de entrenamiento responden 503 y el serving usa siempre
+    el modelo congelado: el camino por defecto queda intacto. Es OPT-IN por cliente; esta
+    bandera solo habilita/inhabilita la **capacidad** a nivel de despliegue.
+    """
+    return _bool_env("SPC_CLIENT_ADJ_ENABLED", CLIENT_ADJ_ENABLED_DEFAULT)
+
+
+def client_models_dir() -> Path:
+    """Carpeta de artefactos por cliente (``SPC_CLIENT_MODELS_DIR`` o ``<base>/models/clientes``)."""
+    valor = os.getenv("SPC_CLIENT_MODELS_DIR", "").strip()
+    if valor:
+        return Path(valor)
+    return Settings().base_dir / "models" / CLIENT_MODELS_SUBDIR_DEFAULT
+
+
+def training_workers() -> int:
+    """Nº de hilos del executor de entrenamiento por cliente (``SPC_TRAINING_WORKERS`` o 1)."""
+    return _entero_positivo_env("SPC_TRAINING_WORKERS", TRAINING_WORKERS_DEFAULT)
+
+
+def client_adj_min_days() -> int:
+    """Días de historia mínimos para entrenar por cliente (``SPC_CLIENT_ADJ_MIN_DAYS`` o 60)."""
+    return _entero_positivo_env("SPC_CLIENT_ADJ_MIN_DAYS", CLIENT_ADJ_MIN_DAYS_DEFAULT)
+
+
+def client_adj_min_rows() -> int:
+    """Observaciones mínimas para entrenar por cliente (``SPC_CLIENT_ADJ_MIN_ROWS`` o 120)."""
+    return _entero_positivo_env("SPC_CLIENT_ADJ_MIN_ROWS", CLIENT_ADJ_MIN_ROWS_DEFAULT)
+
+
+def client_adj_min_series() -> int:
+    """Series (store×product) mínimas para entrenar por cliente (``SPC_CLIENT_ADJ_MIN_SERIES`` o 1)."""
+    return _entero_positivo_env("SPC_CLIENT_ADJ_MIN_SERIES", CLIENT_ADJ_MIN_SERIES_DEFAULT)
+
+
+def client_adj_valid_frac() -> float:
+    """Fracción de la historia útil por holdout temporal (``SPC_CLIENT_ADJ_VALID_FRAC`` o 0.15)."""
+    return _float_positivo_env("SPC_CLIENT_ADJ_VALID_FRAC", CLIENT_ADJ_VALID_FRAC_DEFAULT)
+
+
+def client_adj_min_window() -> int:
+    """Mínimo de días por holdout temporal por cliente (``SPC_CLIENT_ADJ_MIN_WINDOW`` o 7)."""
+    return _entero_positivo_env("SPC_CLIENT_ADJ_MIN_WINDOW", CLIENT_ADJ_MIN_WINDOW_DEFAULT)
+
+
+def client_adj_max_window() -> int:
+    """Máximo de días por holdout temporal por cliente (``SPC_CLIENT_ADJ_MAX_WINDOW`` o 16)."""
+    return _entero_positivo_env("SPC_CLIENT_ADJ_MAX_WINDOW", CLIENT_ADJ_MAX_WINDOW_DEFAULT)
+
+
+def client_adj_min_improvement() -> float:
+    """Mejora mínima de WAPE (puntos) para adoptar (``SPC_CLIENT_ADJ_MIN_IMPROVEMENT`` o 0.0)."""
+    return _float_no_negativo_env(
+        "SPC_CLIENT_ADJ_MIN_IMPROVEMENT", CLIENT_ADJ_MIN_IMPROVEMENT_DEFAULT
+    )
+
+
+def client_adj_use_gpu() -> bool:
+    """¿El entrenamiento por cliente usa GPU? (``SPC_CLIENT_ADJ_USE_GPU`` o False)."""
+    return _bool_env("SPC_CLIENT_ADJ_USE_GPU", CLIENT_ADJ_USE_GPU_DEFAULT)
 
 
 # ---------------------------------------------------------------------------

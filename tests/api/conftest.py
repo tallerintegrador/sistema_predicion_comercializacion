@@ -84,9 +84,17 @@ def registro(directorio_modelos) -> RegistroArtefactos:
 
 
 @pytest.fixture
-def client(registro) -> object:
-    """`TestClient` sobre la app con el registro inyectado (sin tocar el disco real)."""
-    app = crear_app(registro=registro, cors_origins=["http://localhost:5173"])
+def client(registro, tmp_path) -> object:
+    """`TestClient` sobre la app con el registro inyectado (sin tocar el disco real).
+
+    La carpeta de modelos por cliente (ADR-0013) se apunta a un temporal por test, de modo
+    que ningún test escriba en ``models/clientes`` del repo.
+    """
+    app = crear_app(
+        registro=registro,
+        client_models_dir=tmp_path / "clientes",
+        cors_origins=["http://localhost:5173"],
+    )
     with TestClient(app) as c:
         yield c
 

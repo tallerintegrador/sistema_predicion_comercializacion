@@ -68,10 +68,17 @@ MODES = [
     ),
     Availability(
         name="client_adjustment",
-        status="planned",
+        status="available",
         description=(
-            "Ajuste del modelo por cliente sobre el lote (opción B/híbrida): experimento "
-            "futuro y medido. Hoy NO se implementa; el lote usa el modelo congelado (opción A)."
+            "Ajuste del modelo por cliente BAJO DEMANDA (opt-in, ADR-0013). El cliente sube su "
+            "plantilla Excel de SALES y dispara un entrenamiento LOCAL asíncrono (POST "
+            "/training/sales/excel → job_id; estado en GET /training/jobs/{id}). Corre un "
+            "experimento medido: compara el modelo por cliente contra el CONGELADO y un baseline "
+            "ingenuo en validación temporal honesta (WAPE recursivo), y solo ADOPTA el modelo por "
+            "cliente si supera al congelado; 'no mejora' se reporta y se sigue con el congelado. "
+            "El modelo por cliente se sirve solo a ESE cliente (switch en POST /training/sales/"
+            "serving). El camino por defecto (congelado) queda intacto para quien no opta. Hoy "
+            "cubre SALES (regresión); el lote sigue usando el congelado (opción A)."
         ),
     ),
 ]

@@ -66,15 +66,22 @@ def pronosticar(
     horizonte: int,
     granularidad: str,
     registro: RegistroArtefactos,
+    artefacto: ArtefactoCargado | None = None,
 ) -> dict[str, Any]:
     """Pronostica la demanda y devuelve la respuesta del contrato de VENTAS (como dict).
 
     El dict tiene exactamente la forma de ``VentasResponse``: ``field``, ``model``
     (versión leída del meta), ``forecast`` y ``metadata`` (escala y transformación
     interna, también del meta — nunca constantes en el código).
+
+    ``artefacto`` permite servir un modelo de regresión **por cliente** ya adoptado
+    (ADR-0013); si es ``None`` se usa el **congelado** (``registro.regresion``), el camino
+    por defecto intacto. El ``model`` de la respuesta sale del meta del artefacto servido,
+    de modo que refleja honestamente si se sirvió el congelado o el del cliente.
     """
+    reg = artefacto or registro.regresion
     analitico = adaptador.historico_a_analitico(historico)
-    pred = forecast_diario(analitico, horizonte, registro.regresion)
+    pred = forecast_diario(analitico, horizonte, reg)
     pred = _agregar_por_granularidad(pred, granularidad)
     pred = pred.sort_values(["store_nbr", "family", "date"]).reset_index(drop=True)
 
@@ -88,7 +95,7 @@ def pronosticar(
         for _, row in pred.iterrows()
     ]
 
-    meta = registro.regresion.meta
+    meta = reg.meta
     escala = meta.get("escala_metricas", "units")
     return {
         "field": "sales",

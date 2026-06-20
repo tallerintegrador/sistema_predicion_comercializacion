@@ -12,6 +12,7 @@ from spc.api.dependencies import (
     obtener_jobs,
     obtener_registro,
     obtener_repositorio,
+    obtener_resolutor_cliente,
 )
 from spc.api.jobs import GestorTrabajos
 from spc.api.ruteo import responder_segun_volumen
@@ -19,6 +20,7 @@ from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.jobs import JobAccepted
 from spc.api.schemas.ventas import VentasRequest, VentasResponse
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 
 router = APIRouter(tags=["SALES"])
@@ -40,6 +42,7 @@ def pronosticar_ventas(
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
     repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    resolutor: Annotated[ResolutorModeloCliente | None, Depends(obtener_resolutor_cliente)],
     client_id: Annotated[str, Depends(obtener_client_id)],
 ) -> dict | JSONResponse:
     """Pronóstico de demanda por período, punto de venta y producto.
@@ -58,5 +61,5 @@ def pronosticar_ventas(
     """
     return responder_segun_volumen(
         "sales", peticion, registro, jobs,
-        repositorio=repositorio, canal="json", client_id=client_id,
+        repositorio=repositorio, resolutor=resolutor, canal="json", client_id=client_id,
     )

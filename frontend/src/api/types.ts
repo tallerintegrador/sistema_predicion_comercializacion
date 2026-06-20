@@ -143,6 +143,71 @@ export interface JobAccepted {
   result_url: string
 }
 
+// --- Entrenamiento por cliente bajo demanda (training.py, ADR-0013) ---
+export type TrainingPhase = 'validating' | 'training' | 'evaluating'
+export type TrainingOutcome = 'adopted' | 'not_adopted' | 'insufficient_data' | 'inconclusive'
+export type TrainingSource = 'merged' | 'excel' | 'corpus'
+
+export interface TrainingAccepted {
+  job_id: string
+  status: JobStatusValue
+  domain: 'sales'
+  client_id: string
+  source: string
+  status_url: string
+  result_url: string
+}
+
+export interface TrainingJobStatus {
+  job_id: string
+  status: JobStatusValue
+  phase?: TrainingPhase | null
+  domain: string
+  client_id: string
+  source: string
+  created_at: string
+  finished_at?: string | null
+  result_url: string
+}
+
+export interface MetricTriple {
+  WAPE: number
+  MAE: number
+  RMSE: number
+}
+
+export interface BaselineMetric extends MetricTriple {
+  name: string
+}
+
+/** Resultado del experimento medido (comparación honesta + veredicto de adopción). */
+export interface TrainingResult {
+  domain: 'sales'
+  outcome: TrainingOutcome
+  message: string
+  metric?: string
+  window_days?: number
+  candidate?: MetricTriple
+  frozen?: MetricTriple
+  baseline?: BaselineMetric | null
+  improvement_wape_points?: number
+  beats_frozen?: boolean
+  beats_baseline?: boolean
+  model_version?: string
+  missing?: string[]
+}
+
+export interface ServingStatus {
+  domain: 'sales'
+  client_id: string
+  has_client_model: boolean
+  serving_client_model: boolean
+  adopted_version?: number | null
+  model_version?: string | null
+  trained_versions: number[]
+  last_comparison?: TrainingResult | null
+}
+
 // --- Catálogo (catalog.py) ---
 export type AvailabilityStatus = 'available' | 'planned'
 

@@ -9,6 +9,7 @@ import { HistoryPreview } from '../components/HistoryPreview'
 import { JobBanner } from '../components/JobBanner'
 import { MetadataPanel } from '../components/MetadataPanel'
 import { ResultTable } from '../components/ResultTable'
+import { TrainingPanel } from '../components/TrainingPanel'
 import type { Column } from '../components/ResultTable'
 import { SalesChart } from '../components/charts/SalesChart'
 import { fmtNum } from '../utils/format'
@@ -90,6 +91,8 @@ export function SalesPage() {
       </section>
 
       <ExcelPanel domain="sales" onUpload={onExcel} busy={busy} />
+
+      <TrainingPanel />
 
       <JobBanner status={pred.status} jobId={pred.jobId} attempts={pred.attempts} />
       {pred.status === 'error' && pred.error && <ErrorPanel error={pred.error} />}

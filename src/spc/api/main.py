@@ -22,9 +22,19 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from spc.api.errors import registrar_manejadores
 from spc.api.jobs import GestorTrabajos
-from spc.api.routers import almacen, catalog, compras, excel, jobs, ventas
-from spc.config import Settings, batch_workers, db_enabled, db_path
+from spc.api.jobs_entrenamiento import GestorEntrenamientos
+from spc.api.routers import almacen, catalog, compras, entrenamiento, excel, jobs, ventas
+from spc.config import (
+    Settings,
+    batch_workers,
+    client_adjustment_enabled,
+    db_enabled,
+    db_path,
+    training_workers,
+)
+from spc.config import client_models_dir as cfg_client_models_dir
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 from spc.utils.logging import get_logger
 
@@ -71,6 +81,7 @@ def crear_app(
     registro: RegistroArtefactos | None = None,
     repositorio: RepositorioPredicciones | None = None,
     models_dir: Path | None = None,
+    client_models_dir: Path | None = None,
     cors_origins: list[str] | None = None,
 ) -> FastAPI:
     """Construye y configura la aplicación FastAPI.
@@ -80,6 +91,9 @@ def crear_app(
     - ``repositorio``: almacén de corpus a inyectar (tests). Si es ``None`` y la
       persistencia está activa (``SPC_PERSIST_ENABLED``), se abre en el lifespan desde
       ``db_path()``. Ver ADR-0011 (Fase A MEJORADO).
+    - ``client_models_dir``: carpeta de artefactos por cliente (ADR-0013). Si es ``None``
+      se usa ``SPC_CLIENT_MODELS_DIR`` (o ``<base>/models/clientes``). Los tests inyectan
+      una carpeta temporal para no tocar el repo.
     - ``cors_origins``: orígenes permitidos (por defecto, los de ``SPC_CORS_ORIGINS``).
     """
 
@@ -106,6 +120,9 @@ def crear_app(
         finally:
             # Apaga el executor de lote esperando a los trabajos en curso.
             app.state.jobs.cerrar()
+            # Apaga el executor de entrenamiento por cliente (si está activo).
+            if getattr(app.state, "entrenamientos", None) is not None:
+                app.state.entrenamientos.cerrar()
             # Cierra la base del corpus (si se abrió).
             if getattr(app.state, "repositorio", None) is not None:
                 app.state.repositorio.cerrar()
@@ -128,6 +145,18 @@ def crear_app(
     # disponible aunque el registro se inyecte directamente. Se cierra en el lifespan.
     app.state.jobs = GestorTrabajos(max_workers=batch_workers())
 
+    # Ajuste por cliente bajo demanda (ADR-0013): resolutor de serving + executor de
+    # entrenamiento (separado del de lote). Solo si está habilitado por entorno; si no, el
+    # serving usa siempre el congelado y los endpoints de training responden 503.
+    cmd = client_models_dir or cfg_client_models_dir()
+    app.state.client_models_dir = cmd
+    if client_adjustment_enabled():
+        app.state.resolutor_cliente = ResolutorModeloCliente(cmd)
+        app.state.entrenamientos = GestorEntrenamientos(max_workers=training_workers())
+    else:
+        app.state.resolutor_cliente = None
+        app.state.entrenamientos = None
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins if cors_origins is not None else _origenes_cors(),
@@ -143,6 +172,7 @@ def crear_app(
     app.include_router(catalog.router)
     app.include_router(excel.router)
     app.include_router(jobs.router)
+    app.include_router(entrenamiento.router)
 
     @app.get("/health", tags=["status"], summary="Salud del servicio")
     def salud() -> dict[str, str]:

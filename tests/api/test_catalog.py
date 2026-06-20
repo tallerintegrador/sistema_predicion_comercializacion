@@ -101,14 +101,17 @@ def test_catalog_solo_sales_expone_model(client):
 
 
 def test_catalog_etiqueta_canales_y_modos_con_honestidad(client):
-    """JSON/Excel y en línea/lote disponibles hoy; el ajuste por cliente, planificado."""
+    """JSON/Excel, en línea/lote y ajuste por cliente disponibles hoy (ADR-0013)."""
     cat = client.get("/catalog").json()
     canales = {c["name"]: c["status"] for c in cat["channels"]}
     modos = {m["name"]: m["status"] for m in cat["modes"]}
     assert canales["json"] == "available" and canales["excel"] == "available"
     assert modos["online"] == "available" and modos["batch"] == "available"
-    # El ajuste por cliente (opción B/híbrida) sigue siendo experimento futuro.
-    assert modos["client_adjustment"] == "planned"
+    # El ajuste por cliente bajo demanda ya es funcional y validado (opt-in, ADR-0013).
+    assert modos["client_adjustment"] == "available"
+    desc = next(m["description"] for m in cat["modes"] if m["name"] == "client_adjustment").lower()
+    # Honestidad: opt-in, validado vs congelado, "no mejora" se reporta.
+    assert "opt-in" in desc and "congelado" in desc
 
 
 @pytest.mark.parametrize("dominio", sorted(DOMINIOS_ESPERADOS))
@@ -214,6 +217,12 @@ def test_catalog_coincide_con_openapi(client):
     if modos.get("batch") == "available":
         assert "/jobs/{job_id}" in paths
         assert "/jobs/{job_id}/result" in paths
+    if modos.get("client_adjustment") == "available":
+        # El ajuste por cliente (ADR-0013) expone disparo + estado + resultado + switch.
+        assert "/training/sales/excel" in paths
+        assert "/training/jobs/{job_id}" in paths
+        assert "/training/jobs/{job_id}/result" in paths
+        assert "/training/sales/serving" in paths
 
 
 def test_catalog_pending_solo_lista_el_cuantil_model_adjacent(client):

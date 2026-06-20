@@ -27,6 +27,7 @@ from spc.api.dependencies import (
     obtener_jobs,
     obtener_registro,
     obtener_repositorio,
+    obtener_resolutor_cliente,
 )
 from spc.api.ingest import lector, plantilla
 from spc.api.ingest.esquema_excel import plantilla_de
@@ -40,6 +41,7 @@ from spc.api.schemas.jobs import JobAccepted
 from spc.api.schemas.ventas import VentasRequest, VentasResponse
 from spc.config import excel_max_bytes
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 
 router = APIRouter(tags=["excel"])
@@ -98,6 +100,7 @@ async def cargar_sales(
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
     repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    resolutor: Annotated[ResolutorModeloCliente | None, Depends(obtener_resolutor_cliente)],
     client_id: Annotated[str, Depends(obtener_client_id)],
 ) -> dict | JSONResponse:
     """Sube el Excel de SALES y devuelve el mismo resultado que ``POST /sales``."""
@@ -105,7 +108,7 @@ async def cargar_sales(
     peticion = cast(VentasRequest, lector.leer_peticion(contenido, "sales"))
     return responder_segun_volumen(
         "sales", peticion, registro, jobs,
-        repositorio=repositorio, canal="excel", client_id=client_id,
+        repositorio=repositorio, resolutor=resolutor, canal="excel", client_id=client_id,
     )
 
 

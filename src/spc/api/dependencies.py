@@ -14,7 +14,9 @@ from fastapi import Header, Request
 
 from spc.api.errors import ServicioNoDisponible
 from spc.api.jobs import GestorTrabajos
+from spc.api.jobs_entrenamiento import GestorEntrenamientos
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 
 
@@ -51,6 +53,29 @@ def obtener_repositorio(request: Request) -> RepositorioPredicciones | None:
     simplemente no acumula corpus — la predicción no se ve afectada.
     """
     return getattr(request.app.state, "repositorio", None)
+
+
+def obtener_resolutor_cliente(request: Request) -> ResolutorModeloCliente | None:
+    """Devuelve el resolutor de modelos por cliente (ADR-0013) o ``None``.
+
+    ``None`` si el ajuste por cliente está desactivado (``SPC_CLIENT_ADJ_ENABLED=0``) o no
+    se inicializó: en ese caso el serving usa siempre el congelado (default intacto).
+    """
+    return getattr(request.app.state, "resolutor_cliente", None)
+
+
+def obtener_entrenamientos(request: Request) -> GestorEntrenamientos:
+    """Devuelve el gestor de trabajos de entrenamiento por cliente (executor separado).
+
+    Lanza ``ServicioNoDisponible`` (→ 503) si el ajuste por cliente está desactivado o no
+    se inicializó (los endpoints de entrenamiento no están disponibles entonces).
+    """
+    gestor = getattr(request.app.state, "entrenamientos", None)
+    if gestor is None:
+        raise ServicioNoDisponible(
+            "El entrenamiento por cliente no está disponible (deshabilitado por configuración)."
+        )
+    return gestor
 
 
 def obtener_client_id(

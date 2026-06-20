@@ -34,7 +34,8 @@ from spc.api.schemas.jobs import JobAccepted
 from spc.api.schemas.ventas import VentasResponse
 from spc.config import online_max_rows
 from spc.service import almacen_service, compras_service, ventas_service
-from spc.service.artefactos import RegistroArtefactos
+from spc.service.artefactos import ArtefactoCargado, RegistroArtefactos
+from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 from spc.utils.logging import get_logger
 
@@ -44,16 +45,24 @@ log = get_logger("api.ruteo")
 # ---------------------------------------------------------------------------
 # El flujo de predicción por dominio (el MISMO que usan en línea y lote)
 # ---------------------------------------------------------------------------
-def _procesar_sales(peticion: Any, registro: RegistroArtefactos) -> dict[str, Any]:
+# ``artefacto`` es el modelo de regresión **resuelto por cliente** (ADR-0013): para SALES
+# puede ser el modelo del cliente adoptado o el congelado; para PURCHASES/INVENTORY se
+# ignora (siguen sirviéndose con el motor CONGELADO en esta fase).
+def _procesar_sales(
+    peticion: Any, registro: RegistroArtefactos, artefacto: ArtefactoCargado | None
+) -> dict[str, Any]:
     return ventas_service.pronosticar(
         historico=[h.model_dump() for h in peticion.history],
         horizonte=peticion.horizon,
         granularidad=peticion.granularity,
         registro=registro,
+        artefacto=artefacto,
     )
 
 
-def _procesar_purchases(peticion: Any, registro: RegistroArtefactos) -> dict[str, Any]:
+def _procesar_purchases(
+    peticion: Any, registro: RegistroArtefactos, artefacto: ArtefactoCargado | None
+) -> dict[str, Any]:
     return compras_service.reponer(
         historico=[h.model_dump() for h in peticion.history],
         parametros_reposicion=[p.model_dump() for p in peticion.replenishment_params],
@@ -61,7 +70,9 @@ def _procesar_purchases(peticion: Any, registro: RegistroArtefactos) -> dict[str
     )
 
 
-def _procesar_inventory(peticion: Any, registro: RegistroArtefactos) -> dict[str, Any]:
+def _procesar_inventory(
+    peticion: Any, registro: RegistroArtefactos, artefacto: ArtefactoCargado | None
+) -> dict[str, Any]:
     return almacen_service.alertas(
         historico=[h.model_dump() for h in peticion.history],
         estado_inventario=[e.model_dump() for e in peticion.inventory_status],
@@ -73,7 +84,7 @@ def _procesar_inventory(peticion: Any, registro: RegistroArtefactos) -> dict[str
 class _DominioRuteo:
     """Cómo se procesa y se serializa un dominio (su flujo y su modelo de respuesta)."""
 
-    procesar: Callable[[Any, RegistroArtefactos], dict[str, Any]]
+    procesar: Callable[[Any, RegistroArtefactos, ArtefactoCargado | None], dict[str, Any]]
     response_model: type[BaseModel]
 
 
@@ -134,6 +145,24 @@ def _persistir(
         log.warning("No se pudo persistir la predicción (%s/%s): %s", dominio, canal, exc)
 
 
+def _resolver_artefacto(
+    dominio: str,
+    registro: RegistroArtefactos,
+    resolutor: ResolutorModeloCliente | None,
+    client_id: str,
+) -> ArtefactoCargado | None:
+    """Modelo de regresión a usar para SALES: el del cliente si está adoptado, si no None.
+
+    ``None`` significa "usa el congelado" (el servicio cae a ``registro.regresion``). Solo
+    aplica a SALES (ADR-0013): PURCHASES/INVENTORY siguen con el congelado siempre.
+    """
+    if dominio != "sales" or resolutor is None:
+        return None
+    art = resolutor.resolver_regresion(client_id, registro.regresion)
+    # Si resolvió el propio congelado, devuelve None para no cambiar nada del camino base.
+    return None if art is registro.regresion else art
+
+
 def responder_segun_volumen(
     dominio: str,
     peticion: Any,
@@ -141,6 +170,7 @@ def responder_segun_volumen(
     jobs: GestorTrabajos,
     *,
     repositorio: RepositorioPredicciones | None = None,
+    resolutor: ResolutorModeloCliente | None = None,
     canal: str = "json",
     client_id: str = "default",
 ) -> dict[str, Any] | JSONResponse:
@@ -154,13 +184,18 @@ def responder_segun_volumen(
     En ambos modos, tras una predicción exitosa se guarda en el corpus (best-effort):
     ``canal`` (``json``/``excel``) y ``client_id`` (header ``X-Client-Id``) etiquetan
     cada envío. La persistencia jamás altera ni bloquea la respuesta.
+
+    ``resolutor`` (ADR-0013) decide, **solo para SALES**, si este ``client_id`` tiene un
+    modelo por cliente adoptado que servir; si no, se usa el congelado (camino por defecto
+    intacto). PURCHASES/INVENTORY no se ven afectados.
     """
     spec = _RUTEO[dominio]
     filas = contar_filas(peticion)
+    artefacto = _resolver_artefacto(dominio, registro, resolutor, client_id)
 
     if filas <= online_max_rows():
         # Modo en línea: comportamiento síncrono de siempre, intacto.
-        resultado = spec.procesar(peticion, registro)
+        resultado = spec.procesar(peticion, registro, artefacto)
         _persistir(
             repositorio,
             client_id=client_id,
@@ -177,7 +212,7 @@ def responder_segun_volumen(
     # replica la del modo en línea (exclude_none, mode="json") para que el resultado
     # recuperado sea idéntico al que devolvería la petición síncrona.
     def trabajo() -> dict[str, Any]:
-        crudo = spec.procesar(peticion, registro)
+        crudo = spec.procesar(peticion, registro, artefacto)
         modelo = spec.response_model.model_validate(crudo)
         cuerpo = modelo.model_dump(mode="json", exclude_none=True)
         _persistir(
