@@ -21,6 +21,13 @@ dist/
 data/synthetic/*
 !data/synthetic/.gitkeep
 
+# Corpus incremental SQLite (Fase A MEJORADO, ADR-0011) y exports del corpus
+*.db
+*.db-journal
+data/*.db
+data/corpus*.parquet
+data/corpus*.csv
+
 # IDE / SO
 .vscode/
 .idea/
