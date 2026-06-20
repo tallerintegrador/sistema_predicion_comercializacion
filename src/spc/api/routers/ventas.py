@@ -7,13 +7,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from spc.api.dependencies import obtener_jobs, obtener_registro
+from spc.api.dependencies import (
+    obtener_client_id,
+    obtener_jobs,
+    obtener_registro,
+    obtener_repositorio,
+)
 from spc.api.jobs import GestorTrabajos
 from spc.api.ruteo import responder_segun_volumen
 from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.jobs import JobAccepted
 from spc.api.schemas.ventas import VentasRequest, VentasResponse
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.repositorio import RepositorioPredicciones
 
 router = APIRouter(tags=["SALES"])
 
@@ -33,6 +39,8 @@ def pronosticar_ventas(
     peticion: VentasRequest,
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+    repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    client_id: Annotated[str, Depends(obtener_client_id)],
 ) -> dict | JSONResponse:
     """Pronóstico de demanda por período, punto de venta y producto.
 
@@ -48,4 +56,7 @@ def pronosticar_ventas(
     estado y resultado en ``GET /jobs/{job_id}``). El motor pronostica a nivel diario;
     ``week``/``month`` agrega (suma) el resultado. El catálogo completo, en ``GET /catalog``.
     """
-    return responder_segun_volumen("sales", peticion, registro, jobs)
+    return responder_segun_volumen(
+        "sales", peticion, registro, jobs,
+        repositorio=repositorio, canal="json", client_id=client_id,
+    )

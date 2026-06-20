@@ -35,6 +35,10 @@ from spc.api.schemas.ventas import VentasResponse
 from spc.config import online_max_rows
 from spc.service import almacen_service, compras_service, ventas_service
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.repositorio import RepositorioPredicciones
+from spc.utils.logging import get_logger
+
+log = get_logger("api.ruteo")
 
 
 # ---------------------------------------------------------------------------
@@ -85,11 +89,60 @@ def contar_filas(peticion: Any) -> int:
     return len(peticion.history)
 
 
+def _version_modelo(registro: RegistroArtefactos) -> str | None:
+    """Versión del artefacto de regresión, como etiqueta de respaldo del corpus.
+
+    COMPRAS/INVENTORY no exponen ``model`` en su respuesta; se usa la versión de
+    regresión (el motor congelado) solo como etiqueta de auditoría (best-effort).
+    """
+    try:
+        return registro.regresion.meta.get("version")
+    except Exception:  # noqa: BLE001 - etiqueta opcional; nunca debe fallar
+        return None
+
+
+def _persistir(
+    repositorio: RepositorioPredicciones | None,
+    *,
+    client_id: str,
+    dominio: str,
+    canal: str,
+    modo: str,
+    registro: RegistroArtefactos,
+    peticion: Any,
+    resultado: dict[str, Any],
+) -> None:
+    """Guarda la predicción en el corpus (Fase A MEJORADO, ADR-0011) — **best-effort**.
+
+    Un fallo de persistencia NUNCA rompe la predicción: se traga y se registra en el log.
+    Si la persistencia está desactivada (``repositorio is None``), no hace nada.
+    """
+    if repositorio is None:
+        return
+    try:
+        repositorio.registrar(
+            client_id=client_id,
+            domain=dominio,
+            channel=canal,
+            mode=modo,
+            model_version=resultado.get("model") or _version_modelo(registro),
+            history=[h.model_dump(mode="json") for h in peticion.history],
+            request_payload=peticion.model_dump(mode="json"),
+            response_payload=resultado,
+        )
+    except Exception as exc:  # noqa: BLE001 - frontera best-effort: nada escapa
+        log.warning("No se pudo persistir la predicción (%s/%s): %s", dominio, canal, exc)
+
+
 def responder_segun_volumen(
     dominio: str,
     peticion: Any,
     registro: RegistroArtefactos,
     jobs: GestorTrabajos,
+    *,
+    repositorio: RepositorioPredicciones | None = None,
+    canal: str = "json",
+    client_id: str = "default",
 ) -> dict[str, Any] | JSONResponse:
     """Decide en línea vs. lote por ``len(history)`` y responde en consecuencia.
 
@@ -97,13 +150,28 @@ def responder_segun_volumen(
       del resultado (la API lo serializa con su ``response_model`` → **200**).
     - en caso contrario → crea un trabajo, lo encola y devuelve **202** con el
       ``JobAccepted`` (job_id + dónde consultar estado y resultado).
+
+    En ambos modos, tras una predicción exitosa se guarda en el corpus (best-effort):
+    ``canal`` (``json``/``excel``) y ``client_id`` (header ``X-Client-Id``) etiquetan
+    cada envío. La persistencia jamás altera ni bloquea la respuesta.
     """
     spec = _RUTEO[dominio]
     filas = contar_filas(peticion)
 
     if filas <= online_max_rows():
         # Modo en línea: comportamiento síncrono de siempre, intacto.
-        return spec.procesar(peticion, registro)
+        resultado = spec.procesar(peticion, registro)
+        _persistir(
+            repositorio,
+            client_id=client_id,
+            dominio=dominio,
+            canal=canal,
+            modo="online",
+            registro=registro,
+            peticion=peticion,
+            resultado=resultado,
+        )
+        return resultado
 
     # Modo por lote: el MISMO flujo, ejecutado en segundo plano. La serialización
     # replica la del modo en línea (exclude_none, mode="json") para que el resultado
@@ -111,7 +179,18 @@ def responder_segun_volumen(
     def trabajo() -> dict[str, Any]:
         crudo = spec.procesar(peticion, registro)
         modelo = spec.response_model.model_validate(crudo)
-        return modelo.model_dump(mode="json", exclude_none=True)
+        cuerpo = modelo.model_dump(mode="json", exclude_none=True)
+        _persistir(
+            repositorio,
+            client_id=client_id,
+            dominio=dominio,
+            canal=canal,
+            modo="batch",
+            registro=registro,
+            peticion=peticion,
+            resultado=cuerpo,
+        )
+        return cuerpo
 
     job = jobs.crear(domain=dominio, rows=filas)
     jobs.enviar(job.id, trabajo)

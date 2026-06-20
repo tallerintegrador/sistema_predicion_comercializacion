@@ -23,8 +23,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from spc.api.errors import registrar_manejadores
 from spc.api.jobs import GestorTrabajos
 from spc.api.routers import almacen, catalog, compras, excel, jobs, ventas
-from spc.config import Settings, batch_workers
+from spc.config import Settings, batch_workers, db_enabled, db_path
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.repositorio import RepositorioPredicciones
 from spc.utils.logging import get_logger
 
 log = get_logger("api.main")
@@ -68,6 +69,7 @@ def _origenes_cors() -> list[str]:
 def crear_app(
     *,
     registro: RegistroArtefactos | None = None,
+    repositorio: RepositorioPredicciones | None = None,
     models_dir: Path | None = None,
     cors_origins: list[str] | None = None,
 ) -> FastAPI:
@@ -75,6 +77,9 @@ def crear_app(
 
     - ``registro``: artefactos ya cargados a inyectar (tests). Si es ``None``, se
       cargan en el lifespan desde ``models_dir`` (o ``<base>/models`` por defecto).
+    - ``repositorio``: almacén de corpus a inyectar (tests). Si es ``None`` y la
+      persistencia está activa (``SPC_PERSIST_ENABLED``), se abre en el lifespan desde
+      ``db_path()``. Ver ADR-0011 (Fase A MEJORADO).
     - ``cors_origins``: orígenes permitidos (por defecto, los de ``SPC_CORS_ORIGINS``).
     """
 
@@ -91,11 +96,19 @@ def crear_app(
                 app.state.registro.clasificacion.ruta.name,
                 app.state.registro.clustering_tiendas.ruta.name,
             )
+        # Persistencia del corpus: solo si no se inyectó y está activa por entorno.
+        if getattr(app.state, "repositorio", None) is None and db_enabled():
+            ruta = db_path()
+            log.info("Abriendo corpus incremental en %s ...", ruta)
+            app.state.repositorio = RepositorioPredicciones.crear(ruta)
         try:
             yield
         finally:
             # Apaga el executor de lote esperando a los trabajos en curso.
             app.state.jobs.cerrar()
+            # Cierra la base del corpus (si se abrió).
+            if getattr(app.state, "repositorio", None) is not None:
+                app.state.repositorio.cerrar()
 
     app = FastAPI(
         title="SPC — Sistema Predictivo de Comercialización",
@@ -108,6 +121,8 @@ def crear_app(
     # Inyección directa (tests): disponible aunque no se ejecute el lifespan.
     if registro is not None:
         app.state.registro = registro
+    if repositorio is not None:
+        app.state.repositorio = repositorio
 
     # Gestor de trabajos por lote (in-process): se crea siempre, de modo que esté
     # disponible aunque el registro se inyecte directamente. Se cierra en el lifespan.

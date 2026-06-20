@@ -7,13 +7,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from spc.api.dependencies import obtener_jobs, obtener_registro
+from spc.api.dependencies import (
+    obtener_client_id,
+    obtener_jobs,
+    obtener_registro,
+    obtener_repositorio,
+)
 from spc.api.jobs import GestorTrabajos
 from spc.api.ruteo import responder_segun_volumen
 from spc.api.schemas.almacen import AlmacenRequest, AlmacenResponse
 from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.jobs import JobAccepted
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.repositorio import RepositorioPredicciones
 
 router = APIRouter(tags=["INVENTORY"])
 
@@ -33,6 +39,8 @@ def evaluar_almacen(
     peticion: AlmacenRequest,
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+    repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    client_id: Annotated[str, Depends(obtener_client_id)],
 ) -> dict | JSONResponse:
     """Riesgo de quiebre y stock recomendado por producto (clasificación + perfilado).
 
@@ -47,4 +55,7 @@ def evaluar_almacen(
     encima de ``SPC_ONLINE_MAX_ROWS`` filas se acepta como trabajo por lote (**202**
     con ``job_id``). El catálogo completo está en ``GET /catalog``.
     """
-    return responder_segun_volumen("inventory", peticion, registro, jobs)
+    return responder_segun_volumen(
+        "inventory", peticion, registro, jobs,
+        repositorio=repositorio, canal="json", client_id=client_id,
+    )

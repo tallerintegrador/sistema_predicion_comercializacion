@@ -8,11 +8,14 @@ registro se inyecta directamente (artefactos diminutos) sin tocar el disco real.
 
 from __future__ import annotations
 
-from fastapi import Request
+from typing import Annotated
+
+from fastapi import Header, Request
 
 from spc.api.errors import ServicioNoDisponible
 from spc.api.jobs import GestorTrabajos
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.repositorio import RepositorioPredicciones
 
 
 def obtener_registro(request: Request) -> RegistroArtefactos:
@@ -37,3 +40,26 @@ def obtener_jobs(request: Request) -> GestorTrabajos:
     if jobs is None:
         raise ServicioNoDisponible("El gestor de trabajos por lote no está disponible.")
     return jobs
+
+
+def obtener_repositorio(request: Request) -> RepositorioPredicciones | None:
+    """Devuelve el repositorio de corpus (persistencia incremental) o ``None``.
+
+    A diferencia del motor o el gestor de lote, la persistencia es **opcional y
+    best-effort** (Fase A MEJORADO, ADR-0011): si está desactivada
+    (``SPC_PERSIST_ENABLED=0``) o no se inicializó, devuelve ``None`` y el ruteo
+    simplemente no acumula corpus — la predicción no se ve afectada.
+    """
+    return getattr(request.app.state, "repositorio", None)
+
+
+def obtener_client_id(
+    x_client_id: Annotated[str | None, Header(alias="X-Client-Id")] = None,
+) -> str:
+    """Identificador del cliente para etiquetar el corpus (header ``X-Client-Id``).
+
+    Es **metadato de transporte**, no parte del cuerpo del contrato (no lo toca). Si el
+    cliente no lo envía, cae a ``"default"``. Habilita corpus/ajuste por cliente a futuro.
+    """
+    valor = (x_client_id or "").strip()
+    return valor or "default"

@@ -22,7 +22,12 @@ from typing import Annotated, cast
 from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import JSONResponse, Response
 
-from spc.api.dependencies import obtener_jobs, obtener_registro
+from spc.api.dependencies import (
+    obtener_client_id,
+    obtener_jobs,
+    obtener_registro,
+    obtener_repositorio,
+)
 from spc.api.ingest import lector, plantilla
 from spc.api.ingest.esquema_excel import plantilla_de
 from spc.api.ingest.lector import ArchivoDemasiadoGrande
@@ -35,6 +40,7 @@ from spc.api.schemas.jobs import JobAccepted
 from spc.api.schemas.ventas import VentasRequest, VentasResponse
 from spc.config import excel_max_bytes
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.repositorio import RepositorioPredicciones
 
 router = APIRouter(tags=["excel"])
 
@@ -91,11 +97,16 @@ async def cargar_sales(
     file: UploadFile,
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+    repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    client_id: Annotated[str, Depends(obtener_client_id)],
 ) -> dict | JSONResponse:
     """Sube el Excel de SALES y devuelve el mismo resultado que ``POST /sales``."""
     contenido = await _leer_contenido(file)
     peticion = cast(VentasRequest, lector.leer_peticion(contenido, "sales"))
-    return responder_segun_volumen("sales", peticion, registro, jobs)
+    return responder_segun_volumen(
+        "sales", peticion, registro, jobs,
+        repositorio=repositorio, canal="excel", client_id=client_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -118,11 +129,16 @@ async def cargar_purchases(
     file: UploadFile,
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+    repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    client_id: Annotated[str, Depends(obtener_client_id)],
 ) -> dict | JSONResponse:
     """Sube el Excel de PURCHASES y devuelve el mismo resultado que ``POST /purchases``."""
     contenido = await _leer_contenido(file)
     peticion = cast(ComprasRequest, lector.leer_peticion(contenido, "purchases"))
-    return responder_segun_volumen("purchases", peticion, registro, jobs)
+    return responder_segun_volumen(
+        "purchases", peticion, registro, jobs,
+        repositorio=repositorio, canal="excel", client_id=client_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,8 +161,13 @@ async def cargar_inventory(
     file: UploadFile,
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+    repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    client_id: Annotated[str, Depends(obtener_client_id)],
 ) -> dict | JSONResponse:
     """Sube el Excel de INVENTORY y devuelve el mismo resultado que ``POST /inventory``."""
     contenido = await _leer_contenido(file)
     peticion = cast(AlmacenRequest, lector.leer_peticion(contenido, "inventory"))
-    return responder_segun_volumen("inventory", peticion, registro, jobs)
+    return responder_segun_volumen(
+        "inventory", peticion, registro, jobs,
+        repositorio=repositorio, canal="excel", client_id=client_id,
+    )
