@@ -35,6 +35,15 @@ ONLINE_MAX_ROWS_DEFAULT = 2_000
 # Celery/Redis). 1 por defecto: procesa FIFO y acota el uso de memoria.
 BATCH_WORKERS_DEFAULT = 1
 
+# Persistencia incremental del corpus (Fase A MEJORADO, ADR-0011). Cada predicción
+# guarda el `history` del cliente (corpus de entrenamiento que crece) y su salida
+# (auditoría/replay) en una base SQLite. Es best-effort: un fallo de BD NUNCA rompe
+# la predicción. Activa por defecto; se desactiva con SPC_PERSIST_ENABLED=0 (p. ej.
+# en algunos tests). La ruta del archivo es configurable (SPC_DB_PATH); por defecto
+# `<base>/data/spc.db`.
+PERSIST_ENABLED_DEFAULT = True
+DB_FILE_DEFAULT = "spc.db"
+
 
 def _entero_positivo_env(nombre: str, por_defecto: int) -> int:
     """Lee un entero positivo de la variable ``nombre`` (o ``por_defecto`` si falta/inválida)."""
@@ -46,6 +55,21 @@ def _entero_positivo_env(nombre: str, por_defecto: int) -> int:
     except ValueError:
         return por_defecto
     return n if n > 0 else por_defecto
+
+
+def _bool_env(nombre: str, por_defecto: bool) -> bool:
+    """Lee un booleano de la variable ``nombre`` (``1/true/yes/on`` → True; ``0/false/no/off`` → False).
+
+    Si la variable falta o trae un valor no reconocido, cae al ``por_defecto``.
+    """
+    valor = os.getenv(nombre, "").strip().lower()
+    if not valor:
+        return por_defecto
+    if valor in ("1", "true", "yes", "on"):
+        return True
+    if valor in ("0", "false", "no", "off"):
+        return False
+    return por_defecto
 
 
 def _float_positivo_env(nombre: str, por_defecto: float) -> float:
@@ -91,6 +115,27 @@ def online_max_rows() -> int:
 def batch_workers() -> int:
     """Nº de hilos del executor in-process de lote (``SPC_BATCH_WORKERS`` o 1)."""
     return _entero_positivo_env("SPC_BATCH_WORKERS", BATCH_WORKERS_DEFAULT)
+
+
+def db_enabled() -> bool:
+    """¿Está activa la persistencia incremental del corpus? (``SPC_PERSIST_ENABLED`` o True).
+
+    Si es ``False``, la API no abre la base ni guarda predicciones (el comportamiento de
+    predicción es idéntico; solo no se acumula corpus). Ver ADR-0011 (Fase A MEJORADO).
+    """
+    return _bool_env("SPC_PERSIST_ENABLED", PERSIST_ENABLED_DEFAULT)
+
+
+def db_path() -> Path:
+    """Ruta del archivo SQLite del corpus (``SPC_DB_PATH`` o ``<base>/data/spc.db``).
+
+    Default relativo al directorio de trabajo del proceso (igual criterio que
+    ``Settings.base_dir``). La carpeta se crea al abrir la base si no existe.
+    """
+    valor = os.getenv("SPC_DB_PATH", "").strip()
+    if valor:
+        return Path(valor)
+    return Settings().base_dir / "data" / DB_FILE_DEFAULT
 
 
 # ---------------------------------------------------------------------------
