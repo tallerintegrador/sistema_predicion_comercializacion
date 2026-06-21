@@ -36,6 +36,7 @@ anti-desync.
 | 15 | **Verificación automática de «datos suficientes»** antes de entrenar | 🟥 Falta (visible, «Próximamente») | hoy solo veredicto `insufficient_data` *durante* el entrenamiento | **`AGREGAR EN BACKEND:`** ver §6 |
 | 16 | **Reentrenamiento para Compras/Almacén** | 🟥 Falta (no expuesto) | solo Ventas tiene ajuste por cliente | **`AGREGAR EN BACKEND:`** ver §5 |
 | 17 | **Reentrenamiento del modelo base** desde la UI | 🟥 Falta (no expuesto) | proceso offline (scripts), sin endpoint | **`AGREGAR EN BACKEND:`** ver §5 |
+| 18 | **«Configuración detectada en tu archivo» (Excel)** mostrada/ajustable en pantalla | 🟥 Falta | `POST /{dominio}/excel` aplica la config del archivo pero no la devuelve | **`AGREGAR EN BACKEND:`** ver §4b |
 
 Leyenda: ✅ implementada · 🟡 parcial · 🟥 falta.
 
@@ -82,6 +83,26 @@ Recomendación: (b) es más barato (no añade estado) y suficiente para poblar e
   pronosticado, un intervalo `[inferior, superior]` al 80% (p. ej. por cuantiles del modelo o
   un método de incertidumbre). Cuando el artefacto lo produzca, el servicio solo debe poblar
   `interval_80`; la respuesta y el catálogo ya lo contemplan. La UI lo activará automáticamente.
+
+---
+
+## 4b. Configuración embebida en el Excel («Configuración detectada en tu archivo»)
+
+El rediseño del flujo en 3 pasos (datos → configuración → acción) introduce, en el Paso 2 de
+**Ventas**, la idea de mostrar la **configuración que viene dentro del Excel** y permitir
+ajustarla. Hoy no es posible:
+
+- **Hoy:** `POST /{dominio}/excel` **lee y aplica** la configuración incluida en el archivo
+  (granularidad, horizonte, etc.) y devuelve directamente el resultado; **no expone** esa
+  configuración embebida. Por eso la UI no puede mostrarla ni permitir editarla: solo informa,
+  con honestidad, que «si subes un Excel con su propia configuración, esa configuración manda».
+  Los controles del Paso 2 aplican al pronosticar por JSON/datos cargados.
+- **`AGREGAR EN BACKEND:`** para mostrar **«Configuración detectada en tu archivo»** y permitir
+  ajustarla, el backend debe **devolver** la configuración leída del Excel (p. ej. en la respuesta
+  de `POST /sales/excel`, un bloque `detected_config { granularity, horizon, … }`), o bien un
+  endpoint de **previsualización** que parsee el Excel y devuelva su configuración **sin** ejecutar
+  el pronóstico, para que la UI la presente como valores por defecto editables antes de calcular.
+  Mientras no exista, la UI mantiene el aviso honesto y no fabrica esa configuración.
 
 ---
 
