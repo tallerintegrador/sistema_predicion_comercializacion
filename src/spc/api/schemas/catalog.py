@@ -125,6 +125,37 @@ class QueryOptions(BaseModel):
     horizon: HorizonRange = Field(description="Rango permitido del horizonte.")
 
 
+class CatalogColumn(BaseModel):
+    """Una **columna** de una tabla de entrada del dominio (derivada del esquema nested).
+
+    El nombre/tipo/obligatoriedad se **derivan** del modelo Pydantic del ítem (igual que las
+    salidas), mientras que ``label`` y ``help`` son la traducción al español que la UI muestra
+    en la tabla editable. Una prueba anti-desync verifica que cada columna existe de verdad en
+    el esquema y que no se omite ningún campo obligatorio.
+    """
+
+    name: str = Field(description="Nombre canónico del campo (en inglés, igual que la API).")
+    label: str = Field(description="Etiqueta para mostrar en la UI (en español).")
+    type: str = Field(description="Tipo del campo (legible).")
+    required: bool = Field(description="True si el campo es obligatorio al cargar la fila.")
+    help: str | None = Field(default=None, description="Ayuda breve para el usuario (en español).")
+
+
+class InputTable(BaseModel):
+    """Un bloque de entrada con forma de **tabla** (history / replenishment_params / inventory_status).
+
+    Permite que la UI arme la carga manual ("Agregar fila") y la cabecera de la plantilla sin
+    **hardcodear** las columnas ni sus etiquetas: todo sale del catálogo, derivado del contrato.
+    """
+
+    name: str = Field(description="Nombre del contenedor en la petición (p. ej. 'history').")
+    label: str = Field(description="Etiqueta de la tabla (en español).")
+    description: str | None = Field(
+        default=None, description="Qué representa la tabla (en español)."
+    )
+    columns: list[CatalogColumn] = Field(description="Columnas de la tabla (derivadas del esquema).")
+
+
 class DomainCatalog(BaseModel):
     """El catálogo de un dominio: descripción, entradas, salidas y notas honestas."""
 
@@ -137,6 +168,13 @@ class DomainCatalog(BaseModel):
     description: str = Field(description="Descripción ampliada (en español).")
     contract_reference: str = Field(description="Sección del contrato que define el dominio.")
     inputs: list[CatalogInput] = Field(description="Entradas requeridas (derivadas del request).")
+    input_tables: list[InputTable] = Field(
+        default_factory=list,
+        description=(
+            "Tablas de entrada del dominio con sus columnas y etiquetas en español "
+            "(derivadas de los esquemas nested), para que la UI no hardcodee la carga manual."
+        ),
+    )
     outputs: list[OutputGroup] = Field(description="Salidas reales (derivadas de la respuesta).")
     query_options: QueryOptions | None = Field(
         default=None,

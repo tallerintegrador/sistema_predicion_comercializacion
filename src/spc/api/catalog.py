@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from spc.api.schemas.almacen import AlertaItem, AlmacenRequest, AlmacenResponse, MetadatosAlmacen
 from spc.api.schemas.catalog import (
     Availability,
+    CatalogColumn,
     CatalogField,
     CatalogInput,
     CatalogResponse,
@@ -32,6 +33,7 @@ from spc.api.schemas.catalog import (
     ForecastTypology,
     GranularityOption,
     HorizonRange,
+    InputTable,
     OutputGroup,
     QueryOptions,
 )
@@ -157,6 +159,82 @@ def _entradas(modelo: type[BaseModel]) -> list[CatalogInput]:
         )
         for nombre, info in modelo.model_fields.items()
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tablas de entrada (carga manual / plantilla) con etiquetas en español
+#
+# Honestidad por construcción: las COLUMNAS (nombre/tipo/obligatoriedad) se DERIVAN del
+# esquema nested de cada bloque tipo lista del request (HistoricoItem, ParametroReposicion,
+# EstadoInventarioItem). La traducción (label/help) es la ÚNICA pieza "a mano", centralizada
+# aquí para que la UI no la hardcodee. La prueba anti-desync verifica que cada columna existe
+# en el esquema y que no se omite ningún campo obligatorio.
+# ---------------------------------------------------------------------------
+
+# Etiqueta + ayuda en español por campo canónico (en inglés) del contrato. Si mañana el
+# contrato renombra/elimina un campo, la prueba anti-desync avisa de la entrada huérfana.
+_FIELD_LABELS: dict[str, tuple[str, str | None]] = {
+    "date": ("Fecha", "Fecha de la venta (AAAA-MM-DD)."),
+    "store_id": ("Tienda", "Local, sucursal o punto de venta."),
+    "product_id": ("Producto", "Producto o familia/categoría."),
+    "units_sold": ("Unidades vendidas", "Cantidad vendida ese período (0 o más)."),
+    "on_promotion": ("En promoción", "Ítems en promoción ese día (0 si no aplica)."),
+    "transactions": ("N.º de tickets", "Cantidad de ventas o clientes del día (opcional)."),
+    "event_active": ("¿Día especial?", "Marca feriados o eventos relevantes (opcional)."),
+    "current_stock": ("Existencias actuales", "Unidades disponibles hoy."),
+    "lead_time_days": ("Tiempo de entrega (días)", "Días que tarda el proveedor en entregar."),
+    "target_coverage_days": ("Días de cobertura", "Días de demanda que quiere tener cubiertos."),
+}
+
+# Etiqueta + descripción en español por tabla de entrada (nombre del contenedor en el request).
+_TABLE_LABELS: dict[str, tuple[str, str]] = {
+    "history": ("Historial de ventas", "Sus ventas pasadas por período, tienda y producto."),
+    "replenishment_params": (
+        "Productos a reponer",
+        "Existencias actuales y tiempos de entrega por producto.",
+    ),
+    "inventory_status": ("Estado del inventario", "Existencias actuales (y tiempo de entrega) por producto."),
+}
+
+
+def _modelo_item(anotacion: Any) -> type[BaseModel] | None:
+    """Si la anotación es ``list[<BaseModel>]``, devuelve ese modelo; si no, ``None``."""
+    if typing.get_origin(anotacion) in (list, typing.List):  # noqa: UP006
+        args = typing.get_args(anotacion)
+        if args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
+            return args[0]
+    return None
+
+
+def _columnas(item: type[BaseModel]) -> list[CatalogColumn]:
+    """Columnas de una tabla de entrada, derivadas del esquema del ítem + traducción."""
+    columnas = []
+    for nombre, info in item.model_fields.items():
+        etiqueta, ayuda = _FIELD_LABELS.get(nombre, (nombre, None))
+        columnas.append(
+            CatalogColumn(
+                name=nombre,
+                label=etiqueta,
+                type=_nombre_tipo(info.annotation),
+                required=info.is_required(),
+                help=ayuda,
+            )
+        )
+    return columnas
+
+
+def _tablas_entrada(modelo: type[BaseModel]) -> list[InputTable]:
+    """Tablas de entrada del dominio: cada campo ``list[<BaseModel>]`` del request es una tabla."""
+    tablas = []
+    for nombre, info in modelo.model_fields.items():
+        item = _modelo_item(info.annotation)
+        if item is None:
+            continue
+        etiqueta, descripcion = _TABLE_LABELS.get(nombre, (nombre, info.description or ""))
+        tablas.append(
+            InputTable(name=nombre, label=etiqueta, description=descripcion, columns=_columnas(item))
+        )
+    return tablas
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +471,7 @@ def _catalogo_dominio(spec: _DomainSpec) -> DomainCatalog:
         description=spec.description,
         contract_reference=spec.contract_reference,
         inputs=_entradas(spec.request_model),
+        input_tables=_tablas_entrada(spec.request_model),
         outputs=outputs,
         query_options=spec.query_options,
         notes=list(spec.notes),

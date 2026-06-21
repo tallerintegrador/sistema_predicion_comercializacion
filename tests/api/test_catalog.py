@@ -293,6 +293,55 @@ def test_catalog_query_options_tipologias_coherentes(client):
         assert qo["dimensions"], "una tipología requiere dimensión pero no hay dimensiones disponibles"
 
 
+def test_catalog_input_tables_presentes_en_los_tres_dominios(client):
+    """Cada dominio expone ``input_tables`` con, al menos, la tabla ``history``."""
+    for dom in client.get("/catalog").json()["domains"]:
+        nombres = {t["name"] for t in dom["input_tables"]}
+        assert "history" in nombres, f"{dom['domain']} no expone la tabla history"
+
+
+@pytest.mark.parametrize(
+    "dominio,esperado",
+    [
+        ("sales", {"history"}),
+        ("purchases", {"history", "replenishment_params"}),
+        ("inventory", {"history", "inventory_status"}),
+    ],
+)
+def test_catalog_input_tables_calzan_con_los_request(client, dominio, esperado):
+    """Anti-desync: las tablas de entrada == los bloques tipo lista de cada request.
+
+    Verifica, columna por columna, que (a) cada columna existe de verdad en el esquema
+    nested y (b) no se omite ningún campo OBLIGATORIO; además exige etiqueta en español
+    no vacía y distinta del nombre canónico (traducción real, sin tecnicismos).
+    """
+    from spc.api.schemas.almacen import AlmacenRequest
+    from spc.api.schemas.compras import ComprasRequest
+    from spc.api.schemas.ventas import VentasRequest
+
+    requests = {"sales": VentasRequest, "purchases": ComprasRequest, "inventory": AlmacenRequest}
+    modelo = requests[dominio]
+
+    dom = next(d for d in client.get("/catalog").json()["domains"] if d["domain"] == dominio)
+    tablas = {t["name"]: t for t in dom["input_tables"]}
+    assert set(tablas) == esperado, f"{dominio}: tablas {set(tablas)} != {esperado}"
+
+    for nombre, tabla in tablas.items():
+        # El modelo del ítem es el tipo dentro de ``list[...]`` del campo del request.
+        import typing
+
+        item_model = typing.get_args(modelo.model_fields[nombre].annotation)[0]
+        campos = item_model.model_fields
+        nombres_cat = {c["name"] for c in tabla["columns"]}
+        # (a) sin columnas fantasma; (b) sin omitir obligatorios.
+        assert nombres_cat <= set(campos), f"{dominio}.{nombre}: columnas inexistentes"
+        requeridos = {n for n, i in campos.items() if i.is_required()}
+        assert requeridos <= nombres_cat, f"{dominio}.{nombre}: faltan obligatorios {requeridos - nombres_cat}"
+        # (c) traducción real: etiqueta en español, no vacía y != nombre canónico.
+        for col in tabla["columns"]:
+            assert col["label"] and col["label"] != col["name"], f"columna sin traducir: {col}"
+
+
 def test_catalog_pending_solo_lista_el_cuantil_model_adjacent(client):
     """`pending_policy` ya no lista constantes de política (resueltas); solo el P75 pendiente.
 
