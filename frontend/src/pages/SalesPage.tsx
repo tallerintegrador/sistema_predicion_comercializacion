@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { BarChart3 } from 'lucide-react'
 import { postSales, uploadExcel } from '../api/endpoints'
 import type {
   ForecastItem,
@@ -7,40 +8,55 @@ import type {
   SalesRequest,
   SalesResponse,
 } from '../api/types'
-import { sampleSales } from '../data/samples'
 import { usePrediction } from '../hooks/usePrediction'
-import { useForecastOptions } from '../hooks/useForecastOptions'
+import { useDomainCatalog } from '../hooks/useDomainCatalog'
 import { ErrorPanel } from '../components/ErrorPanel'
-import { ExcelPanel } from '../components/ExcelPanel'
+import { DataSourcePanel } from '../components/DataSourcePanel'
 import { HistoryPreview } from '../components/HistoryPreview'
 import { JobBanner } from '../components/JobBanner'
-import { MetadataPanel } from '../components/MetadataPanel'
 import { ResultTable } from '../components/ResultTable'
 import type { Column } from '../components/ResultTable'
 import { SalesChart } from '../components/charts/SalesChart'
 import { TypologySelect } from '../components/forecast/TypologySelect'
 import { DimensionSelect } from '../components/forecast/DimensionSelect'
 import { DimensionValuesFilter } from '../components/forecast/DimensionValuesFilter'
+import { ModuleHeader } from '../components/ui/ModuleHeader'
+import { EmptyState } from '../components/ui/EmptyState'
+import { ComingSoon } from '../components/ui/ComingSoon'
+import { ResultSummary } from '../components/ui/ResultSummary'
+import { TechnicalDetails } from '../components/ui/TechnicalDetails'
+import { SECTION_BY_ID } from '../theme/modules'
 import { fmtNum } from '../utils/format'
+import { resumenVentas } from '../utils/resumen'
 
 // Solo se desglosa/filtra por columnas identificadoras del histórico (R2).
 type DimKey = 'store_id' | 'product_id'
 
-export function SalesPage() {
-  const { options, loading: optsLoading, error: optsError } = useForecastOptions('sales')
+const ACCENT = SECTION_BY_ID.sales.accent
 
-  // Configuración del pronóstico. Se guarda como "override" del usuario (null = usar el
-  // valor por defecto del catálogo); el valor EFECTIVO se calcula con fallback más abajo.
-  // Así no se hardcodea ninguna opción ni hace falta sincronizar estado con un efecto.
+/** Extrae el bloque de ventas pasadas de un JSON (array directo u objeto con `history`). */
+function extraerHistorial(data: unknown): HistoryItem[] | null {
+  if (Array.isArray(data)) return data as HistoryItem[]
+  if (data && typeof data === 'object' && Array.isArray((data as { history?: unknown }).history)) {
+    return (data as { history: HistoryItem[] }).history
+  }
+  return null
+}
+
+export function SalesPage() {
+  const { domain, loading: optsLoading, error: optsError } = useDomainCatalog('sales')
+  const options = domain?.query_options ?? null
+
+  // Configuración del pronóstico (override del usuario; null = valor por defecto del catálogo).
   const [typology, setTypology] = useState<string | null>(null)
   const [dimension, setDimension] = useState<string | null>(null)
   const [granularity, setGranularity] = useState<Granularity | null>(null)
   const [horizon, setHorizon] = useState<number | null>(null)
   const [selectedValues, setSelectedValues] = useState<string[]>([])
 
-  // Histórico cargado en el cliente (vía ejemplo). El canal Excel predice en el servidor.
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [shownHistory, setShownHistory] = useState<HistoryItem[]>([])
+  const [jsonError, setJsonError] = useState<string | null>(null)
 
   const pred = usePrediction<SalesResponse>()
   const busy = pred.status === 'loading' || pred.status === 'polling'
@@ -55,16 +71,12 @@ export function SalesPage() {
   const requiresDimension = currentTypology?.requires_dimension ?? false
   const dimKey = (effDimension || 'product_id') as DimKey
 
-  // Al cambiar la columna de desglose, la selección de valores deja de aplicar.
   const changeDimension = (name: string) => {
     setDimension(name)
     setSelectedValues([])
   }
+  const dimLabel = (name: string) => options?.dimensions.find((d) => d.name === name)?.label ?? name
 
-  const dimLabel = (name: string) =>
-    options?.dimensions.find((d) => d.name === name)?.label ?? name
-
-  // Valores concretos de la dimensión, tomados del histórico REAL (no del catálogo).
   const dimensionValues = useMemo(() => {
     if (!effDimension) return []
     return Array.from(new Set(history.map((h) => String(h[dimKey])))).sort()
@@ -72,8 +84,14 @@ export function SalesPage() {
 
   const hasHistory = history.length > 0
 
-  const loadSample = () => {
-    setHistory(sampleSales.history)
+  const onJson = (data: unknown) => {
+    const hist = extraerHistorial(data)
+    if (!hist) {
+      setJsonError('El JSON no contiene un historial de ventas válido. Usa la plantilla como guía.')
+      return
+    }
+    setJsonError(null)
+    setHistory(hist)
     setSelectedValues([])
     pred.reset()
   }
@@ -86,11 +104,7 @@ export function SalesPage() {
   const predict = () => {
     const used = buildHistory()
     setShownHistory(used)
-    const req: SalesRequest = {
-      granularity: effGranularity,
-      horizon: effHorizon,
-      history: used,
-    }
+    const req: SalesRequest = { granularity: effGranularity, horizon: effHorizon, history: used }
     pred.run(() => postSales(req))
   }
 
@@ -101,24 +115,18 @@ export function SalesPage() {
 
   return (
     <div className="space-y-5">
-      <section className="card">
-        <h2 className="text-xl font-semibold text-slate-900">Ventas</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Pronóstico de demanda por período, tienda y producto a partir del histórico de ventas.
-        </p>
-      </section>
+      <ModuleHeader view="sales" />
 
       <section className="card space-y-5" aria-labelledby="config-title">
         <h3 id="config-title" className="text-base font-semibold text-slate-800">
           Configuración del pronóstico
         </h3>
 
-        {optsLoading && <p className="text-sm text-slate-500">Cargando opciones del catálogo…</p>}
+        {optsLoading && <p className="text-sm text-slate-500">Cargando opciones…</p>}
         {optsError && <ErrorPanel error={optsError} />}
 
         {options && (
           <>
-            {/* 1 · Tipo de pronóstico (R1) */}
             <TypologySelect
               typologies={options.typologies}
               value={effTypology}
@@ -126,7 +134,6 @@ export function SalesPage() {
               disabled={busy}
             />
 
-            {/* 2 · Dimensión / Filtrar por (R2) — solo si la tipología lo requiere */}
             {requiresDimension && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <DimensionSelect
@@ -134,6 +141,7 @@ export function SalesPage() {
                   value={effDimension}
                   onChange={changeDimension}
                   disabled={busy}
+                  label="Agrupar / filtrar por"
                 />
                 <DimensionValuesFilter
                   label={`Valores de ${dimLabel(effDimension)}`}
@@ -141,15 +149,15 @@ export function SalesPage() {
                   selected={selectedValues}
                   onChange={setSelectedValues}
                   disabled={busy || !hasHistory}
+                  disabledHint="Sube tus ventas en JSON para elegir valores concretos. (Con Excel, esta opción llegará pronto)."
                 />
               </div>
             )}
 
-            {/* 3 · Granularidad y Horizonte */}
             <div className="flex flex-wrap items-start gap-4">
               <div>
                 <label className="label" htmlFor="granularity">
-                  Granularidad
+                  ¿Cada cuánto?
                 </label>
                 <select
                   id="granularity"
@@ -164,10 +172,11 @@ export function SalesPage() {
                     </option>
                   ))}
                 </select>
+                <p className="help">Día, semana o mes.</p>
               </div>
               <div>
                 <label className="label" htmlFor="horizon">
-                  Horizonte ({options.horizon.min}–{options.horizon.max})
+                  ¿Hasta cuándo? ({options.horizon.min}–{options.horizon.max})
                 </label>
                 <input
                   id="horizon"
@@ -183,46 +192,60 @@ export function SalesPage() {
                     setHorizon(Number.isNaN(n) ? min : Math.min(Math.max(n, min), max))
                   }}
                 />
-                <p className="help">Períodos de la granularidad elegida.</p>
+                <p className="help">Cuántos períodos quieres estimar.</p>
+              </div>
+              <div className="opacity-60">
+                <span className="label flex items-center gap-2">
+                  Rango estimado (80%) <ComingSoon />
+                </span>
+                <label className="mt-1 inline-flex items-center gap-2 text-sm text-slate-400">
+                  <input type="checkbox" disabled />
+                  Mostrar el margen alto/bajo
+                </label>
               </div>
             </div>
 
-            {/* 4 · Acciones */}
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="button" className="btn-ghost" onClick={loadSample} disabled={busy}>
-                Cargar ejemplo
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={predict}
-                disabled={busy || !hasHistory}
-              >
-                {busy ? 'Procesando…' : 'Predecir'}
+            <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+              <button type="button" className={`btn ${ACCENT.solid}`} onClick={predict} disabled={busy || !hasHistory}>
+                {busy ? 'Calculando…' : 'Pronosticar'}
               </button>
               {!hasHistory && (
                 <span className="text-sm text-slate-500" role="status">
-                  Cargue el ejemplo o suba un Excel para habilitar el pronóstico.
+                  Sube tus ventas (Excel o JSON) para pronosticar con esta configuración.
                 </span>
               )}
-            </div>
-
-            <div className="border-t border-slate-200 pt-4">
               <HistoryPreview history={history} />
             </div>
           </>
         )}
       </section>
 
-      <ExcelPanel domain="sales" onUpload={onExcel} busy={busy} />
+      <DataSourcePanel domain="sales" onExcel={onExcel} onJson={onJson} busy={busy} accentSolid={ACCENT.solid} />
+      {jsonError && (
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+          {jsonError}
+        </p>
+      )}
+      <p className="text-xs text-slate-400">
+        Al subir un Excel, el pronóstico usa la configuración incluida en el propio archivo.
+      </p>
 
       <JobBanner status={pred.status} jobId={pred.jobId} attempts={pred.attempts} />
       {pred.status === 'error' && pred.error && <ErrorPanel error={pred.error} />}
+
+      {pred.status === 'idle' && !busy && (
+        <EmptyState
+          icon={BarChart3}
+          title="Aún no hay un pronóstico"
+          message="Sube tus ventas pasadas y pulsa «Pronosticar». Verás un gráfico, una tabla descargable y un resumen claro."
+        />
+      )}
 
       {pred.status === 'done' && pred.data && (
         <ResultSection
           data={pred.data}
           history={shownHistory}
+          granularity={effGranularity}
           typologyLabel={currentTypology?.label ?? null}
           byDimension={requiresDimension}
           dimKey={dimKey}
@@ -237,6 +260,7 @@ export function SalesPage() {
 function ResultSection({
   data,
   history,
+  granularity,
   typologyLabel,
   byDimension,
   dimKey,
@@ -244,6 +268,7 @@ function ResultSection({
 }: {
   data: SalesResponse
   history: HistoryItem[]
+  granularity: Granularity
   typologyLabel: string | null
   byDimension: boolean
   dimKey: DimKey
@@ -252,16 +277,12 @@ function ResultSection({
   const forecast = data.forecast
   const otherKey: DimKey = dimKey === 'store_id' ? 'product_id' : 'store_id'
 
-  // Serie temporal: demanda total por período (agregando todas las series).
   const periodTotals = useMemo(() => {
     const m = new Map<string, number>()
     for (const f of forecast) m.set(f.date, (m.get(f.date) ?? 0) + f.forecast_demand)
-    return Array.from(m, ([date, total]) => ({ date, total })).sort((a, b) =>
-      a.date.localeCompare(b.date),
-    )
+    return Array.from(m, ([date, total]) => ({ date, total })).sort((a, b) => a.date.localeCompare(b.date))
   }, [forecast])
 
-  // Por dimensión: ordenado por la columna elegida y luego por fecha.
   const dimensionRows = useMemo(
     () =>
       [...forecast].sort((a, b) => {
@@ -273,24 +294,23 @@ function ResultSection({
 
   const periodCols: Column<{ date: string; total: number }>[] = [
     { header: 'Período', render: (r) => r.date },
-    { header: 'Pronóstico total', align: 'right', render: (r) => fmtNum(r.total) },
+    { header: 'Demanda estimada', align: 'right', render: (r) => fmtNum(r.total) },
   ]
   const dimensionCols: Column<ForecastItem>[] = [
     { header: 'Fecha', render: (r) => r.date },
     { header: dimLabel(dimKey), render: (r) => String(r[dimKey]) },
     { header: dimLabel(otherKey), render: (r) => String(r[otherKey]) },
-    { header: 'Pronóstico', align: 'right', render: (r) => fmtNum(r.forecast_demand) },
+    { header: 'Demanda estimada', align: 'right', render: (r) => fmtNum(r.forecast_demand) },
   ]
 
   return (
     <section className="card space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-base font-semibold text-slate-800">Resultado</h3>
-        {typologyLabel && <span className="badge bg-brand-50 text-brand-700">{typologyLabel}</span>}
-        <span className="badge bg-slate-100 text-slate-600">
-          modelo <code className="ml-1">{data.model}</code>
-        </span>
+        {typologyLabel && <span className={`badge ${ACCENT.badge}`}>{typologyLabel}</span>}
       </div>
+
+      <ResultSummary text={resumenVentas(forecast, granularity)} tone="bg-sales-50 text-sales-700" />
 
       <SalesChart history={history} forecast={forecast} />
 
@@ -306,16 +326,11 @@ function ResultSection({
         </>
       )}
 
-      <MetadataPanel
-        entries={[
-          { label: 'model', value: data.model },
-          { label: 'scale', value: data.metadata.scale },
-          { label: 'internal_transform', value: data.metadata.internal_transform },
-        ]}
-        notes={[
-          'interval_80: no disponible (diferido) — el modelo aún no produce intervalos de predicción.',
-        ]}
-      />
+      <TechnicalDetails>
+        <p>Modelo: <span className="font-mono text-slate-700">{data.model}</span></p>
+        <p>Escala: {data.metadata.scale} · Transformación interna: {data.metadata.internal_transform}</p>
+        <p>interval_80 (rango estimado al 80%): no disponible aún — el modelo todavía no produce intervalos de predicción.</p>
+      </TechnicalDetails>
     </section>
   )
 }

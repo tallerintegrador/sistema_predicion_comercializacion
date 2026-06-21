@@ -4,6 +4,8 @@ import type { View } from './components/Layout'
 import { useAuth } from './auth/AuthContext'
 import { LoginPage } from './pages/LoginPage'
 import { OnboardingPage } from './pages/OnboardingPage'
+import { HomePage } from './pages/HomePage'
+import { AboutPage } from './pages/AboutPage'
 import { CatalogPage } from './pages/CatalogPage'
 import { SalesPage } from './pages/SalesPage'
 import { PurchasesPage } from './pages/PurchasesPage'
@@ -36,12 +38,14 @@ function MainApp() {
 
   return (
     <Layout active={activo} onChange={setView}>
+      {activo === 'home' && <HomePage onNavigate={setView} />}
       {activo === 'catalog' && <CatalogPage />}
       {activo === 'sales' && <SalesPage />}
       {activo === 'purchases' && <PurchasesPage />}
       {activo === 'inventory' && <InventoryPage />}
       {activo === 'training' && <TrainingPage />}
       {activo === 'users' && <UsersPage />}
+      {activo === 'about' && <AboutPage />}
     </Layout>
   )
 }

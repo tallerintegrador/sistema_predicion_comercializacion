@@ -9,6 +9,7 @@ import {
 } from '../api/auth'
 import type { PermissionOut, RoleOut, UserOut } from '../api/auth'
 import { ApiError } from '../api/client'
+import { ModuleHeader } from '../components/ui/ModuleHeader'
 
 /**
  * Administración de usuarios y roles (solo para roles con `action:users_manage`). Permite
@@ -44,10 +45,7 @@ export function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-800">Administración de usuarios</h2>
-        <p className="text-sm text-slate-500">Defina roles y permisos, y gestione las cuentas de acceso.</p>
-      </div>
+      <ModuleHeader view="users" />
 
       {error && (
         <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>
@@ -91,6 +89,8 @@ function RolesCard({
 
   const modulos = permisos.filter((p) => p.group === 'module')
   const acciones = permisos.filter((p) => p.group === 'action')
+  // Mapa clave técnica → etiqueta legible (para mostrar permisos sin tecnicismos).
+  const labelOf = (key: string) => permisos.find((p) => p.key === key)?.label ?? key
 
   return (
     <section className="card space-y-4">
@@ -109,7 +109,17 @@ function RolesCard({
               <tr key={r.id} className="border-t border-slate-100">
                 <td className="td font-medium">{r.name}</td>
                 <td className="td">
-                  <span className="text-xs text-slate-500">{r.permissions.join(', ') || '—'}</span>
+                  {r.permissions.length === 0 ? (
+                    <span className="text-xs text-slate-400">—</span>
+                  ) : (
+                    <span className="flex flex-wrap gap-1">
+                      {r.permissions.map((key) => (
+                        <span key={key} className="badge bg-slate-100 text-slate-600">
+                          {labelOf(key)}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

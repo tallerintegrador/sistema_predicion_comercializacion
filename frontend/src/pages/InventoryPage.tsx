@@ -1,110 +1,141 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Package } from 'lucide-react'
 import { postInventory, uploadExcel } from '../api/endpoints'
-import type { AlertItem, InventoryRequest, InventoryResponse, InventoryStatusItem } from '../api/types'
-import { sampleInventory } from '../data/samples'
+import type { AlertItem, InventoryRequest, InventoryResponse } from '../api/types'
 import { usePrediction } from '../hooks/usePrediction'
+import { useDomainCatalog } from '../hooks/useDomainCatalog'
 import { ErrorPanel } from '../components/ErrorPanel'
-import { ExcelPanel } from '../components/ExcelPanel'
-import { HistoryPreview } from '../components/HistoryPreview'
+import { DataSourcePanel } from '../components/DataSourcePanel'
+import { CatalogTable } from '../components/CatalogTable'
 import { JobBanner } from '../components/JobBanner'
-import { MetadataPanel } from '../components/MetadataPanel'
-import { ParamsEditor } from '../components/ParamsEditor'
-import type { FieldDef } from '../components/ParamsEditor'
 import { ResultTable } from '../components/ResultTable'
 import type { Column } from '../components/ResultTable'
 import { InventoryRisk } from '../components/charts/InventoryRisk'
+import { ModuleHeader } from '../components/ui/ModuleHeader'
+import { EmptyState } from '../components/ui/EmptyState'
+import { ResultSummary } from '../components/ui/ResultSummary'
+import { RiskBadge } from '../components/ui/RiskBadge'
+import { TechnicalDetails } from '../components/ui/TechnicalDetails'
+import { SECTION_BY_ID } from '../theme/modules'
 import { fmtNum, fmtPct } from '../utils/format'
+import { resumenAlmacen } from '../utils/resumen'
+import type { EditableRow } from '../utils/tableData'
+import { coerceRows, objectsToRows, rowsComplete } from '../utils/tableData'
 
-const emptyReq: InventoryRequest = { history: [], inventory_status: [] }
-
-const paramFields: FieldDef<InventoryStatusItem>[] = [
-  { key: 'store_id', label: 'Tienda', type: 'text' },
-  { key: 'product_id', label: 'Producto', type: 'text' },
-  { key: 'current_stock', label: 'Stock actual', type: 'number' },
-  { key: 'lead_time_days', label: 'Lead time (días)', type: 'number', optional: true },
-]
-
-const makeEmptyStatus = (): InventoryStatusItem => ({
-  store_id: '',
-  product_id: '',
-  current_stock: 0,
-  lead_time_days: null,
-})
+const ACCENT = SECTION_BY_ID.inventory.accent
 
 const cols: Column<AlertItem>[] = [
   { header: 'Tienda', render: (r) => r.store_id },
   { header: 'Producto', render: (r) => r.product_id },
-  { header: 'Clase', render: (r) => r.demand_class },
-  { header: 'Prob. alta', align: 'right', render: (r) => fmtPct(r.high_demand_probability) },
-  { header: 'Quiebre', render: (r) => (r.stockout_risk ? 'sí' : 'no') },
-  { header: 'Stock recom.', align: 'right', render: (r) => fmtNum(r.recommended_stock) },
-  { header: 'Stock seguridad', align: 'right', render: (r) => fmtNum(r.safety_stock) },
-  { header: 'Segmento', align: 'right', render: (r) => r.store_segment },
+  { header: 'Estado', render: (r) => <RiskBadge alert={r} /> },
+  { header: 'Prob. demanda alta', align: 'right', render: (r) => fmtPct(r.high_demand_probability) },
+  { header: 'Existencias sugeridas', align: 'right', render: (r) => fmtNum(r.recommended_stock) },
+  { header: 'Colchón de seguridad', align: 'right', render: (r) => fmtNum(r.safety_stock) },
 ]
 
 export function InventoryPage() {
-  const [req, setReq] = useState<InventoryRequest>(emptyReq)
+  const { domain, loading, error } = useDomainCatalog('inventory')
+  const historyTable = domain?.input_tables.find((t) => t.name === 'history') ?? null
+  const statusTable = domain?.input_tables.find((t) => t.name === 'inventory_status') ?? null
+
+  const [histRows, setHistRows] = useState<EditableRow[]>([])
+  const [statusRows, setStatusRows] = useState<EditableRow[]>([])
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
   const pred = usePrediction<InventoryResponse>()
   const busy = pred.status === 'loading' || pred.status === 'polling'
 
-  const loadSample = () => {
-    setReq(sampleInventory)
+  const completo = useMemo(
+    () =>
+      !!historyTable &&
+      !!statusTable &&
+      rowsComplete(historyTable.columns, histRows) &&
+      rowsComplete(statusTable.columns, statusRows),
+    [historyTable, statusTable, histRows, statusRows],
+  )
+
+  const onJson = (data: unknown) => {
+    const obj = (data ?? {}) as { history?: unknown; inventory_status?: unknown }
+    if (!Array.isArray(obj.history) || !Array.isArray(obj.inventory_status)) {
+      setJsonError('El JSON debe incluir el historial y el estado del inventario. Usa la plantilla como guía.')
+      return
+    }
+    setJsonError(null)
+    if (historyTable) setHistRows(objectsToRows(historyTable.columns, obj.history as Record<string, unknown>[]))
+    if (statusTable) setStatusRows(objectsToRows(statusTable.columns, obj.inventory_status as Record<string, unknown>[]))
     pred.reset()
   }
-  const predict = () => pred.run(() => postInventory(req))
+
+  const predict = () => {
+    if (!historyTable || !statusTable) return
+    const req = {
+      history: coerceRows(historyTable.columns, histRows),
+      inventory_status: coerceRows(statusTable.columns, statusRows),
+    } as unknown as InventoryRequest
+    pred.run(() => postInventory(req))
+  }
   const onExcel = (file: File) => pred.run(() => uploadExcel<InventoryResponse>('inventory', file))
 
   return (
     <div className="space-y-5">
-      <section className="card">
-        <h2 className="text-lg font-semibold text-slate-800">Riesgo de quiebre y stock (INVENTORY)</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Predice la clase de demanda y su probabilidad, marca el riesgo de quiebre y recomienda un stock objetivo con segmento de tienda.
+      <ModuleHeader view="inventory" />
+
+      {loading && <p className="text-sm text-slate-500">Cargando…</p>}
+      {error && <ErrorPanel error={error} />}
+
+      {historyTable && statusTable && (
+        <section className="card space-y-6">
+          <h3 className="text-base font-semibold text-slate-800">Tus datos</h3>
+          <CatalogTable table={statusTable} rows={statusRows} onChange={setStatusRows} disabled={busy} />
+          <CatalogTable table={historyTable} rows={histRows} onChange={setHistRows} disabled={busy} />
+
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+            <button type="button" className={`btn ${ACCENT.solid}`} onClick={predict} disabled={busy || !completo}>
+              {busy ? 'Calculando…' : 'Revisar riesgo de agotamiento'}
+            </button>
+            {!completo && (
+              <span className="text-sm text-slate-500" role="status">
+                Completa las filas obligatorias (marcadas con *), o sube un archivo.
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
+      <DataSourcePanel domain="inventory" onExcel={onExcel} onJson={onJson} busy={busy} accentSolid={ACCENT.solid} />
+      {jsonError && (
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+          {jsonError}
         </p>
-
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button className="btn-ghost" onClick={loadSample}>Cargar ejemplo</button>
-          <button
-            className="btn-primary"
-            onClick={predict}
-            disabled={busy || req.history.length === 0 || req.inventory_status.length === 0}
-          >
-            Predecir
-          </button>
-          <HistoryPreview history={req.history} />
-        </div>
-
-        <div className="mt-4">
-          <ParamsEditor
-            title="inventory_status"
-            rows={req.inventory_status}
-            fields={paramFields}
-            makeEmpty={makeEmptyStatus}
-            onChange={(rows) => setReq({ ...req, inventory_status: rows })}
-          />
-        </div>
-      </section>
-
-      <ExcelPanel domain="inventory" onUpload={onExcel} busy={busy} />
+      )}
 
       <JobBanner status={pred.status} jobId={pred.jobId} attempts={pred.attempts} />
       {pred.status === 'error' && pred.error && <ErrorPanel error={pred.error} />}
 
+      {pred.status === 'idle' && !busy && (
+        <EmptyState
+          icon={Package}
+          title="Aún no hay un análisis"
+          message="Carga tus productos y su historial para ver cuáles tienen riesgo de agotarse y cuántas existencias conviene tener."
+        />
+      )}
+
       {pred.status === 'done' && pred.data && (
         <section className="card space-y-4">
-          <h3 className="text-base font-semibold text-slate-800">Alertas</h3>
+          <h3 className="text-base font-semibold text-slate-800">Estado del inventario</h3>
+          <ResultSummary text={resumenAlmacen(pred.data.alerts)} tone="bg-inventory-50 text-inventory-700" />
           <InventoryRisk alerts={pred.data.alerts} />
           <ResultTable columns={cols} rows={pred.data.alerts} />
-          <MetadataPanel
-            entries={[
-              { label: 'threshold', value: <span className="text-xs">{pred.data.metadata.threshold}</span> },
-              {
-                label: 'probability_threshold',
-                value: pred.data.metadata.probability_threshold == null ? '—' : fmtNum(pred.data.metadata.probability_threshold),
-              },
-            ]}
-            notes={['Combina clasificación (demanda alta/baja) y clustering (segmento de tienda) bajo el contrato.']}
-          />
+          <TechnicalDetails>
+            <p>Definición de demanda alta: {pred.data.metadata.threshold}</p>
+            <p>
+              Umbral de probabilidad:{' '}
+              {pred.data.metadata.probability_threshold == null
+                ? '—'
+                : fmtNum(pred.data.metadata.probability_threshold)}
+            </p>
+            <p>«Segmento» (store_segment) y «clase de demanda» provienen de los artefactos del sistema.</p>
+          </TechnicalDetails>
         </section>
       )}
     </div>

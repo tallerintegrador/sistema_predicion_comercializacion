@@ -237,6 +237,24 @@ export interface OutputGroup {
   fields: CatalogField[]
 }
 
+// --- Tablas de entrada (carga manual / plantilla), con etiquetas en español ---
+// Derivadas de los esquemas nested del contrato (ADR-0020): la UI arma la tabla editable
+// y los encabezados a partir de esto, sin hardcodear columnas ni etiquetas.
+export interface CatalogColumn {
+  name: string // nombre canónico (en inglés), igual que la API
+  label: string // etiqueta en español
+  type: string // tipo legible (int | float | str | date | bool …)
+  required: boolean
+  help?: string | null
+}
+
+export interface InputTable {
+  name: string // contenedor en la petición: "history" | "replenishment_params" | "inventory_status"
+  label: string // etiqueta en español
+  description?: string | null
+  columns: CatalogColumn[]
+}
+
 // --- Opciones de consulta de la UI (query_options): R1 tipologías, R2 dimensiones ---
 // Derivadas del contrato y de las agregaciones del servicio (no del motor de ML). La UI
 // las consume para no hardcodear ninguna opción (ADR-0018).
@@ -280,6 +298,7 @@ export interface DomainCatalog {
   description: string
   contract_reference: string
   inputs: CatalogInput[]
+  input_tables: InputTable[] // tablas de entrada con etiquetas en español (ADR-0020)
   outputs: OutputGroup[]
   query_options?: QueryOptions | null // presente solo en dominios que lo exponen (hoy sales)
   notes: string[]

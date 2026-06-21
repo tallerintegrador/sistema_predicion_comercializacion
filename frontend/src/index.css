@@ -1,19 +1,22 @@
 @import "tailwindcss";
 
 /*
- * Sistema de diseño del SPC (ADR-0017). Tailwind v4: los tokens viven aquí.
+ * Sistema de diseño del SPC (ADR-0017 + ADR-0020). Tailwind v4: los tokens viven aquí.
  *
- * Identidad: confiable · analítica · clara · sobria · honesta. El color de marca
- * reaprovecha el índigo del botón "Predecir"; el acento (teal) realza los datos; los
- * neutros son grises fríos (slate) y los semánticos son emerald/amber/red/blue. Los
- * componentes consumen estos tokens vía las clases utilitarias de @layer components,
+ * Identidad: confiable · clara · moderna · cercana. Pensada para dueños de negocio, no
+ * para desarrolladores. La marca es índigo; cada MÓDULO tiene un acento propio para
+ * orientar al usuario (Ventas índigo, Compras naranja, Almacén teal, Mejorar violeta).
+ * Los neutros son grises fríos (slate) y los semánticos emerald/amber/red/blue con
+ * contraste AA. Los componentes consumen estos tokens vía utilidades y @layer components,
  * de modo que la identidad se aplica de forma consistente sin clavar colores inline.
  */
 @theme {
-  /* Tipografía: stack de sistema legible (sin dependencia nueva). */
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Tipografía: Inter para el cuerpo, Sora para los títulos (ADR-0020). El stack de
+     sistema queda como respaldo si las fuentes auto-hospedadas no cargan. */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Sora", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  /* Marca (índigo/violeta) — color primario. brand-600 == indigo-600 actual. */
+  /* Marca (índigo/violeta) — color primario. brand-600 == indigo-600. */
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
   --color-brand-200: #c7d2fe;
@@ -26,6 +29,32 @@
   --color-accent-100: #ccfbf1;
   --color-accent-500: #14b8a6;
   --color-accent-600: #0d9488;
+
+  /* Acento por módulo (orientación visual). Cada uno con tinte claro (50/100),
+     sólido (600) y texto accesible (700). */
+  /* Ventas — índigo (coincide con la marca). */
+  --color-sales-50: #eef2ff;
+  --color-sales-100: #e0e7ff;
+  --color-sales-600: #4f46e5;
+  --color-sales-700: #4338ca;
+
+  /* Compras — naranja. */
+  --color-purchases-50: #fff7ed;
+  --color-purchases-100: #ffedd5;
+  --color-purchases-600: #ea580c;
+  --color-purchases-700: #c2410c;
+
+  /* Almacén — teal. */
+  --color-inventory-50: #f0fdfa;
+  --color-inventory-100: #ccfbf1;
+  --color-inventory-600: #0d9488;
+  --color-inventory-700: #0f766e;
+
+  /* Mejorar (reentrenamiento) — violeta. */
+  --color-training-50: #f5f3ff;
+  --color-training-100: #ede9fe;
+  --color-training-600: #7c3aed;
+  --color-training-700: #6d28d9;
 }
 
 :root {
@@ -45,6 +74,12 @@ body {
   background-color: #f8fafc; /* slate-50 (fondo de la app) */
   color: #0f172a; /* slate-900 (texto principal) */
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 /* Clases utilitarias reutilizables (composición con @apply, Tailwind v4). */
@@ -75,7 +110,7 @@ body {
   }
   /* Control segmentado (tipología, R1): grupo de opciones tipo radiogroup. */
   .segmented {
-    @apply inline-flex rounded-lg border border-slate-300 bg-slate-50 p-0.5;
+    @apply inline-flex flex-wrap rounded-lg border border-slate-300 bg-slate-50 p-0.5;
   }
   .segmented-option {
     @apply inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50;
