@@ -140,3 +140,27 @@ producto»**. Es una guía, no una verificación.
   - `query_options`/valores por dimensión (§3): metadata de presentación; no cambia el contrato de datos.
   - `POST /training/sales/check` (§6): endpoint nuevo; documentar en el contrato de la capa de entrenamiento.
   - Cualquier cambio que altere cuerpos de petición/respuesta del contrato de datos debe **subir la versión** (`CONTRACT_VERSION`) y actualizar `docs/contrato_datos.md` (la prueba `test_catalog_version_alineada_con_encabezado_del_doc` lo verifica).
+
+---
+
+## 8. Onboarding del negocio (login / primer ingreso)
+
+- **Hoy:** `GET /profile/options` entrega los conjuntos de `sector/size/region/currency` como
+  **códigos en inglés** (`micro`, `small`, `medium`, `retail`, `south_america`, `PEN`…). `PUT /profile`
+  **valida** contra esos códigos (`SECTORES/TAMANOS/REGIONES/MONEDAS` en `src/spc/api/schemas/auth.py`).
+- **En la UI:** se muestran con **etiquetas en español** mapeando cada código
+  (`frontend/src/data/onboardingLabels.ts`); el valor enviado/almacenado **no cambia** (sigue siendo
+  el código), así las pruebas del backend siguen verdes. El mapeo vive en el frontend por ahora.
+- **`AGREGAR EN BACKEND:` etiquetas en el catálogo de opciones.** Que `GET /profile/options` devuelva
+  pares `{ value, label }` con `label` en español, para que la UI no duplique el mapeo y la traducción
+  sea una sola fuente. (Cambia la **forma** del endpoint de onboarding, no el contrato de datos v1.0.1.)
+- **`AGREGAR EN BACKEND:` ampliar los conjuntos de opciones** (la UI pidió un alcance mayor del que el
+  backend acepta hoy; mientras tanto solo se ofrecen los códigos válidos):
+  - `size`: falta el código **`large`** («Gran empresa»).
+  - `sector`: faltan rubros frecuentes si se quieren ofrecer (p. ej. moda/ropa y calzado,
+    tecnología/electrónica, belleza/cuidado personal).
+  - `region`: hoy son **continentes**. Para ubicación local (p. ej. **departamentos del Perú**) o una
+    opción libre **«Otra»**, agregar esos códigos (o soportar texto libre validado). La UI **no** envía
+    valores fuera del catálogo para no romper la validación.
+- **`AGREGAR EN BACKEND:` persistencia del perfil por cliente** — ya existe: `PUT /profile` liga el
+  perfil al `client_id` y marca `onboarding_done`. Sin acción pendiente; se documenta para trazabilidad.
