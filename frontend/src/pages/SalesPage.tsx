@@ -21,6 +21,7 @@ import { TypologySelect } from '../components/forecast/TypologySelect'
 import { DimensionSelect } from '../components/forecast/DimensionSelect'
 import { DimensionValuesFilter } from '../components/forecast/DimensionValuesFilter'
 import { ModuleHeader } from '../components/ui/ModuleHeader'
+import { StepSection } from '../components/ui/StepSection'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ComingSoon } from '../components/ui/ComingSoon'
 import { ResultSummary } from '../components/ui/ResultSummary'
@@ -117,10 +118,39 @@ export function SalesPage() {
     <div className="space-y-5">
       <ModuleHeader view="sales" />
 
-      <section className="card space-y-5" aria-labelledby="config-title">
-        <h3 id="config-title" className="text-base font-semibold text-slate-800">
-          Configuración del pronóstico
-        </h3>
+      {/* PASO 1 — Tus datos: cómo aportarlos y un resumen de lo cargado. */}
+      <StepSection
+        step={1}
+        title="Tus datos"
+        accentChip={ACCENT.chip}
+        description="Empieza por aquí: sube tus ventas pasadas en Excel o JSON, o descarga la plantilla Excel para completarla."
+      >
+        <DataSourcePanel domain="sales" onExcel={onExcel} onJson={onJson} busy={busy} accentSolid={ACCENT.solid} />
+        {jsonError && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+            {jsonError}
+          </p>
+        )}
+        {hasHistory && (
+          <div>
+            <p className="label">Resumen de tus datos</p>
+            <HistoryPreview history={history} />
+          </div>
+        )}
+      </StepSection>
+
+      {/* PASO 2 — Configuración del pronóstico sobre los datos ya cargados. */}
+      <StepSection
+        step={2}
+        title="Configuración del pronóstico"
+        accentChip={ACCENT.chip}
+        description="Define qué quieres estimar y con qué detalle. Se aplica sobre los datos del Paso 1."
+      >
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Si subes un Excel con su propia configuración, esa configuración es la que manda: el
+          pronóstico se calcula tal como viene en el archivo. Los controles de abajo se aplican
+          cuando pronosticas con los datos cargados.
+        </div>
 
         {optsLoading && <p className="text-sm text-slate-500">Cargando opciones…</p>}
         {optsError && <ErrorPanel error={optsError} />}
@@ -204,31 +234,28 @@ export function SalesPage() {
                 </label>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
-              <button type="button" className={`btn ${ACCENT.solid}`} onClick={predict} disabled={busy || !hasHistory}>
-                {busy ? 'Calculando…' : 'Pronosticar'}
-              </button>
-              {!hasHistory && (
-                <span className="text-sm text-slate-500" role="status">
-                  Sube tus ventas (Excel o JSON) para pronosticar con esta configuración.
-                </span>
-              )}
-              <HistoryPreview history={history} />
-            </div>
           </>
         )}
-      </section>
+      </StepSection>
 
-      <DataSourcePanel domain="sales" onExcel={onExcel} onJson={onJson} busy={busy} accentSolid={ACCENT.solid} />
-      {jsonError && (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
-          {jsonError}
-        </p>
-      )}
-      <p className="text-xs text-slate-400">
-        Al subir un Excel, el pronóstico usa la configuración incluida en el propio archivo.
-      </p>
+      {/* PASO 3 — Acción: pronosticar con la configuración, habilitado solo si hay datos. */}
+      <StepSection
+        step={3}
+        title="Pronostica y revisa el resultado"
+        accentChip={ACCENT.chip}
+        description="Cuando tengas tus datos y la configuración lista, calcula el pronóstico."
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className={`btn ${ACCENT.solid}`} onClick={predict} disabled={busy || !hasHistory}>
+            {busy ? 'Calculando…' : 'Pronosticar'}
+          </button>
+          {!hasHistory && (
+            <span className="text-sm text-slate-500" role="status">
+              Sube tus ventas (Excel o JSON) para pronosticar con esta configuración.
+            </span>
+          )}
+        </div>
+      </StepSection>
 
       <JobBanner status={pred.status} jobId={pred.jobId} attempts={pred.attempts} />
       {pred.status === 'error' && pred.error && <ErrorPanel error={pred.error} />}
