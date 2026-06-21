@@ -5,10 +5,13 @@ import { downloadTemplate } from '../api/endpoints'
 import type { Domain } from '../api/types'
 
 /**
- * Panel de carga de datos (ADR-0020). Tres formas honestas de aportar datos, sin
- * "Cargar ejemplo": (1) subir Excel, (2) subir JSON, (3) descargar la plantilla. El
+ * Acciones de carga de datos (ADR-0020). Tres formas honestas de aportar datos, sin
+ * "Cargar ejemplo": (1) subir Excel, (2) subir JSON, (3) descargar la plantilla Excel. El
  * Excel se procesa en el servidor; el JSON se lee aquí y se entrega ya parseado a la
  * página, que lo envía con la misma validación del contrato.
+ *
+ * Se renderiza sin tarjeta propia para incrustarse en el «Paso 1 · Tus datos» de cada
+ * pantalla, junto al resumen de datos y (en Compras/Almacén) la carga manual.
  */
 export function DataSourcePanel({
   domain,
@@ -66,13 +69,8 @@ export function DataSourcePanel({
   }
 
   return (
-    <section className="card" aria-label="Cargar datos">
-      <h3 className="text-sm font-semibold text-slate-700">Cargar tus datos</h3>
-      <p className="mt-1 text-xs text-slate-500">
-        Sube tu archivo o descarga la plantilla, complétala y vuelve a subirla. Tus datos pasan
-        por la misma validación, los subas como Excel o como JSON.
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+    <div aria-label="Cargar datos">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           className={`btn ${accentSolid}`}
@@ -88,16 +86,20 @@ export function DataSourcePanel({
         </button>
         <button type="button" className="btn-ghost" onClick={handleTemplate} disabled={downloading}>
           <Download className="h-4 w-4" aria-hidden="true" />
-          {downloading ? 'Descargando…' : 'Descargar plantilla'}
+          {downloading ? 'Descargando…' : 'Descargar plantilla Excel'}
         </button>
         <input ref={excelRef} type="file" accept=".xlsx" className="hidden" onChange={handleExcel} />
         <input ref={jsonRef} type="file" accept=".json,application/json" className="hidden" onChange={handleJson} />
       </div>
+      <p className="help">
+        Sube tu archivo o descarga la plantilla Excel, complétala y vuelve a subirla. Tus datos
+        pasan por la misma validación, los subas como Excel o como JSON.
+      </p>
       {msg && (
         <p className="mt-2 text-xs text-red-600" role="alert">
           {msg}
         </p>
       )}
-    </section>
+    </div>
   )
 }
