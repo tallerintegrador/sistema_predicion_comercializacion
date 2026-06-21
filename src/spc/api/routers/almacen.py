@@ -16,8 +16,10 @@ from spc.api.dependencies import (
 from spc.api.jobs import GestorTrabajos
 from spc.api.ruteo import responder_segun_volumen
 from spc.api.schemas.almacen import AlmacenRequest, AlmacenResponse
+from spc.api.schemas.auth import SessionUser
 from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.jobs import JobAccepted
+from spc.api.seguridad import requiere
 from spc.service.artefactos import RegistroArtefactos
 from spc.service.repositorio import RepositorioPredicciones
 
@@ -41,6 +43,7 @@ def evaluar_almacen(
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
     repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:inventory", "action:forecast"))],
 ) -> dict | JSONResponse:
     """Riesgo de quiebre y stock recomendado por producto (clasificación + perfilado).
 

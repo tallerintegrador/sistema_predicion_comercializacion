@@ -15,9 +15,11 @@ from spc.api.dependencies import (
 )
 from spc.api.jobs import GestorTrabajos
 from spc.api.ruteo import responder_segun_volumen
+from spc.api.schemas.auth import SessionUser
 from spc.api.schemas.compras import ComprasRequest, ComprasResponse
 from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.jobs import JobAccepted
+from spc.api.seguridad import requiere
 from spc.service.artefactos import RegistroArtefactos
 from spc.service.repositorio import RepositorioPredicciones
 
@@ -41,6 +43,7 @@ def recomendar_compras(
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
     repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:purchases", "action:forecast"))],
 ) -> dict | JSONResponse:
     """Reposición sugerida por producto, derivada del pronóstico de ventas.
 

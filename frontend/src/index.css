@@ -1,8 +1,37 @@
 @import "tailwindcss";
 
-/* Estilos base del SPC. Tailwind v4: la configuración vive aquí. */
+/*
+ * Sistema de diseño del SPC (ADR-0017). Tailwind v4: los tokens viven aquí.
+ *
+ * Identidad: confiable · analítica · clara · sobria · honesta. El color de marca
+ * reaprovecha el índigo del botón "Predecir"; el acento (teal) realza los datos; los
+ * neutros son grises fríos (slate) y los semánticos son emerald/amber/red/blue. Los
+ * componentes consumen estos tokens vía las clases utilitarias de @layer components,
+ * de modo que la identidad se aplica de forma consistente sin clavar colores inline.
+ */
+@theme {
+  /* Tipografía: stack de sistema legible (sin dependencia nueva). */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Marca (índigo/violeta) — color primario. brand-600 == indigo-600 actual. */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-900: #312e81;
+
+  /* Acento para datos (teal/cian): series secundarias y realces analíticos. */
+  --color-accent-100: #ccfbf1;
+  --color-accent-500: #14b8a6;
+  --color-accent-600: #0d9488;
+}
+
 :root {
   color-scheme: light;
+  /* Anillo de foco de marca (accesibilidad: foco visible y consistente). */
+  --shadow-focus: 0 0 0 3px rgb(79 70 229 / 0.25);
 }
 
 html,
@@ -13,9 +42,9 @@ body,
 
 body {
   margin: 0;
-  background-color: #f8fafc; /* slate-50 */
-  color: #0f172a; /* slate-900 */
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  background-color: #f8fafc; /* slate-50 (fondo de la app) */
+  color: #0f172a; /* slate-900 (texto principal) */
+  font-family: var(--font-sans);
 }
 
 /* Clases utilitarias reutilizables (composición con @apply, Tailwind v4). */
@@ -24,22 +53,35 @@ body {
     @apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 bg-indigo-600 text-white hover:bg-indigo-700;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50 bg-brand-600 text-white hover:bg-brand-700;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
   }
   .label {
     @apply mb-1 block text-sm font-medium text-slate-700;
   }
+  .help {
+    @apply mt-1 text-xs text-slate-500;
+  }
   .input {
-    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200;
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400;
   }
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  /* Control segmentado (tipología, R1): grupo de opciones tipo radiogroup. */
+  .segmented {
+    @apply inline-flex rounded-lg border border-slate-300 bg-slate-50 p-0.5;
+  }
+  .segmented-option {
+    @apply inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .segmented-option[aria-checked="true"] {
+    @apply bg-white text-brand-700 shadow-sm;
   }
   .th {
     @apply whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500;

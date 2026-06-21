@@ -27,6 +27,7 @@ from spc.api.dependencies import (
     obtener_jobs,
     obtener_registro,
     obtener_repositorio,
+    obtener_resolutor_cliente,
 )
 from spc.api.ingest import lector, plantilla
 from spc.api.ingest.esquema_excel import plantilla_de
@@ -34,12 +35,15 @@ from spc.api.ingest.lector import ArchivoDemasiadoGrande
 from spc.api.jobs import GestorTrabajos
 from spc.api.ruteo import responder_segun_volumen
 from spc.api.schemas.almacen import AlmacenRequest, AlmacenResponse
+from spc.api.schemas.auth import SessionUser
 from spc.api.schemas.compras import ComprasRequest, ComprasResponse
 from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.jobs import JobAccepted
 from spc.api.schemas.ventas import VentasRequest, VentasResponse
+from spc.api.seguridad import requiere
 from spc.config import excel_max_bytes
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 
 router = APIRouter(tags=["excel"])
@@ -81,7 +85,9 @@ async def _leer_contenido(archivo: UploadFile) -> bytes:
 # SALES
 # ---------------------------------------------------------------------------
 @router.get("/sales/template", summary="Descargar plantilla Excel de SALES")
-def plantilla_sales() -> Response:
+def plantilla_sales(
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:sales", "action:template_download"))],
+) -> Response:
     """Descarga ``sales_template.xlsx`` (hojas history + parameters + instructions)."""
     return _descarga("sales")
 
@@ -98,14 +104,16 @@ async def cargar_sales(
     registro: Annotated[RegistroArtefactos, Depends(obtener_registro)],
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
     repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
+    resolutor: Annotated[ResolutorModeloCliente | None, Depends(obtener_resolutor_cliente)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:sales", "action:template_upload"))],
 ) -> dict | JSONResponse:
     """Sube el Excel de SALES y devuelve el mismo resultado que ``POST /sales``."""
     contenido = await _leer_contenido(file)
     peticion = cast(VentasRequest, lector.leer_peticion(contenido, "sales"))
     return responder_segun_volumen(
         "sales", peticion, registro, jobs,
-        repositorio=repositorio, canal="excel", client_id=client_id,
+        repositorio=repositorio, resolutor=resolutor, canal="excel", client_id=client_id,
     )
 
 
@@ -113,7 +121,9 @@ async def cargar_sales(
 # PURCHASES
 # ---------------------------------------------------------------------------
 @router.get("/purchases/template", summary="Descargar plantilla Excel de PURCHASES")
-def plantilla_purchases() -> Response:
+def plantilla_purchases(
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:purchases", "action:template_download"))],
+) -> Response:
     """Descarga ``purchases_template.xlsx`` (history + replenishment_params + instructions)."""
     return _descarga("purchases")
 
@@ -131,6 +141,7 @@ async def cargar_purchases(
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
     repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:purchases", "action:template_upload"))],
 ) -> dict | JSONResponse:
     """Sube el Excel de PURCHASES y devuelve el mismo resultado que ``POST /purchases``."""
     contenido = await _leer_contenido(file)
@@ -145,7 +156,9 @@ async def cargar_purchases(
 # INVENTORY
 # ---------------------------------------------------------------------------
 @router.get("/inventory/template", summary="Descargar plantilla Excel de INVENTORY")
-def plantilla_inventory() -> Response:
+def plantilla_inventory(
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:inventory", "action:template_download"))],
+) -> Response:
     """Descarga ``inventory_template.xlsx`` (history + inventory_status + instructions)."""
     return _descarga("inventory")
 
@@ -163,6 +176,7 @@ async def cargar_inventory(
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
     repositorio: Annotated[RepositorioPredicciones | None, Depends(obtener_repositorio)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    _auth: Annotated[SessionUser | None, Depends(requiere("module:inventory", "action:template_upload"))],
 ) -> dict | JSONResponse:
     """Sube el Excel de INVENTORY y devuelve el mismo resultado que ``POST /inventory``."""
     contenido = await _leer_contenido(file)

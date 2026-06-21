@@ -102,6 +102,34 @@ venv\Scripts\uvicorn spc.api.main:app --reload --port 8010
 
 CORS configurable con `SPC_CORS_ORIGINS` (orígenes separados por coma; `*` por defecto).
 
+### Control de acceso por roles (Fase 4.5, ADR-0014)
+
+La API exige **autenticación y autorización** en el backend (no basta ocultar elementos en
+la UI). Login por id + contraseña (`POST /auth/login`) que emite un **token firmado**
+(`Authorization: Bearer …`); cada endpoint protegido valida rol/permiso con
+`spc.api.seguridad.requiere`. Usuarios, roles, permisos y perfiles viven en el **mismo
+SQLite** (`spc.db`), con contraseñas **hasheadas** (`hashlib.scrypt`). Detalle en
+[`docs/decisiones/0014-control-acceso-por-roles.md`](docs/decisiones/0014-control-acceso-por-roles.md).
+
+**Cuentas administrador de DEMOSTRACIÓN** sembradas al arranque: **256317** y **256370**,
+con **contraseña inicial igual al id** (almacenada hasheada). ⚠️ **No son credenciales de
+producción**: en un despliegue real hay que cambiarlas y fijar `SPC_AUTH_SECRET`.
+
+Variables de entorno:
+
+| Variable | Default | Uso |
+|---|---|---|
+| `SPC_AUTH_ENABLED` | `true` | Habilita el control de acceso (en `0`, la API no exige credenciales). |
+| `SPC_AUTH_SECRET` | *(secreto de DEV)* | Firma de los tokens; **obligatorio en producción**. |
+| `SPC_AUTH_TOKEN_TTL` | `28800` | Vida útil del token, en segundos (8 h). |
+
+```powershell
+# Levantar fijando un secreto propio y orígenes CORS del frontend:
+$env:SPC_AUTH_SECRET = "un-secreto-largo-y-aleatorio"
+$env:SPC_CORS_ORIGINS = "http://localhost:5173"
+venv\Scripts\python -m uvicorn spc.api.main:app --port 8010 --workers 1
+```
+
 Tests de la API (entrenan artefactos diminutos sobre datos sintéticos; **sin `data/raw`
 ni GPU**):
 
@@ -152,6 +180,15 @@ la API con el modelo congelado; habla solo el **contrato v1.0.1** (no toca el mo
 capa interna). Cubre los tres dominios por JSON con datos de ejemplo, canal Excel
 (plantilla + subida), modo lote con *polling* de `/jobs/{id}`, página de catálogo y
 gráficos. Lo diferido se etiqueta (`interval_80`, `client_adjustment`).
+
+La interfaz tiene una **identidad visual** formalizada como tokens de diseño
+(`@theme` en `index.css`: marca índigo, acento teal, neutros fríos, semánticos; monograma
+"SPC") — ver [ADR-0017](docs/decisiones/0017-identidad-visual-sistema-diseno.md). La
+pantalla de **Ventas** organiza el pronóstico en una tarjeta *Configuración del pronóstico*
+con **tipo de pronóstico** (R1) y **dimensión / filtrar por** (R2) mediante componentes
+reutilizables; todas las opciones (tipologías, dimensiones, granularidad **Día/Semana/Mes** y
+rango de horizonte) provienen de `GET /catalog` (`query_options`), sin hardcodeo — ver
+[ADR-0018](docs/decisiones/0018-catalogo-tipologias-dimensiones.md).
 
 > **Estado:** el frontend corre **en local** (dev). **El despliegue (Fase 4.0–4.4) sigue
 > pendiente**: no hay backend ni frontend desplegados. La conexión a una API desplegada

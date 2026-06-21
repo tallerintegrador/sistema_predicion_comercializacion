@@ -24,8 +24,10 @@ from fastapi.responses import JSONResponse
 from spc.api.dependencies import obtener_jobs
 from spc.api.errors import TrabajoNoEncontrado
 from spc.api.jobs import GestorTrabajos, Job
+from spc.api.schemas.auth import SessionUser
 from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.jobs import JobStatus
+from spc.api.seguridad import requiere
 
 router = APIRouter(tags=["batch"])
 
@@ -63,6 +65,7 @@ def _buscar(job_id: str, jobs: GestorTrabajos) -> Job:
 def estado_trabajo(
     job_id: str,
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+    _auth: Annotated[SessionUser | None, Depends(requiere())],
 ) -> JobStatus:
     """Devuelve el estado del trabajo: ``queued``/``running``/``done``/``error``."""
     return _estado(_buscar(job_id, jobs))
@@ -82,6 +85,7 @@ def estado_trabajo(
 def resultado_trabajo(
     job_id: str,
     jobs: Annotated[GestorTrabajos, Depends(obtener_jobs)],
+    _auth: Annotated[SessionUser | None, Depends(requiere())],
 ) -> JSONResponse:
     """Recupera el resultado del trabajo, fiel a "el mismo dato da el mismo resultado".
 

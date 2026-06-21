@@ -10,11 +10,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Header, Request
+from fastapi import Depends, Header, Request
 
 from spc.api.errors import ServicioNoDisponible
 from spc.api.jobs import GestorTrabajos
+from spc.api.jobs_entrenamiento import GestorEntrenamientos
+from spc.api.schemas.auth import SessionUser
+from spc.api.seguridad import usuario_opcional
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 
 
@@ -53,13 +57,41 @@ def obtener_repositorio(request: Request) -> RepositorioPredicciones | None:
     return getattr(request.app.state, "repositorio", None)
 
 
+def obtener_resolutor_cliente(request: Request) -> ResolutorModeloCliente | None:
+    """Devuelve el resolutor de modelos por cliente (ADR-0013) o ``None``.
+
+    ``None`` si el ajuste por cliente está desactivado (``SPC_CLIENT_ADJ_ENABLED=0``) o no
+    se inicializó: en ese caso el serving usa siempre el congelado (default intacto).
+    """
+    return getattr(request.app.state, "resolutor_cliente", None)
+
+
+def obtener_entrenamientos(request: Request) -> GestorEntrenamientos:
+    """Devuelve el gestor de trabajos de entrenamiento por cliente (executor separado).
+
+    Lanza ``ServicioNoDisponible`` (→ 503) si el ajuste por cliente está desactivado o no
+    se inicializó (los endpoints de entrenamiento no están disponibles entonces).
+    """
+    gestor = getattr(request.app.state, "entrenamientos", None)
+    if gestor is None:
+        raise ServicioNoDisponible(
+            "El entrenamiento por cliente no está disponible (deshabilitado por configuración)."
+        )
+    return gestor
+
+
 def obtener_client_id(
+    sesion: Annotated[SessionUser | None, Depends(usuario_opcional)],
     x_client_id: Annotated[str | None, Header(alias="X-Client-Id")] = None,
 ) -> str:
-    """Identificador del cliente para etiquetar el corpus (header ``X-Client-Id``).
+    """Identificador del cliente para etiquetar el corpus y el ajuste por cliente.
 
-    Es **metadato de transporte**, no parte del cuerpo del contrato (no lo toca). Si el
-    cliente no lo envía, cae a ``"default"``. Habilita corpus/ajuste por cliente a futuro.
+    Con el control de acceso activo, se **deriva del usuario autenticado** (``client_id``
+    del token), de modo que el corpus/entrenamiento quedan ligados a la cuenta y no a un
+    header que cualquiera podría falsificar. Sin sesión (control inactivo o tests previos),
+    cae al header ``X-Client-Id`` (metadato de transporte) y, en su ausencia, a ``"default"``.
     """
+    if sesion is not None:
+        return sesion.client_id
     valor = (x_client_id or "").strip()
     return valor or "default"

@@ -101,14 +101,17 @@ def test_catalog_solo_sales_expone_model(client):
 
 
 def test_catalog_etiqueta_canales_y_modos_con_honestidad(client):
-    """JSON/Excel y en línea/lote disponibles hoy; el ajuste por cliente, planificado."""
+    """JSON/Excel, en línea/lote y ajuste por cliente disponibles hoy (ADR-0013)."""
     cat = client.get("/catalog").json()
     canales = {c["name"]: c["status"] for c in cat["channels"]}
     modos = {m["name"]: m["status"] for m in cat["modes"]}
     assert canales["json"] == "available" and canales["excel"] == "available"
     assert modos["online"] == "available" and modos["batch"] == "available"
-    # El ajuste por cliente (opción B/híbrida) sigue siendo experimento futuro.
-    assert modos["client_adjustment"] == "planned"
+    # El ajuste por cliente bajo demanda ya es funcional y validado (opt-in, ADR-0013).
+    assert modos["client_adjustment"] == "available"
+    desc = next(m["description"] for m in cat["modes"] if m["name"] == "client_adjustment").lower()
+    # Honestidad: opt-in, validado vs congelado, "no mejora" se reporta.
+    assert "opt-in" in desc and "congelado" in desc
 
 
 @pytest.mark.parametrize("dominio", sorted(DOMINIOS_ESPERADOS))
@@ -214,6 +217,80 @@ def test_catalog_coincide_con_openapi(client):
     if modos.get("batch") == "available":
         assert "/jobs/{job_id}" in paths
         assert "/jobs/{job_id}/result" in paths
+    if modos.get("client_adjustment") == "available":
+        # El ajuste por cliente (ADR-0013) expone disparo + estado + resultado + switch.
+        assert "/training/sales/excel" in paths
+        assert "/training/jobs/{job_id}" in paths
+        assert "/training/jobs/{job_id}/result" in paths
+        assert "/training/sales/serving" in paths
+
+
+def _query_options_sales(client) -> dict:
+    """Atajo: el bloque ``query_options`` del dominio SALES tal como lo entrega la API."""
+    sales = next(d for d in client.get("/catalog").json()["domains"] if d["domain"] == "sales")
+    assert "query_options" in sales, "SALES debe exponer query_options"
+    return sales["query_options"]
+
+
+def test_catalog_query_options_solo_en_sales(client):
+    """Solo SALES expone ``query_options`` hoy; con ``exclude_none`` los demás lo omiten."""
+    por_dominio = {d["domain"]: d for d in client.get("/catalog").json()["domains"]}
+    assert "query_options" in por_dominio["sales"]
+    assert "query_options" not in por_dominio["purchases"]
+    assert "query_options" not in por_dominio["inventory"]
+
+
+def test_catalog_query_options_granularidades_calzan_con_el_contrato(client):
+    """Anti-desync: las granularidades del catálogo == el Literal ``Granularidad`` del contrato."""
+    import typing
+
+    from spc.api.schemas.ventas import Granularidad
+
+    qo = _query_options_sales(client)
+    nombres = [g["name"] for g in qo["granularities"]]
+    assert nombres == list(typing.get_args(Granularidad))
+    # Etiqueta en español, no vacía y distinta del valor en inglés (Día/Semana/Mes).
+    for g in qo["granularities"]:
+        assert g["label"] and g["label"] != g["name"]
+
+
+def test_catalog_query_options_horizonte_calza_con_las_restricciones(client):
+    """Anti-desync: min/max del horizonte == restricciones (gt/le) de ``VentasRequest``."""
+    import annotated_types
+
+    from spc.api.schemas.ventas import VentasRequest
+
+    qo = _query_options_sales(client)
+    meta = VentasRequest.model_fields["horizon"].metadata
+    gt = next((m.gt for m in meta if isinstance(m, annotated_types.Gt)), None)
+    le = next((m.le for m in meta if isinstance(m, annotated_types.Le)), None)
+    assert gt is not None and le is not None
+    assert qo["horizon"]["min"] == int(gt) + 1 == 1
+    assert qo["horizon"]["max"] == int(le) == 365
+    assert qo["horizon"]["min"] <= qo["horizon"]["default"] <= qo["horizon"]["max"]
+
+
+def test_catalog_query_options_dimensiones_existen_en_el_contrato(client):
+    """Anti-desync: cada dimensión (R2) es una columna real del bloque ``history``."""
+    from spc.api.schemas.comunes import HistoricoItem
+
+    qo = _query_options_sales(client)
+    columnas = set(HistoricoItem.model_fields)
+    nombres = [d["name"] for d in qo["dimensions"]]
+    assert nombres, "se esperaba al menos una dimensión de desglose"
+    assert set(nombres) <= columnas, f"dimensiones ausentes en history: {set(nombres) - columnas}"
+    for d in qo["dimensions"]:
+        assert d["label"], "cada dimensión debe traer etiqueta en español"
+
+
+def test_catalog_query_options_tipologias_coherentes(client):
+    """Tipologías (R1) con etiqueta y descripción; si alguna requiere dimensión, hay dimensiones."""
+    qo = _query_options_sales(client)
+    assert qo["typologies"], "se esperaba al menos una tipología"
+    for t in qo["typologies"]:
+        assert t["label"] and t["description"]
+    if any(t["requires_dimension"] for t in qo["typologies"]):
+        assert qo["dimensions"], "una tipología requiere dimensión pero no hay dimensiones disponibles"
 
 
 def test_catalog_pending_solo_lista_el_cuantil_model_adjacent(client):

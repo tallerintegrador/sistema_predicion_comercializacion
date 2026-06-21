@@ -13,6 +13,31 @@ const BASE_URL: string = (
 
 const CLIENT_ID: string = import.meta.env.VITE_CLIENT_ID ?? 'frontend-demo'
 
+// --- Token de sesión (control de acceso por roles, ADR-0014) ---
+// El token vive en memoria + localStorage para sobrevivir recargas. Con el control de
+// acceso activo, el backend deriva el client_id del usuario autenticado; el header
+// X-Client-Id se sigue enviando como respaldo (lo ignora si hay sesión).
+const TOKEN_KEY = 'spc.token'
+let authToken: string | null = localStorage.getItem(TOKEN_KEY)
+let onUnauthorized: (() => void) | null = null
+
+/** Fija (o limpia) el token de sesión y lo persiste en localStorage. */
+export function setAuthToken(token: string | null): void {
+  authToken = token
+  if (token) localStorage.setItem(TOKEN_KEY, token)
+  else localStorage.removeItem(TOKEN_KEY)
+}
+
+/** Token de sesión vigente (o null si no hay sesión). */
+export function getAuthToken(): string | null {
+  return authToken
+}
+
+/** Registra un manejador para cuando el backend rechaza el token (401 con sesión activa). */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler
+}
+
 /** Error de la API con el cuerpo uniforme del contrato ya parseado. */
 export class ApiError extends Error {
   status: number
@@ -31,6 +56,7 @@ export class ApiError extends Error {
 function headersBase(extra?: HeadersInit): Headers {
   const h = new Headers(extra)
   h.set('X-Client-Id', CLIENT_ID)
+  if (authToken) h.set('Authorization', `Bearer ${authToken}`)
   return h
 }
 
@@ -48,6 +74,9 @@ async function parseError(res: Response): Promise<ApiError> {
   } catch {
     // Respuesta sin JSON: nos quedamos con el mensaje genérico.
   }
+  // Token rechazado durante una sesión activa (p. ej. expiró): forzar cierre de sesión.
+  // El login falla con 401 antes de fijar el token, así que ese caso no dispara esto.
+  if (res.status === 401 && authToken && onUnauthorized) onUnauthorized()
   return new ApiError(res.status, type, message, details)
 }
 
@@ -59,6 +88,28 @@ export async function postJson<T>(path: string, body: unknown): Promise<{ status
     body: JSON.stringify(body),
   })
   if (!res.ok && res.status !== 202) throw await parseError(res)
+  return { status: res.status, data: (await res.json()) as T }
+}
+
+/** PUT JSON. Lanza `ApiError` si la respuesta no es 2xx. */
+export async function putJson<T>(path: string, body: unknown): Promise<{ status: number; data: T }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'PUT',
+    headers: headersBase({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw await parseError(res)
+  return { status: res.status, data: (await res.json()) as T }
+}
+
+/** PATCH JSON. Lanza `ApiError` si la respuesta no es 2xx. */
+export async function patchJson<T>(path: string, body: unknown): Promise<{ status: number; data: T }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: headersBase({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw await parseError(res)
   return { status: res.status, data: (await res.json()) as T }
 }
 

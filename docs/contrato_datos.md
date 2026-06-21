@@ -45,6 +45,13 @@ aclaración sin cambio de forma sube el **PARCHE**.
 - **Validación estricta en la frontera.** La API valida; el motor confía. Una entrada
   mal formada se rechaza con un **error controlado** (HTTP 422), nunca llega al motor.
 - **Honestidad.** El contrato describe solo lo real: no hay campos ni valores inventados.
+- **Endpoints operacionales fuera del contrato de datos.** La autenticación y la gestión de
+  usuarios/roles/perfil (`/auth/*`, `/users`, `/roles`, `/permissions`, `/profile`; ADR-0014/
+  0016) son **operacionales**, no forman parte de este contrato de predicción v1.0.1 y no
+  versionan con él. Aun así respetan su **misma convención de idioma** (campos, parámetros y
+  enums en inglés; prosa en español) y el **mismo sobre de error** uniforme. El header
+  `X-Client-Id` deja de ser la fuente del cliente cuando hay sesión: el `client_id` se deriva
+  del usuario autenticado.
 
 ---
 

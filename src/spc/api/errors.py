@@ -33,6 +33,26 @@ class TrabajoNoEncontrado(LookupError):
     """No existe un trabajo por lote con el ``job_id`` consultado (→ HTTP 404)."""
 
 
+class CredencialesInvalidas(Exception):
+    """Id o contraseña incorrectos en el login (→ HTTP 401). No revela cuál falló."""
+
+
+class NoAutenticado(Exception):
+    """Falta el token de sesión o no es válido/expiró (→ HTTP 401)."""
+
+
+class AccesoDenegado(Exception):
+    """El usuario está autenticado pero su rol no tiene el permiso requerido (→ HTTP 403)."""
+
+
+class RecursoNoEncontrado(LookupError):
+    """No existe el recurso solicitado (usuario/rol/perfil) (→ HTTP 404)."""
+
+
+class ConflictoRecurso(Exception):
+    """Choque con el estado actual (p. ej. id de usuario o nombre de rol ya existe) (→ HTTP 409)."""
+
+
 def _ruta_campo(loc: tuple[Any, ...]) -> str:
     """Convierte la ubicación de un error de Pydantic en una ruta legible.
 
@@ -88,6 +108,31 @@ async def _manejar_trabajo_no_encontrado(_: Request, exc: TrabajoNoEncontrado) -
     return _json_error(404, "not_found", str(exc))
 
 
+async def _manejar_credenciales(_: Request, exc: CredencialesInvalidas) -> JSONResponse:
+    """Login fallido → 401 (mensaje genérico, sin revelar si el id existe)."""
+    return _json_error(401, "invalid_credentials", str(exc) or "Credenciales inválidas.")
+
+
+async def _manejar_no_autenticado(_: Request, exc: NoAutenticado) -> JSONResponse:
+    """Sin token válido → 401."""
+    return _json_error(401, "unauthorized", str(exc) or "Autenticación requerida.")
+
+
+async def _manejar_acceso_denegado(_: Request, exc: AccesoDenegado) -> JSONResponse:
+    """Rol sin el permiso requerido → 403."""
+    return _json_error(403, "forbidden", str(exc) or "No tiene permiso para esta acción.")
+
+
+async def _manejar_recurso_no_encontrado(_: Request, exc: RecursoNoEncontrado) -> JSONResponse:
+    """Usuario/rol/perfil inexistente → 404."""
+    return _json_error(404, "not_found", str(exc))
+
+
+async def _manejar_conflicto(_: Request, exc: ConflictoRecurso) -> JSONResponse:
+    """Choque de estado (id/nombre duplicado) → 409."""
+    return _json_error(409, "conflict", str(exc))
+
+
 async def _manejar_inesperado(_: Request, exc: Exception) -> JSONResponse:
     """Error inesperado → 500 controlado (sin filtrar detalles internos)."""
     log.exception("Error inesperado procesando la solicitud: %s", exc)
@@ -104,4 +149,9 @@ def registrar_manejadores(app: FastAPI) -> None:
     app.add_exception_handler(ArchivoDemasiadoGrande, _manejar_archivo_grande)
     app.add_exception_handler(ServicioNoDisponible, _manejar_servicio_no_disponible)
     app.add_exception_handler(TrabajoNoEncontrado, _manejar_trabajo_no_encontrado)
+    app.add_exception_handler(CredencialesInvalidas, _manejar_credenciales)
+    app.add_exception_handler(NoAutenticado, _manejar_no_autenticado)
+    app.add_exception_handler(AccesoDenegado, _manejar_acceso_denegado)
+    app.add_exception_handler(RecursoNoEncontrado, _manejar_recurso_no_encontrado)
+    app.add_exception_handler(ConflictoRecurso, _manejar_conflicto)
     app.add_exception_handler(Exception, _manejar_inesperado)

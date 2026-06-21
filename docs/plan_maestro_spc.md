@@ -279,6 +279,12 @@ Cada fase se cierra con una **validación tuya** antes de pasar a la siguiente. 
 - **Criterio de validación:** un recorrido end-to-end (cargar datos → ver resultados de los tres campos) funciona contra el API local.
 - **Dependencias:** Fase 3.
 
+### Fase 4.5 — Experiencia de usuario y control de acceso
+- **Objetivo:** una experiencia amigable para un usuario no técnico de una PyME, con identidad y autorización reales.
+- **Entregables:** (1) **control de acceso por roles** en el backend —login con token firmado, usuarios/roles/permisos y enforcement por endpoint (ADR-0014); (2) **rediseño del frontend** con login, sidebar filtrado por permisos y administración de usuarios (ADR-0015); (3) **onboarding del negocio** ligado al `client_id` del usuario (ADR-0016); (4) **identidad visual** como tokens de diseño (ADR-0017) y **rediseño de la pantalla de Ventas** con selector de tipo de pronóstico (R1) y de dimensión/filtrar por (R2), cuyas opciones extienden `GET /catalog` (`query_options`) derivándolas del contrato y de las agregaciones del servicio (ADR-0018). Cuentas administrador de demo (256317/256370) sembradas y hasheadas. **El motor de ML no se toca.**
+- **Criterio de validación:** un usuario inicia sesión, hace onboarding y solo ve/usa lo que su rol permite; los endpoints rechazan en backend (401/403) lo no autorizado; las pruebas previas siguen verdes y se añaden las de auth/roles.
+- **Dependencias:** Fases 3 y 4.
+
 ### Fase 5 — Despliegue y documentación final *(opcional según tiempo)*
 - **Objetivo:** empaquetar y cerrar la documentación.
 - **Entregables:** Dockerfile(s) y `docker-compose` (API + frontend; PostgreSQL opcional); documentación final (README, guía de reproducción, contrato de datos consolidado, ADR al día).

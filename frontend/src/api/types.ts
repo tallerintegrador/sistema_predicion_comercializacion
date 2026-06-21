@@ -143,6 +143,71 @@ export interface JobAccepted {
   result_url: string
 }
 
+// --- Entrenamiento por cliente bajo demanda (training.py, ADR-0013) ---
+export type TrainingPhase = 'validating' | 'training' | 'evaluating'
+export type TrainingOutcome = 'adopted' | 'not_adopted' | 'insufficient_data' | 'inconclusive'
+export type TrainingSource = 'merged' | 'excel' | 'corpus'
+
+export interface TrainingAccepted {
+  job_id: string
+  status: JobStatusValue
+  domain: 'sales'
+  client_id: string
+  source: string
+  status_url: string
+  result_url: string
+}
+
+export interface TrainingJobStatus {
+  job_id: string
+  status: JobStatusValue
+  phase?: TrainingPhase | null
+  domain: string
+  client_id: string
+  source: string
+  created_at: string
+  finished_at?: string | null
+  result_url: string
+}
+
+export interface MetricTriple {
+  WAPE: number
+  MAE: number
+  RMSE: number
+}
+
+export interface BaselineMetric extends MetricTriple {
+  name: string
+}
+
+/** Resultado del experimento medido (comparación honesta + veredicto de adopción). */
+export interface TrainingResult {
+  domain: 'sales'
+  outcome: TrainingOutcome
+  message: string
+  metric?: string
+  window_days?: number
+  candidate?: MetricTriple
+  frozen?: MetricTriple
+  baseline?: BaselineMetric | null
+  improvement_wape_points?: number
+  beats_frozen?: boolean
+  beats_baseline?: boolean
+  model_version?: string
+  missing?: string[]
+}
+
+export interface ServingStatus {
+  domain: 'sales'
+  client_id: string
+  has_client_model: boolean
+  serving_client_model: boolean
+  adopted_version?: number | null
+  model_version?: string | null
+  trained_versions: number[]
+  last_comparison?: TrainingResult | null
+}
+
 // --- Catálogo (catalog.py) ---
 export type AvailabilityStatus = 'available' | 'planned'
 
@@ -172,6 +237,41 @@ export interface OutputGroup {
   fields: CatalogField[]
 }
 
+// --- Opciones de consulta de la UI (query_options): R1 tipologías, R2 dimensiones ---
+// Derivadas del contrato y de las agregaciones del servicio (no del motor de ML). La UI
+// las consume para no hardcodear ninguna opción (ADR-0018).
+export interface ForecastTypology {
+  name: string // p. ej. "time_series" | "by_dimension"
+  label: string // etiqueta en español
+  requires_dimension: boolean // R1 → ¿activa el selector de dimensión (R2)?
+  description: string
+}
+
+export interface ForecastDimension {
+  name: string // columna del contrato: "store_id" | "product_id"
+  label: string // etiqueta en español
+  description?: string | null
+}
+
+export interface GranularityOption {
+  name: Granularity // "day" | "week" | "month"
+  label: string // "Día" | "Semana" | "Mes"
+}
+
+export interface HorizonRange {
+  min: number
+  max: number
+  default: number
+  unit: string // "periods"
+}
+
+export interface QueryOptions {
+  typologies: ForecastTypology[]
+  dimensions: ForecastDimension[]
+  granularities: GranularityOption[]
+  horizon: HorizonRange
+}
+
 export interface DomainCatalog {
   domain: Domain
   endpoint: string
@@ -181,6 +281,7 @@ export interface DomainCatalog {
   contract_reference: string
   inputs: CatalogInput[]
   outputs: OutputGroup[]
+  query_options?: QueryOptions | null // presente solo en dominios que lo exponen (hoy sales)
   notes: string[]
   pending_policy: string[]
 }

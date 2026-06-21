@@ -29,13 +29,17 @@ from spc.service.artefactos import RegistroArtefactos
 
 @pytest.fixture(autouse=True)
 def _persistencia_desactivada_por_defecto(monkeypatch) -> None:
-    """Por defecto los tests de la API **no** persisten (no tocan ``data/spc.db``).
+    """Por defecto los tests de la API **no** persisten ni exigen autenticación.
 
-    Los tests de persistencia (``test_persistencia.py``) inyectan su propio repositorio
-    temporal, que tiene prioridad sobre esta variable (la inyección directa evita abrir
-    archivo en el lifespan). Así el resto de la suite queda aislada y sin efectos.
+    - ``SPC_PERSIST_ENABLED=0``: no se toca ``data/spc.db`` (los tests de persistencia
+      inyectan su propio repositorio temporal, que tiene prioridad).
+    - ``SPC_AUTH_ENABLED=0``: los endpoints protegidos no exigen credenciales, de modo que
+      la suite de predicción previa corre sin tokens. Los tests de control de acceso
+      (``test_entrenamiento_cliente`` no; ``test_auth.py``) activan la bandera y crean su
+      propia app con un repositorio de auth temporal.
     """
     monkeypatch.setenv("SPC_PERSIST_ENABLED", "0")
+    monkeypatch.setenv("SPC_AUTH_ENABLED", "0")
 
 
 @pytest.fixture(scope="session")
@@ -84,9 +88,17 @@ def registro(directorio_modelos) -> RegistroArtefactos:
 
 
 @pytest.fixture
-def client(registro) -> object:
-    """`TestClient` sobre la app con el registro inyectado (sin tocar el disco real)."""
-    app = crear_app(registro=registro, cors_origins=["http://localhost:5173"])
+def client(registro, tmp_path) -> object:
+    """`TestClient` sobre la app con el registro inyectado (sin tocar el disco real).
+
+    La carpeta de modelos por cliente (ADR-0013) se apunta a un temporal por test, de modo
+    que ningún test escriba en ``models/clientes`` del repo.
+    """
+    app = crear_app(
+        registro=registro,
+        client_models_dir=tmp_path / "clientes",
+        cors_origins=["http://localhost:5173"],
+    )
     with TestClient(app) as c:
         yield c
 

@@ -1119,6 +1119,8 @@ def entrenar_y_comparar(
     hpo_trials: int = 30,
     ensemble: bool = True,
     usar_gpu: bool = False,
+    dias_test: int = DIAS_TEST,
+    dias_valid: int = DIAS_VALID,
 ) -> ResultadoEntrenamiento:
     """Construye features, valida temporalmente y compara baselines vs el zoo.
 
@@ -1128,6 +1130,12 @@ def entrenar_y_comparar(
     Con ``usar_gpu=True`` los boosters entrenan en GPU (ver :func:`construir_zoo`).
     Por defecto ``False`` para que la suite de tests sea portable (sin GPU); el
     entrenamiento de produccion (``entrenar``/``cli``) lo activa.
+
+    ``dias_test``/``dias_valid`` son las longitudes (en dias) de los holdouts
+    temporales. Sus **defaults reproducen exactamente** el entrenamiento del modelo
+    congelado (``DIAS_TEST``/``DIAS_VALID`` = 16+16, espejo del test de Favorita); se
+    parametrizan para el **entrenamiento por cliente bajo demanda** (ADR-0013), que usa
+    ventanas adaptativas a la historia disponible. No alteran el artefacto congelado.
     """
     seed = settings.random_seed
     cfg_features = cfg_features or ConfigFeatures()
@@ -1149,7 +1157,7 @@ def entrenar_y_comparar(
     y_units = df_model[OBJETIVO].to_numpy("float64")
     y_log = np.log1p(y_units)
 
-    cortes = calcular_cortes(df_model[COL_FECHA])
+    cortes = calcular_cortes(df_model[COL_FECHA], dias_test=dias_test, dias_valid=dias_valid)
     fechas = df_model[COL_FECHA]
     mask_train = fechas <= cortes.train_fin
     mask_valid = (fechas >= cortes.valid_ini) & (fechas <= cortes.valid_fin)

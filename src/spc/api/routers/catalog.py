@@ -8,10 +8,14 @@ derivado de los esquemas reales (`spc.api.catalog`).
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
 
 from spc.api.catalog import construir_catalogo
+from spc.api.schemas.auth import SessionUser
 from spc.api.schemas.catalog import CatalogResponse
+from spc.api.seguridad import requiere
 
 router = APIRouter(tags=["catalog"])
 
@@ -29,6 +33,8 @@ router = APIRouter(tags=["catalog"])
         "desincronizarse de lo que la API entrega."
     ),
 )
-def obtener_catalogo() -> CatalogResponse:
+def obtener_catalogo(
+    _auth: Annotated[SessionUser | None, Depends(requiere("action:catalog"))],
+) -> CatalogResponse:
     """Construye y devuelve el catálogo de predicciones (solo lectura)."""
     return construir_catalogo()

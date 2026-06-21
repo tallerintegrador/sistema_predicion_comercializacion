@@ -16,6 +16,12 @@ import type {
   PurchasesResponse,
   SalesRequest,
   SalesResponse,
+  ServingStatus,
+  TrainingAccepted,
+  TrainingJobStatus,
+  TrainingPhase,
+  TrainingResult,
+  TrainingSource,
 } from './types'
 
 // Una predicción puede volver como resultado (200) o como comprobante de lote (202).
@@ -72,5 +78,49 @@ export async function getJobResult<T>(
 // --- Catálogo ---
 export async function getCatalog(): Promise<CatalogResponse> {
   const { data } = await getJson<CatalogResponse>('/catalog')
+  return data
+}
+
+// --- Entrenamiento por cliente bajo demanda (ADR-0013) ---
+/** Sube el Excel de SALES y dispara un entrenamiento LOCAL (opt-in). Devuelve el job. */
+export async function startSalesTraining(
+  file: File,
+  source: TrainingSource = 'merged',
+): Promise<TrainingAccepted> {
+  const { data } = await postFile<TrainingAccepted>(
+    `/training/sales/excel?source=${source}`,
+    file,
+  )
+  return data
+}
+
+/**
+ * Pide el resultado del entrenamiento. Mientras el backend responde 202 devuelve
+ * `pending: true` con la fase honesta; al terminar, `done` con la comparación.
+ */
+export async function getTrainingResult(
+  jobId: string,
+): Promise<
+  | { pending: true; phase: TrainingPhase | null }
+  | { pending: false; data: TrainingResult }
+> {
+  const { status, data } = await getJson<TrainingResult | TrainingJobStatus>(
+    `/training/jobs/${jobId}/result`,
+  )
+  if (status === 202) {
+    return { pending: true, phase: (data as TrainingJobStatus).phase ?? null }
+  }
+  return { pending: false, data: data as TrainingResult }
+}
+
+/** Estado de adopción/serving del modelo por cliente para el client_id actual. */
+export async function getServingStatus(): Promise<ServingStatus> {
+  const { data } = await getJson<ServingStatus>('/training/sales/status')
+  return data
+}
+
+/** Activa/desactiva servir con el modelo por cliente (switch reversible). */
+export async function setServing(enabled: boolean): Promise<ServingStatus> {
+  const { data } = await postJson<ServingStatus>('/training/sales/serving', { enabled })
   return data
 }

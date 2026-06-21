@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date as Date
 from typing import Any
 
+import annotated_types
 from pydantic import BaseModel
 
 from spc.api.schemas.almacen import AlertaItem, AlmacenRequest, AlmacenResponse, MetadatosAlmacen
@@ -27,15 +28,27 @@ from spc.api.schemas.catalog import (
     CatalogInput,
     CatalogResponse,
     DomainCatalog,
+    ForecastDimension,
+    ForecastTypology,
+    GranularityOption,
+    HorizonRange,
     OutputGroup,
+    QueryOptions,
 )
+from spc.api.schemas.comunes import HistoricoItem
 from spc.api.schemas.compras import (
     ComprasRequest,
     ComprasResponse,
     MetadatosCompras,
     RecomendacionItem,
 )
-from spc.api.schemas.ventas import MetadatosVentas, PronosticoItem, VentasRequest, VentasResponse
+from spc.api.schemas.ventas import (
+    Granularidad,
+    MetadatosVentas,
+    PronosticoItem,
+    VentasRequest,
+    VentasResponse,
+)
 
 # Única fuente de la versión del contrato en el código (ver encabezado del contrato).
 CONTRACT_VERSION = "1.0.1"
@@ -68,10 +81,17 @@ MODES = [
     ),
     Availability(
         name="client_adjustment",
-        status="planned",
+        status="available",
         description=(
-            "Ajuste del modelo por cliente sobre el lote (opción B/híbrida): experimento "
-            "futuro y medido. Hoy NO se implementa; el lote usa el modelo congelado (opción A)."
+            "Ajuste del modelo por cliente BAJO DEMANDA (opt-in, ADR-0013). El cliente sube su "
+            "plantilla Excel de SALES y dispara un entrenamiento LOCAL asíncrono (POST "
+            "/training/sales/excel → job_id; estado en GET /training/jobs/{id}). Corre un "
+            "experimento medido: compara el modelo por cliente contra el CONGELADO y un baseline "
+            "ingenuo en validación temporal honesta (WAPE recursivo), y solo ADOPTA el modelo por "
+            "cliente si supera al congelado; 'no mejora' se reporta y se sigue con el congelado. "
+            "El modelo por cliente se sirve solo a ESE cliente (switch en POST /training/sales/"
+            "serving). El camino por defecto (congelado) queda intacto para quien no opta. Hoy "
+            "cubre SALES (regresión); el lote sigue usando el congelado (opción A)."
         ),
     ),
 ]
@@ -140,6 +160,105 @@ def _entradas(modelo: type[BaseModel]) -> list[CatalogInput]:
 
 
 # ---------------------------------------------------------------------------
+# Opciones de consulta de la UI (R1 tipologías, R2 dimensiones, granularidad, horizonte)
+#
+# Honestidad por construcción, igual que inputs/outputs: cada opción se DERIVA del
+# contrato y de las capacidades de agregación del servicio, nunca del motor de ML.
+#   • granularidades: del Literal ``Granularidad`` del contrato (ventas.py).
+#   • horizonte: de las restricciones (gt/le) del campo ``horizon`` de VentasRequest.
+#   • dimensiones: de las columnas identificadoras del bloque ``history`` (comunes.py).
+#   • tipologías: reflejan lo que el servicio puede agregar (serie temporal / por dimensión).
+# La prueba anti-desync (tests/api/test_catalog.py) falla si alguna deja de calzar.
+# ---------------------------------------------------------------------------
+
+# Etiquetas en español de cada granularidad del contrato (en inglés -> formal en español).
+_GRANULARITY_LABELS: dict[str, str] = {"day": "Día", "week": "Semana", "month": "Mes"}
+
+# Sugerencia inicial del horizonte para la UI. El campo es OBLIGATORIO en el contrato (sin
+# default): este valor solo da un punto de partida cómodo al formulario, acotado al rango real.
+_HORIZON_DEFAULT_SUGGESTION = 7
+
+# Tipologías de pronóstico que ofrece SALES (R1). No son modelos distintos: son formas de
+# AGREGAR/PRESENTAR el mismo pronóstico por serie que produce el motor.
+_SALES_TYPOLOGIES: list[ForecastTypology] = [
+    ForecastTypology(
+        name="time_series",
+        label="Serie temporal (por período)",
+        requires_dimension=False,
+        description="Demanda total por período, sumando todas las series del histórico.",
+    ),
+    ForecastTypology(
+        name="by_dimension",
+        label="Por dimensión",
+        requires_dimension=True,
+        description="Desglosa el pronóstico por la columna elegida (p. ej. por tienda o por producto).",
+    ),
+]
+
+# Columnas identificadoras del bloque ``history`` por las que tiene sentido desglosar/filtrar
+# (R2). Los nombres deben existir en ``HistoricoItem``; la prueba anti-desync lo verifica, de
+# modo que un cambio del contrato (renombrar/eliminar la columna) rompe la prueba.
+_SALES_DIMENSIONS: list[ForecastDimension] = [
+    ForecastDimension(
+        name="store_id", label="Tienda", description="Local, sucursal o punto de venta."
+    ),
+    ForecastDimension(
+        name="product_id",
+        label="Producto / Categoría",
+        description="Producto o familia/categoría.",
+    ),
+]
+
+
+def _rango_horizonte(modelo: type[BaseModel], campo: str) -> HorizonRange:
+    """Deriva ``min``/``max`` del horizonte de las restricciones del campo (gt/ge, le/lt).
+
+    Lee los metadatos de ``annotated_types`` que Pydantic guarda en el campo (``Field(gt=0,
+    le=365)`` → ``Gt(0)`` y ``Le(365)``), de modo que el rango de la UI **es** el del contrato:
+    si mañana cambia el ``le``, el catálogo cambia con él.
+    """
+    info = modelo.model_fields[campo]
+    minimo, maximo = 1, None
+    for restriccion in info.metadata:
+        if isinstance(restriccion, annotated_types.Gt):
+            minimo = int(restriccion.gt) + 1
+        elif isinstance(restriccion, annotated_types.Ge):
+            minimo = int(restriccion.ge)
+        elif isinstance(restriccion, annotated_types.Le):
+            maximo = int(restriccion.le)
+        elif isinstance(restriccion, annotated_types.Lt):
+            maximo = int(restriccion.lt) - 1
+    if maximo is None:
+        raise ValueError(f"El campo '{campo}' no declara un máximo (le/lt) para el horizonte.")
+    default = min(max(_HORIZON_DEFAULT_SUGGESTION, minimo), maximo)
+    return HorizonRange(min=minimo, max=maximo, default=default)
+
+
+def _granularidades() -> list[GranularityOption]:
+    """Granularidades disponibles, derivadas del Literal ``Granularidad`` del contrato."""
+    return [
+        GranularityOption(name=valor, label=_GRANULARITY_LABELS.get(valor, valor))
+        for valor in typing.get_args(Granularidad)
+    ]
+
+
+def _query_options_sales() -> QueryOptions:
+    """Opciones de consulta de SALES (R1/R2 + granularidad + horizonte), derivadas del contrato.
+
+    Las dimensiones se filtran contra ``HistoricoItem`` para no declarar una columna que el
+    contrato no tenga (segunda red de seguridad además de la prueba anti-desync).
+    """
+    columnas = set(HistoricoItem.model_fields)
+    dimensiones = [d for d in _SALES_DIMENSIONS if d.name in columnas]
+    return QueryOptions(
+        typologies=list(_SALES_TYPOLOGIES),
+        dimensions=dimensiones,
+        granularities=_granularidades(),
+        horizon=_rango_horizonte(VentasRequest, "horizon"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Especificación por dominio (lo "a mano" se limita a prosa y referencias honestas)
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -156,6 +275,7 @@ class _DomainSpec:
     metadata_model: type[BaseModel]
     notes: list[str] = field(default_factory=list)
     pending_policy: list[str] = field(default_factory=list)
+    query_options: QueryOptions | None = None
 
 
 _SPECS: list[_DomainSpec] = [
@@ -179,7 +299,10 @@ _SPECS: list[_DomainSpec] = [
             "interval_80 NO está disponible aún (diferido): el modelo no lo produce, así que la respuesta lo omite.",
             "model se lee de la metadata del artefacto (no se clava en el código).",
             "metadata.scale y metadata.internal_transform también se leen de la metadata del artefacto.",
+            "query_options (tipologías/dimensiones/granularidad/horizonte) son afordancias de UI "
+            "derivadas del contrato y de las agregaciones del servicio; no cambian el motor ni la respuesta.",
         ],
+        query_options=_query_options_sales(),
     ),
     _DomainSpec(
         domain="purchases",
@@ -271,6 +394,7 @@ def _catalogo_dominio(spec: _DomainSpec) -> DomainCatalog:
         contract_reference=spec.contract_reference,
         inputs=_entradas(spec.request_model),
         outputs=outputs,
+        query_options=spec.query_options,
         notes=list(spec.notes),
         pending_policy=list(spec.pending_policy),
     )

@@ -1,0 +1,76 @@
+{
+  "fecha_entrenamiento": null,
+  "modelo": "Ensemble(LightGBM_Poisson+LightGBM_Tweedie+HistGradientBoosting+LightGBM)",
+  "transformacion_objetivo": "identidad",
+  "espacio_objetivo": "unidades",
+  "escala_metricas": "unidades",
+  "ventana_validacion_dias": 16,
+  "cortes_temporales": {
+    "train": "<= 2017-07-08",
+    "valid": "2017-07-09 .. 2017-07-24",
+    "test": "2017-07-25 .. 2017-08-09"
+  },
+  "metricas_test_recursivo": {
+    "MAE": 155.9766367156816,
+    "RMSE": 171.27811955238946,
+    "RMSLE": 0.6737490457692312,
+    "MAPE": 43.09366049448486,
+    "WAPE": 44.37457659052108,
+    "R2": -8.723473721597179
+  },
+  "metricas_test_recursivo_congelado": {
+    "MAE": 93.56375464546572,
+    "RMSE": 123.79350456223109,
+    "RMSLE": 0.3361317336502686,
+    "MAPE": 30.10121651441111,
+    "WAPE": 26.61842237424345,
+    "R2": -4.079411385646033
+  },
+  "criterio_adopcion": {
+    "domain": "sales",
+    "outcome": "not_adopted",
+    "message": "",
+    "metric": "WAPE_recursivo",
+    "window_days": 16,
+    "cuts": {
+      "train": "<= 2017-07-08",
+      "valid": "2017-07-09 .. 2017-07-24",
+      "test": "2017-07-25 .. 2017-08-09"
+    },
+    "samples": {
+      "n_obs": 4562,
+      "n_dias": 225,
+      "n_series": 42
+    },
+    "candidate": {
+      "WAPE": 44.375,
+      "MAE": 155.977,
+      "RMSE": 171.278
+    },
+    "frozen": {
+      "WAPE": 26.618,
+      "MAE": 93.564,
+      "RMSE": 123.794
+    },
+    "baseline": {
+      "name": "BASELINE media_movil_7",
+      "WAPE": 34.05,
+      "MAE": 119.687,
+      "RMSE": 147.565
+    },
+    "candidate_model": "Ensemble(LightGBM_Poisson+LightGBM_Tweedie+HistGradientBoosting+LightGBM)",
+    "min_improvement_points": 0.0,
+    "improvement_wape_points": -17.757,
+    "beats_frozen": false,
+    "beats_baseline": false
+  },
+  "n_filas_artefacto_final": 3438,
+  "semilla": 42,
+  "origen": "entrenamiento_por_cliente",
+  "version": "regresion_cliente_frontend-demo-e6de7d3b_v3",
+  "client_id": "frontend-demo",
+  "slug": "frontend-demo-e6de7d3b",
+  "version_cliente": 3,
+  "guardado_utc": "2026-06-20T16:28:03.668548+00:00",
+  "artefacto": "regresion_v3.joblib"
+}
