@@ -354,8 +354,8 @@ nunca un 500 sin manejar ni un volcado de pila:
 
 ## 7. Un solo contrato para todos los canales y modos
 
-> El **canal Excel** ya está **implementado** (Fase 3.3, en línea). El **modo por lote**
-> sigue siendo **documentación de intención** (Fase 3.4).
+> El **canal Excel** (Fase 3.3) y el **modo por lote** (Fase 3.4) ya están **implementados**.
+> Ambos comparten el mismo contrato, validación y flujo de predicción que el JSON en línea.
 
 - **Mismo contrato para JSON y para Excel (implementado).** El cliente puede enviar los
   mismos campos por un archivo Excel: descarga la plantilla en `GET /{domain}/template` y
@@ -365,9 +365,25 @@ nunca un 500 sin manejar ni un volcado de pila:
   por **la misma validación y la misma predicción** que el JSON, devolviendo la misma
   respuesta. No hay un "contrato de Excel" aparte ni un segundo camino de predicción. Los
   errores reutilizan el cuerpo de §6.1, añadiendo en `field` la **hoja/fila/columna**.
-- **Mismo contrato en modo en línea y por lote (lote: planificado).** La entrada en línea
-  (una petición) y la entrada por lote (un conjunto grande de series) comparten **idéntico
-  esquema de campos y reglas**. Cambia el transporte y el tamaño, no el contrato.
+- **Mismo contrato en modo en línea y por lote (implementado).** La entrada en línea (una
+  petición) y la entrada por lote (un conjunto grande de series) comparten **idéntico
+  esquema de campos y reglas**. El mismo endpoint decide por `len(history)`: chico → **200**
+  con el resultado; grande → **202** con un `job_id` (estado/resultado en `GET /jobs/{id}`).
+  Cambia el transporte y el tamaño, **no el contrato** (ver [ADR-0008](decisiones/0008-modos-ejecucion.md)).
+
+### 7.1. Header de transporte `X-Client-Id` (opcional, no versionado)
+
+Las peticiones pueden incluir el header **`X-Client-Id`** para **etiquetar** a quién
+pertenecen los datos (alimenta el corpus incremental; ver [ADR-0011](decisiones/0011-persistencia-corpus-incremental.md)).
+
+- Es **metadato de transporte**, **no** un campo del cuerpo: **no forma parte del esquema
+  versionado** del contrato y por eso **no altera la versión** (`1.0.1`). Documentarlo aquí
+  es una aclaración, no un cambio de forma.
+- **Opcional.** Si se omite, el servidor usa `"default"`. No cambia en nada la predicción:
+  la respuesta es idéntica con o sin el header.
+- **Hoy no está autenticado** (es declarativo y suplantable). Sirve para segmentar el
+  corpus en dev/piloto; **no** garantiza aislamiento entre clientes. En producción debe
+  **ligarse a autenticación** (API key / token → `client_id` verificado).
 
 ---
 

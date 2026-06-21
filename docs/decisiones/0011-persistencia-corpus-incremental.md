@@ -37,10 +37,27 @@ dependencias nuevas), capturada en el **único hogar del flujo de predicción**
 
 - **`observations`** — el bloque `history` del cliente **normalizado** (`date`, `store_id`,
   `product_id`, `units_sold`, `on_promotion`, `transactions`, `event_active`). Es el
-  **corpus de entrenamiento que crece** con cada uso.
+  **corpus que crece** con cada uso.
 - **`submissions`** — una fila por petición para **auditoría/replay**: `client_id`,
-  `domain`, `channel`, `mode`, `model_version`, `n_rows` y los cuerpos de petición y
-  respuesta serializados.
+  `domain`, `channel`, `mode`, `model_version`, `n_rows`, los **parámetros** de la petición
+  (`horizon`, `granularity`, `replenishment_params`…) y la respuesta serializada. El
+  bloque `history` **no** se duplica aquí: ya vive normalizado en `observations` (la
+  petición se reconstruye uniendo ambas por `submission_id`). Así la base no crece dos
+  veces con el mismo dato.
+
+### 1.b Deduplicación e idempotencia (corpus apto para entrenar)
+
+El corpus es un **activo de entrenamiento**, no un log de eventos: filas repetidas
+**sesgarían** un reentrenamiento (sobre-ponderan las series que el cliente reenvía). Por
+eso la acumulación es **idempotente**: un índice **UNIQUE** sobre la identidad de la serie
+(`client_id`, `store_id`, `product_id`, `date`) + `INSERT OR IGNORE` garantiza que
+**reenviar el mismo `history` no agrega filas**. Política ante misma serie+fecha con valor
+distinto (corrección): se **conserva la primera** (`keep-first`); una corrección posterior
+del mismo punto se ignora — limitación conocida y aceptada para esta fase.
+
+Como **red de seguridad**, `scripts/exportar_corpus.py` **vuelve a deduplicar** antes de
+exportar (cubre bases creadas sin el índice y el modo `--raw`). **Regla:** el corpus
+**debe deduplicarse antes de entrenar**; el export ya lo hace.
 
 ### 2. Multi-cliente sin tocar el contrato
 
@@ -90,6 +107,11 @@ experimento medido que demuestre mejora). En el catálogo, `client_adjustment` *
   falla, no se persiste esa entrada).
 - **Privacidad/operación:** la base acumula datos del cliente; en producción debe
   considerarse retención, respaldo y acceso. Se documenta como nota operativa.
+- **`X-Client-Id` sin autenticación (pendiente de producción):** hoy el `client_id` es un
+  header **declarativo y suplantable** (cualquiera puede enviarlo). Sirve para segmentar el
+  corpus en dev/piloto, **no** para aislar clientes con garantías. En producción debe
+  **ligarse a autenticación** (API key / token → `client_id` verificado) antes de tratar la
+  separación por cliente como confiable.
 
 ## Referencias
 

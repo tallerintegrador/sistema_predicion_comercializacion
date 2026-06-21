@@ -13,6 +13,7 @@ El repositorio se inyecta en memoria (``:memory:``), aislado del disco real.
 
 from __future__ import annotations
 
+import json
 import time
 from io import BytesIO
 
@@ -183,3 +184,54 @@ def test_fallo_de_persistencia_no_rompe_la_prediccion(registro, historico_contra
     assert r.status_code == 200, r.text
     cuerpo = r.json()
     assert cuerpo["field"] == "sales" and "forecast" in cuerpo
+
+
+# ---------------------------------------------------------------------------
+# Idempotencia / deduplicación del corpus (ADR-0011, a.2)
+# ---------------------------------------------------------------------------
+def test_corpus_idempotente_no_acumula_duplicados(client_persistente, repo, historico_contrato):
+    """Subir el MISMO history dos veces NO duplica el corpus (índice UNIQUE + OR IGNORE)."""
+    cuerpo = {"granularity": "day", "horizon": 3, "history": historico_contrato}
+    r1 = client_persistente.post("/sales", json=cuerpo)
+    r2 = client_persistente.post("/sales", json=cuerpo)
+    assert r1.status_code == 200 and r2.status_code == 200
+
+    # Dos submissions (cada petición se audita)...
+    assert len(_submissions(repo)) == 2
+    # ...pero el conteo de observaciones únicas NO se duplica.
+    assert repo.contar_observaciones() == len(historico_contrato)
+
+
+def test_corpus_conserva_la_primera_ante_correccion(client_persistente, repo, historico_contrato):
+    """Misma serie+fecha con valor distinto: se conserva la PRIMERA (política keep-first)."""
+    base = historico_contrato[0]
+    valor_original = base["units_sold"]
+    r1 = client_persistente.post(
+        "/sales", json={"granularity": "day", "horizon": 3, "history": historico_contrato}
+    )
+    assert r1.status_code == 200
+
+    corregido = [dict(h) for h in historico_contrato]
+    corregido[0] = {**base, "units_sold": valor_original + 999.0}
+    client_persistente.post(
+        "/sales", json={"granularity": "day", "horizon": 3, "history": corregido}
+    )
+
+    assert repo.contar_observaciones() == len(historico_contrato)  # sin filas nuevas
+    fila = _consultar(
+        repo,
+        "SELECT units_sold FROM observations WHERE store_id=? AND product_id=? AND date=?",
+        (str(base["store_id"]), str(base["product_id"]), str(base["date"])),
+    )[0]
+    assert fila["units_sold"] == valor_original  # se conservó la primera
+
+
+def test_submission_no_duplica_el_history(client_persistente, repo, historico_contrato):
+    """``submissions.request_json`` guarda los parámetros pero NO el bloque ``history``."""
+    client_persistente.post(
+        "/sales", json={"granularity": "day", "horizon": 4, "history": historico_contrato}
+    )
+    req = json.loads(_submissions(repo)[-1]["request_json"])
+    assert "history" not in req      # el dato crudo no se duplica (vive en observations)
+    assert req["horizon"] == 4       # los parámetros de la petición sí se conservan
+    assert req["granularity"] == "day"

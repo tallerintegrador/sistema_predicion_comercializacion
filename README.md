@@ -145,13 +145,17 @@ Docker. Health check `/health`.
 Variable de entorno relevante en ambas: `SPC_CORS_ORIGINS` (orígenes del frontend,
 coma-separados; `*` por defecto).
 
-## Frontend (Fase 4.5 — Camino B)
+## Frontend (interfaz web local — aún NO desplegado)
 
 Interfaz web (React + Vite + TypeScript + Tailwind + recharts) en `frontend/`. Consume
 la API con el modelo congelado; habla solo el **contrato v1.0.1** (no toca el motor ni la
 capa interna). Cubre los tres dominios por JSON con datos de ejemplo, canal Excel
 (plantilla + subida), modo lote con *polling* de `/jobs/{id}`, página de catálogo y
 gráficos. Lo diferido se etiqueta (`interval_80`, `client_adjustment`).
+
+> **Estado:** el frontend corre **en local** (dev). **El despliegue (Fase 4.0–4.4) sigue
+> pendiente**: no hay backend ni frontend desplegados. La conexión a una API desplegada
+> con su CORS real es la Fase 4.5. Ver `docs/SPC_Entrega_Despliegue_Valentin.md` §8.
 
 **Pasos clave** (dos terminales):
 
@@ -174,6 +178,21 @@ gráficos. Lo diferido se etiqueta (`interval_80`, `client_adjustment`).
 
 Build de producción: `npm run build` (typecheck `tsc -b` + `dist/`). Detalle y variables
 (`VITE_API_BASE_URL`, `VITE_CLIENT_ID`) en `frontend/README.md`.
+
+## Persistencia incremental del corpus (ADR-0011)
+
+Cada predicción guarda el `history` del cliente (normalizado y **deduplicado**) en una
+base SQLite local — el **corpus que crece** con cada uso. Es **best-effort** (un fallo de
+BD nunca rompe la predicción) y **configurable** (`SPC_PERSIST_ENABLED`, `SPC_DB_PATH`).
+
+> **Qué es y qué NO es (honestidad).** Esto es **solo acumulación de datos**: construye el
+> corpus que *haría posible* mejorar el modelo más adelante. **NO es** entrenamiento ni
+> "ajuste por cliente": **el modelo se sigue entregando congelado** (ADR-0009) y predice
+> igual con o sin persistencia. El reentrenamiento es un **puente manual y offline**
+> (`scripts/exportar_corpus.py` → deduplicar → `scripts/train_*` en GPU → reemplazar el
+> artefacto en `models/`). En el catálogo, `client_adjustment` **sigue `planned`**: no se
+> ha implementado ni medido ningún ajuste por cliente. El corpus **debe deduplicarse antes
+> de entrenar** (el export ya lo hace).
 
 ## Calidad
 

@@ -33,6 +33,18 @@ export function JobBanner({
       </div>
     )
   }
+  if (status === 'timeout') {
+    return (
+      <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-700">
+        <div className="font-medium">El trabajo sigue en proceso en el servidor</div>
+        <div className="text-slate-500">
+          Dejamos de consultar tras {attempts} intentos para no sondear sin fin. El job{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{jobId}</code> no se canceló:
+          vuelve a predecir en unos minutos para recuperar el resultado.
+        </div>
+      </div>
+    )
+  }
   return null
 }
 

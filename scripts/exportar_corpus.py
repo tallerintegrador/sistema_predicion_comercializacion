@@ -43,6 +43,22 @@ _COLUMNAS = (
     "event_active",
 )
 
+# Identidad de una observación (igual que el índice UNIQUE del repositorio, ADR-0011).
+_CLAVE_SERIE = ("client_id", "date", "store_id", "product_id")
+
+
+def _deduplicar(obs: pd.DataFrame) -> pd.DataFrame:
+    """Quita observaciones duplicadas por (``client_id``, ``date``, ``store_id``, ``product_id``).
+
+    El corpus ya se acumula **idempotente** en la base (índice UNIQUE + ``INSERT OR
+    IGNORE``), pero se deduplica también aquí como **red de seguridad**: cubre bases
+    previas creadas sin el índice y el modo ``--raw``. Es **imprescindible antes de
+    reentrenar**: filas repetidas sesgarían el modelo. Política: se conserva la primera
+    aparición (coincide con la del repositorio).
+    """
+    columnas = [c for c in _CLAVE_SERIE if c in obs.columns]
+    return obs.drop_duplicates(subset=columnas, keep="first").reset_index(drop=True)
+
 
 def _leer_observations(db: Path, client_id: str | None) -> pd.DataFrame:
     """Lee la tabla ``observations`` (opcionalmente filtrada por ``client_id``)."""
@@ -110,15 +126,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Corpus vacío (db={db}, client_id={args.client_id}). Nada que exportar.")
         return 1
 
-    # ``--raw``: la tabla observations tal cual. Por defecto, el MISMO traductor
-    # contrato→motor que la predicción, para que el archivo encaje con construir_features
-    # (spc.models.regresion) en el reentrenamiento.
+    # Deduplicación obligatoria antes de exportar/entrenar (red de seguridad; ADR-0011).
+    n_leidas = len(obs)
+    obs = _deduplicar(obs)
+
+    # ``--raw``: la tabla observations tal cual (ya deduplicada). Por defecto, el MISMO
+    # traductor contrato→motor que la predicción, para que el archivo encaje con
+    # construir_features (spc.models.regresion) en el reentrenamiento.
     salida = obs if args.raw else adaptador.historico_a_analitico(_a_contrato(obs))
 
     _escribir(salida, args.out)
+    quitadas = n_leidas - len(obs)
     print(
         f"Exportadas {len(salida)} filas a {args.out} "
-        f"(corpus crudo: {len(obs)} observaciones, db={db})."
+        f"({len(obs)} observaciones únicas; {quitadas} duplicadas descartadas; db={db})."
     )
     return 0
 

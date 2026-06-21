@@ -8,9 +8,13 @@ import { ApiError } from '../api/client'
 import { getJobResult } from '../api/endpoints'
 import type { PredictResult } from '../api/endpoints'
 
-export type PredStatus = 'idle' | 'loading' | 'polling' | 'done' | 'error'
+export type PredStatus = 'idle' | 'loading' | 'polling' | 'done' | 'error' | 'timeout'
 
 const POLL_INTERVAL_MS = 1500
+// Tope de sondeo del modo lote: tras esto se informa "sigue en proceso" en vez de
+// sondear indefinidamente (~3 min a 1.5 s/intento). El trabajo no se cancela en el
+// backend; el usuario puede reintentar más tarde.
+const MAX_POLL_ATTEMPTS = 120
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -43,11 +47,11 @@ export function usePrediction<T>() {
         setState({ status: 'done', data: res.data, error: null, jobId: null, attempts: 0 })
         return
       }
-      // Modo lote: pollear el resultado.
+      // Modo lote: pollear el resultado, con tope para no sondear indefinidamente.
       const jobId = res.job.job_id
       setState((s) => ({ ...s, status: 'polling', jobId, attempts: 0 }))
       let attempts = 0
-      while (!cancelled.current) {
+      while (!cancelled.current && attempts < MAX_POLL_ATTEMPTS) {
         attempts += 1
         setState((s) => ({ ...s, attempts }))
         const r = await getJobResult<T>(jobId)
@@ -57,6 +61,10 @@ export function usePrediction<T>() {
           return
         }
         await sleep(POLL_INTERVAL_MS)
+      }
+      if (!cancelled.current) {
+        // Se agotó el tope de intentos: el trabajo sigue corriendo en el backend.
+        setState((s) => ({ ...s, status: 'timeout', jobId, attempts }))
       }
     } catch (e) {
       if (cancelled.current) return

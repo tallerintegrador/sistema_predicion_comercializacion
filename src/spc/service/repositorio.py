@@ -4,11 +4,15 @@ Cada predicción que sirve la API guarda dos cosas en una base **SQLite** (bibli
 estándar, cero dependencias nuevas):
 
 - ``submissions``: una fila por petición (auditoría/replay) — cliente, dominio, canal
-  (``json``/``excel``), modo (``online``/``batch``), versión del modelo, nº de filas,
-  y los cuerpos de petición y respuesta serializados.
-- ``observations``: el ``history`` del cliente **normalizado** — el **corpus de
-  entrenamiento que crece** con cada uso. Es lo que después alimenta el reentrenamiento
-  (``scripts/exportar_corpus.py`` → ``scripts/train_*.py`` en GPU).
+  (``json``/``excel``), modo (``online``/``batch``), versión del modelo, nº de filas, los
+  **parámetros** de la petición (``horizon``, ``granularity``, ``replenishment_params``…)
+  y la respuesta serializada. El bloque ``history`` **no** se duplica aquí (ya vive
+  normalizado en ``observations``); así la base no crece dos veces con el mismo dato.
+- ``observations``: el ``history`` del cliente **normalizado y deduplicado** — el
+  **corpus** que crece con cada uso. Un índice UNIQUE sobre la identidad de la serie
+  (``client_id``, ``store_id``, ``product_id``, ``date``) + ``INSERT OR IGNORE`` hace la
+  acumulación **idempotente**: reenviar el mismo ``history`` no infla el corpus. Es lo que
+  después alimenta el reentrenamiento (``scripts/exportar_corpus.py`` → ``scripts/train_*``).
 
 El modelo se entrega **congelado** y solo predice (ADR-0009); aquí no se reentrena nada.
 Lo nuevo es la **acumulación** que hace posible mejorar el modelo más adelante.
@@ -68,6 +72,17 @@ CREATE INDEX IF NOT EXISTS ix_observations_client ON observations(client_id);
 CREATE INDEX IF NOT EXISTS ix_observations_serie  ON observations(store_id, product_id, date);
 """
 
+# Índice UNIQUE de deduplicación del corpus (ADR-0011). La identidad de una observación
+# es su serie + fecha por cliente; con `INSERT OR IGNORE`, reenviar el mismo `history` no
+# crea filas nuevas (idempotencia). Política ante misma serie+fecha repetida: se conserva
+# la PRIMERA (una corrección posterior del mismo punto se ignora). Va aparte del DDL
+# principal porque una base PREVIA con duplicados haría fallar su creación: en ese caso se
+# registra y se sigue (el export deduplica como red de seguridad).
+_DDL_DEDUP = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_observations_dedup "
+    "ON observations(client_id, store_id, product_id, date)"
+)
+
 
 def _ahora_iso() -> str:
     """Marca de tiempo UTC en ISO-8601 (texto, para la columna ``ts``)."""
@@ -84,6 +99,18 @@ def _bool_a_int(valor: Any) -> int | None:
     return None if valor is None else int(bool(valor))
 
 
+def _sin_history(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Copia del cuerpo de la petición **sin** el bloque ``history``.
+
+    El ``history`` ya se guarda normalizado (y deduplicado) en ``observations``; volver a
+    serializarlo crudo en ``submissions`` solo haría crecer la base con el mismo dato. Se
+    conserva el resto de parámetros de la petición (``horizon``, ``granularity``,
+    ``replenishment_params``, ``inventory_status`` …), que sí hacen falta —junto con
+    ``observations``— para reconstruir la petición en una auditoría.
+    """
+    return {k: v for k, v in payload.items() if k != "history"}
+
+
 class RepositorioPredicciones:
     """Almacén SQLite del corpus incremental + auditoría de predicciones.
 
@@ -96,7 +123,21 @@ class RepositorioPredicciones:
         self._lock = threading.Lock()
         with self._lock:
             self._con.executescript(_DDL)
+            self._asegurar_indice_dedup()
             self._con.commit()
+
+    def _asegurar_indice_dedup(self) -> None:
+        """Crea el índice UNIQUE de deduplicación (best-effort; ver ``_DDL_DEDUP``).
+
+        Si una base previa ya trae duplicados, crear el índice falla: se registra y se
+        continúa (la base sigue usable; el export deduplica como red de seguridad).
+        """
+        try:
+            self._con.execute(_DDL_DEDUP)
+        except sqlite3.Error as exc:  # base previa con duplicados, p. ej.
+            log.warning(
+                "Sin índice de deduplicación del corpus (¿duplicados previos?): %s", exc
+            )
 
     # -- Construcción ------------------------------------------------------
     @classmethod
@@ -130,8 +171,11 @@ class RepositorioPredicciones:
         """Guarda una predicción: 1 fila en ``submissions`` + N filas en ``observations``.
 
         ``history`` son las observaciones del contrato (claves ``date``, ``store_id``,
-        ``product_id``, ``units_sold`` y opcionales). Todo se inserta en **una sola
-        transacción**: o se guardan ambas tablas o ninguna. Devuelve el ``submission_id``.
+        ``product_id``, ``units_sold`` y opcionales). Las observaciones se insertan con
+        ``INSERT OR IGNORE``: una serie+fecha ya presente (del mismo cliente) **no** se
+        duplica. ``submissions`` guarda el resto de la petición **sin** el ``history``
+        (ya está en ``observations``). Todo va en **una sola transacción**: o se guardan
+        ambas tablas o ninguna. Devuelve el ``submission_id``.
         """
         filas = list(history)
         with self._lock:
@@ -150,15 +194,17 @@ class RepositorioPredicciones:
                     mode,
                     model_version,
                     len(filas),
-                    _a_json(request_payload),
+                    _a_json(_sin_history(request_payload)),
                     _a_json(response_payload),
                 ),
             )
             submission_id = int(cur.lastrowid or 0)
             if filas:
+                # OR IGNORE: las observaciones ya presentes (misma serie+fecha del cliente)
+                # se omiten gracias al índice UNIQUE — el corpus es idempotente (ADR-0011).
                 self._con.executemany(
                     """
-                    INSERT INTO observations
+                    INSERT OR IGNORE INTO observations
                         (submission_id, client_id, date, store_id, product_id,
                          units_sold, on_promotion, transactions, event_active)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
