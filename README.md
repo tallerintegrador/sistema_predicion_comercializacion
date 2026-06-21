@@ -176,19 +176,29 @@ coma-separados; `*` por defecto).
 ## Frontend (interfaz web local — aún NO desplegado)
 
 Interfaz web (React + Vite + TypeScript + Tailwind + recharts) en `frontend/`. Consume
-la API con el modelo congelado; habla solo el **contrato v1.0.1** (no toca el motor ni la
-capa interna). Cubre los tres dominios por JSON con datos de ejemplo, canal Excel
-(plantilla + subida), modo lote con *polling* de `/jobs/{id}`, página de catálogo y
-gráficos. Lo diferido se etiqueta (`interval_80`, `client_adjustment`).
+la API con el modelo base; habla solo el **contrato v1.0.1** (no toca el motor ni la capa
+interna). Cubre los tres dominios por JSON y por Excel (plantilla + subida), carga manual
+por tabla editable (Compras/Almacén), modo lote con *polling* de `/jobs/{id}`,
+reentrenamiento por cliente y administración de usuarios.
 
-La interfaz tiene una **identidad visual** formalizada como tokens de diseño
-(`@theme` en `index.css`: marca índigo, acento teal, neutros fríos, semánticos; monograma
-"SPC") — ver [ADR-0017](docs/decisiones/0017-identidad-visual-sistema-diseno.md). La
-pantalla de **Ventas** organiza el pronóstico en una tarjeta *Configuración del pronóstico*
-con **tipo de pronóstico** (R1) y **dimensión / filtrar por** (R2) mediante componentes
-reutilizables; todas las opciones (tipologías, dimensiones, granularidad **Día/Semana/Mes** y
-rango de horizonte) provienen de `GET /catalog` (`query_options`), sin hardcodeo — ver
-[ADR-0018](docs/decisiones/0018-catalogo-tipologias-dimensiones.md).
+**Rediseño orientado al cliente (Fase 4.5).** La interfaz está pensada para un dueño de
+PYME no técnico: español claro **sin tecnicismos** (glosario de
+[ADR-0019](docs/decisiones/0019-lenguaje-de-producto-glosario.md)) e **identidad visual
+enriquecida** con acento por módulo (Ventas/Compras/Almacén/Mejorar), tipografía
+Inter + Sora e íconos `lucide-react`
+([ADR-0020](docs/decisiones/0020-rediseno-cliente-identidad-pantallas.md), extiende
+[ADR-0017](docs/decisiones/0017-identidad-visual-sistema-diseno.md)). Pantallas: **Inicio**,
+**¿Qué hace el sistema?** (catálogo amigable), los tres módulos con **resumen en lenguaje
+natural** (Almacén con **semáforo** de riesgo), **Mejorar las predicciones** y **Acerca del
+sistema**. Cualquier tecnicismo necesario vive en bloques colapsables «Detalles técnicos».
+
+Cero hardcodeo: las opciones de Ventas (tipo de pronóstico R1, dimensión R2, granularidad
+**Día/Semana/Mes** y horizonte) y las **columnas de carga manual** (con etiquetas en
+español) provienen de `GET /catalog` (`query_options` e `input_tables`), con pruebas
+anti-desync — ver [ADR-0018](docs/decisiones/0018-catalogo-tipologias-dimensiones.md) y
+`tests/api/test_catalog.py`. Lo no soportado por el backend se muestra deshabilitado como
+**«Próximamente»** (nunca se simula); el contrato frontend↔backend está en
+[docs/alineacion_frontend_backend.md](docs/alineacion_frontend_backend.md).
 
 > **Estado:** el frontend corre **en local** (dev). **El despliegue (Fase 4.0–4.4) sigue
 > pendiente**: no hay backend ni frontend desplegados. La conexión a una API desplegada
