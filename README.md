@@ -194,11 +194,21 @@ sistema**. Cualquier tecnicismo necesario vive en bloques colapsables «Detalles
 
 Cero hardcodeo: las opciones de Ventas (tipo de pronóstico R1, dimensión R2, granularidad
 **Día/Semana/Mes** y horizonte) y las **columnas de carga manual** (con etiquetas en
-español) provienen de `GET /catalog` (`query_options` e `input_tables`), con pruebas
-anti-desync — ver [ADR-0018](docs/decisiones/0018-catalogo-tipologias-dimensiones.md) y
+español y `default` editable) provienen de `GET /catalog` (`query_options` e `input_tables`),
+con pruebas anti-desync — ver [ADR-0018](docs/decisiones/0018-catalogo-tipologias-dimensiones.md) y
 `tests/api/test_catalog.py`. Lo no soportado por el backend se muestra deshabilitado como
 **«Próximamente»** (nunca se simula); el contrato frontend↔backend está en
 [docs/alineacion_frontend_backend.md](docs/alineacion_frontend_backend.md).
+
+**Ajustes de experiencia ([ADR-0021](docs/decisiones/0021-ajustes-experiencia-entrada-filtros-reentrenamiento.md)).**
+El **historial de ventas se carga siempre por archivo** (la carga manual queda solo para la lista
+corta del estado actual en Compras/Almacén); el resumen no cuenta filas vacías; Ventas declara la
+**configuración en pantalla como única fuente de verdad**; Compras/Almacén ganan **filtros de
+resultado** derivados de los campos reales de la respuesta (tienda, producto, segmento, «solo
+reposición/riesgo», orden), y «Mejorar las predicciones» suma el selector **«¿Qué quieres mejorar?»**
+(Ventas disponible; Almacén «Próximamente»). Los `default` editables (tiempo de entrega y días de
+cobertura) salen de la **política configurable** (ADR-0010): se añadió
+`SPC_PURCHASES_TARGET_COVERAGE_DAYS` (default 14) junto a `SPC_INVENTORY_LEAD_TIME_DEFAULT` (7).
 
 > **Estado:** el frontend corre **en local** (dev). **El despliegue (Fase 4.0–4.4) sigue
 > pendiente**: no hay backend ni frontend desplegados. La conexión a una API desplegada

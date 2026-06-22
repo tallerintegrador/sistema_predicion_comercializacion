@@ -32,11 +32,14 @@ anti-desync.
 | 11 | Administración de usuarios/roles con etiquetas legibles | ✅ Implementada | `GET /permissions`, `GET/POST /roles`, `GET/POST/PATCH /users` | etiquetas vienen de `permisos.py` |
 | 12 | **Filtrar por valores concretos** de una dimensión (Ventas) | 🟡 Parcial | solo con JSON/manual (valores del histórico en el cliente) | **`AGREGAR EN BACKEND:`** ver §3 |
 | 13 | **Rango estimado (80%)** (`interval_80`) | 🟥 Falta (visible, «Próximamente») | el modelo no lo produce; la respuesta lo omite | **`AGREGAR EN BACKEND:`** ver §4 |
-| 14 | **Filtros por dimensión en Compras/Almacén** | 🟥 Falta | no hay `query_options` para esos dominios | **`AGREGAR EN BACKEND:`** ver §3 |
+| 14 | **Filtros de resultado en Compras/Almacén** (tienda, producto, segmento, «solo reposición/riesgo», orden) | 🟡 Parcial | derivados de los **campos reales** de la respuesta (ADR-0021) | resto «Próximamente»: ver §9 |
 | 15 | **Verificación automática de «datos suficientes»** antes de entrenar | 🟥 Falta (visible, «Próximamente») | hoy solo veredicto `insufficient_data` *durante* el entrenamiento | **`AGREGAR EN BACKEND:`** ver §6 |
-| 16 | **Reentrenamiento para Compras/Almacén** | 🟥 Falta (no expuesto) | solo Ventas tiene ajuste por cliente | **`AGREGAR EN BACKEND:`** ver §5 |
+| 16 | **Reentrenamiento para Compras/Almacén** | 🟥 Falta (Almacén visible, «Próximamente») | solo Ventas tiene ajuste por cliente | **`AGREGAR EN BACKEND:`** ver §5 y §9 |
 | 17 | **Reentrenamiento del modelo base** desde la UI | 🟥 Falta (no expuesto) | proceso offline (scripts), sin endpoint | **`AGREGAR EN BACKEND:`** ver §5 |
-| 18 | **«Configuración detectada en tu archivo» (Excel)** mostrada/ajustable en pantalla | 🟥 Falta | `POST /{dominio}/excel` aplica la config del archivo pero no la devuelve | **`AGREGAR EN BACKEND:`** ver §4b |
+| 18 | **«Configuración detectada en tu archivo» (Excel)** mostrada/ajustable en pantalla | 🟥 Falta | `POST /{dominio}/excel` aplica la config del archivo pero no la devuelve | **`AGREGAR EN BACKEND:`** ver §4b y §9 |
+| 19 | **Defaults editables** de tiempo de entrega y días de cobertura en la carga manual | ✅ Implementada | `CatalogColumn.default` ← política (`spc.config`, ADR-0010) | añade `SPC_PURCHASES_TARGET_COVERAGE_DAYS`; ver §9 |
+| 20 | **Historial de ventas solo por archivo** (Compras/Almacén) y resumen sin filas vacías | ✅ Implementada | usa los endpoints existentes | regla unificada (ADR-0021) |
+| 21 | **Reutilización del historial guardado** entre módulos | 🟥 Falta (visible, «Próximamente») | el corpus se persiste por cliente (ADR-0011) pero no se expone al frontend | **`AGREGAR EN BACKEND:`** ver §9 |
 
 Leyenda: ✅ implementada · 🟡 parcial · 🟥 falta.
 
@@ -185,3 +188,78 @@ producto»**. Es una guía, no una verificación.
     valores fuera del catálogo para no romper la validación.
 - **`AGREGAR EN BACKEND:` persistencia del perfil por cliente** — ya existe: `PUT /profile` liga el
   perfil al `client_id` y marca `onboarding_done`. Sin acción pendiente; se documenta para trazabilidad.
+
+---
+
+## 9. Ajustes de experiencia (ADR-0021): entrada de datos, filtros de resultado y reentrenamiento
+
+Esta sección consolida lo hecho en el rediseño de experiencia (ADR-0021) y las brechas que
+quedaron marcadas «Próximamente», para que el backend las recoja. Nada de esto toca el motor de ML.
+
+### 9.1. Ya implementado (sin cambios pendientes de backend)
+
+- **`CatalogColumn.default` editable desde la política.** `/catalog` declara, por columna, un
+  `default` editable para prellenar la carga manual. **Sale de la configuración de política**
+  (no es un literal de presentación): `lead_time_days` ← `inventory_lead_time_default()`
+  (`SPC_INVENTORY_LEAD_TIME_DEFAULT`, 7) y `target_coverage_days` ← `purchases_target_coverage_days()`.
+  - **Nota (variable nueva):** no existía una variable de política para los días de cobertura; se
+    añadió **`SPC_PURCHASES_TARGET_COVERAGE_DAYS`** (default **14**) en `src/spc/config/__init__.py`.
+    Es solo el valor sugerido editable de la UI; **no cambia** el cálculo de reposición (que usa el
+    valor que finalmente envíe el cliente). Prueba anti-desync en `tests/api/test_catalog.py`.
+  - **Sin cambio de contrato de datos:** `default` es metadata de presentación derivada (como
+    `input_tables`); no altera `CONTRACT_VERSION`.
+- **Historial de ventas solo por archivo** (Compras/Almacén) y **resumen sin filas vacías**: usan los
+  endpoints existentes; no requieren backend.
+- **Filtros de resultado derivados de campos reales** (ver §9.2): se implementan en el cliente sobre
+  la respuesta; no requieren backend.
+
+### 9.2. Filtros de resultado — implementados hoy vs. «Próximamente»
+
+Implementados **en el cliente** porque el campo **viene en la respuesta** (los valores salen de las
+filas reales, no se inventan):
+
+- **Compras** (`recommendation[]`): por `store_id`, por `product_id`, «solo los que requieren
+  reposición ahora» (`replenishment_quantity > 0`) y orden por cantidad a reponer.
+- **Almacén** (`alerts[]`): por `store_id`, por `product_id`, por `store_segment`, «solo en riesgo de
+  agotarse» (`stockout_risk`) y orden por riesgo (`stockout_risk` + `high_demand_probability`).
+
+Marcados **«Próximamente»** (el campo/medida no existe hoy en la respuesta):
+
+- **`AGREGAR EN BACKEND:` categoría/familia** (Compras y Almacén). No hay un eje de categoría/familia
+  distinto de `product_id`. Exponerlo en `recommendation[]`/`alerts[]` (o vía `query_options` de esos
+  dominios) para poder filtrar por categoría sin inventarla en el cliente.
+- **`AGREGAR EN BACKEND:` medida de urgencia** (Compras), para «ordenar por urgencia». Hoy solo se
+  ordena por cantidad a reponer. Una medida honesta sería p. ej. días hasta el quiebre o la brecha
+  frente al punto de reorden; exponerla en `recommendation[]`.
+- **`AGREGAR EN BACKEND:` nivel de riesgo en buckets alto/medio/bajo** (Almacén). Hoy solo hay
+  `stockout_risk` (booleano) y `high_demand_probability` (0–1). Agrupar en niveles requiere **definir
+  umbrales de política** (no inventarlos en el cliente): exponerlos en `alerts[]` o como constante de
+  política configurable (mismo patrón que ADR-0010). Relacionado: dar un **nombre legible** al
+  `store_segment` (hoy es solo un entero; la UI muestra «Segmento N»).
+
+### 9.3. Reentrenamiento (alcance)
+
+- El insumo de entrenamiento es **una sola plantilla**: el historial de ventas. El inventario **no**
+  es dato de entrenamiento. **Compras** no se entrena por separado (mejora cuando mejora Ventas).
+- **`AGREGAR EN BACKEND:` reentrenamiento de Almacén** (selector «Almacén» visible, «Próximamente»).
+  Almacén (clasificación/clustering) necesitaría su propio experimento y regla de adopción (ver §5.2).
+- **`AGREGAR EN BACKEND:` verificación automática de «datos suficientes»** antes de entrenar (ver §6):
+  el control sigue marcado «Próximamente».
+
+### 9.4. Reutilización del historial entre módulos
+
+- **`AGREGAR EN BACKEND:` exponer el historial guardado del cliente al frontend.** El corpus ya se
+  persiste por cliente (ADR-0011), pero el frontend no puede leerlo. Cuando se exponga (p. ej.
+  `GET /history` por `client_id`, o reutilizarlo en `POST /{purchases,inventory}` sin reenviarlo),
+  Compras/Almacén podrán pedir **solo el estado actual del inventario**. Hoy la opción se muestra
+  deshabilitada con «Próximamente».
+
+### 9.5. Fuente de la configuración del pronóstico (Ventas)
+
+- La configuración del pronóstico (qué estimar, cada cuánto, hasta cuándo) es **la solicitud en
+  pantalla**, única fuente de verdad. Se eliminó el texto que sugería que el sistema se adapta a la
+  configuración embebida del Excel.
+- **`AGREGAR EN BACKEND:`** si `POST /sales/excel` hoy **deriva** la configuración del archivo, debe
+  **aceptar/priorizar** la configuración enviada desde la solicitud en pantalla (o devolver la
+  configuración detectada para que la UI la presente como valores por defecto editables; ver §4b). Sin
+  esto, la configuración de pantalla aplica al pronosticar por JSON/datos cargados.
