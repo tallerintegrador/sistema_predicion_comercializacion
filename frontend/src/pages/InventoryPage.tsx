@@ -8,6 +8,7 @@ import { ErrorPanel } from '../components/ErrorPanel'
 import { DataSourcePanel } from '../components/DataSourcePanel'
 import { CatalogTable } from '../components/CatalogTable'
 import { HistoryPreview } from '../components/HistoryPreview'
+import { ReuseHistoryNotice } from '../components/data/ReuseHistoryNotice'
 import { JobBanner } from '../components/JobBanner'
 import { ResultTable } from '../components/ResultTable'
 import type { Column } from '../components/ResultTable'
@@ -87,34 +88,41 @@ export function InventoryPage() {
 
       {historyTable && statusTable && (
         <>
-          {/* PASO 1 — Tus datos: súbelos en archivo o ingrésalos a mano, juntos. */}
+          {/* PASO 1 — Tus datos: historial SIEMPRE por archivo; estado del inventario a mano o por archivo. */}
           <StepSection
             step={1}
             title="Tus datos"
             accentChip={ACCENT.chip}
-            description="Aporta el historial y el estado de tus existencias: sube un archivo o ingrésalos a mano."
+            description="Sube tu historial de ventas por archivo y añade el estado de tus existencias."
           >
-            <DataSourcePanel domain="inventory" onExcel={onExcel} onJson={onJson} busy={busy} accentSolid={ACCENT.solid} />
-
-            <div className="flex items-center gap-3" aria-hidden="true">
-              <span className="h-px flex-1 bg-slate-200" />
-              <span className="text-xs font-medium uppercase tracking-wide text-slate-400">o ingrésalos a mano</span>
-              <span className="h-px flex-1 bg-slate-200" />
+            {/* Historial de ventas: solo por archivo (no se ingresa a mano). */}
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700">{historyTable.label}</h4>
+                <p className="help mt-0">
+                  Tu historial de ventas se carga siempre por archivo (Excel o JSON); no se ingresa a
+                  mano. Descarga la plantilla, complétala y vuelve a subirla.
+                </p>
+              </div>
+              <DataSourcePanel domain="inventory" onExcel={onExcel} onJson={onJson} busy={busy} accentSolid={ACCENT.solid} />
+              <ReuseHistoryNotice />
+              {histRows.length > 0 && (
+                <div>
+                  <p className="label">Resumen de tu historial</p>
+                  <HistoryPreview history={histRows} />
+                </div>
+              )}
             </div>
 
+            <div className="my-2 h-px bg-slate-200" aria-hidden="true" />
+
+            {/* Estado del inventario: lista corta del estado actual; se puede ingresar a mano. */}
             <CatalogTable table={statusTable} rows={statusRows} onChange={setStatusRows} disabled={busy} />
-            <CatalogTable table={historyTable} rows={histRows} onChange={setHistRows} disabled={busy} />
 
             {jsonError && (
               <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
                 {jsonError}
               </p>
-            )}
-            {histRows.length > 0 && (
-              <div>
-                <p className="label">Resumen de tu historial</p>
-                <HistoryPreview history={histRows} />
-              </div>
             )}
           </StepSection>
 
@@ -133,7 +141,8 @@ export function InventoryPage() {
               </button>
               {!completo && (
                 <span className="text-sm text-slate-500" role="status">
-                  Completa las filas obligatorias (marcadas con *), o sube un archivo.
+                  Sube tu historial de ventas (Excel o JSON) y completa el estado del inventario
+                  (campos con *).
                 </span>
               )}
             </div>
