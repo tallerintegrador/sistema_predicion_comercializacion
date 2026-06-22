@@ -48,11 +48,15 @@ export const postInventory = (req: InventoryRequest) =>
   predict<InventoryRequest, InventoryResponse>('/inventory', req)
 
 // --- Canal Excel ---
+// `fields` lleva la configuración de pantalla cuando aplica: en Ventas, el archivo es
+// solo datos (history) y `granularity`/`horizon` viajan como campos de formulario, única
+// fuente de la configuración del pronóstico (ADR-0022).
 export async function uploadExcel<TRes>(
   domain: Domain,
   file: File,
+  fields?: Record<string, string | number>,
 ): Promise<PredictResult<TRes>> {
-  const { status, data } = await postFile<TRes | JobAccepted>(`/${domain}/excel`, file)
+  const { status, data } = await postFile<TRes | JobAccepted>(`/${domain}/excel`, file, fields)
   if (status === 202) return { mode: 'batch', job: data as JobAccepted }
   return { mode: 'online', data: data as TRes }
 }

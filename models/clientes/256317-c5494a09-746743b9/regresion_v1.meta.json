@@ -1,0 +1,76 @@
+{
+  "fecha_entrenamiento": null,
+  "modelo": "Ensemble(XGBoost_Tweedie+LightGBM_Poisson+LightGBM_Tweedie+XGBoost)",
+  "transformacion_objetivo": "identidad",
+  "espacio_objetivo": "unidades",
+  "escala_metricas": "unidades",
+  "ventana_validacion_dias": 16,
+  "cortes_temporales": {
+    "train": "<= 2017-11-23",
+    "valid": "2017-11-24 .. 2017-12-09",
+    "test": "2017-12-10 .. 2017-12-25"
+  },
+  "metricas_test_recursivo": {
+    "MAE": 89.28517026116099,
+    "RMSE": 117.76985119451585,
+    "RMSLE": 0.1630080018981874,
+    "MAPE": 12.215218574664256,
+    "WAPE": 12.769846466242743,
+    "R2": 0.09397919235608665
+  },
+  "metricas_test_recursivo_congelado": {
+    "MAE": 250.5068092281328,
+    "RMSE": 292.67522359881394,
+    "RMSLE": 0.37221591989786795,
+    "MAPE": 39.26971383956306,
+    "WAPE": 35.82827342138308,
+    "R2": -4.595537837235776
+  },
+  "criterio_adopcion": {
+    "domain": "sales",
+    "outcome": "adopted",
+    "message": "",
+    "metric": "WAPE_recursivo",
+    "window_days": 16,
+    "cuts": {
+      "train": "<= 2017-11-23",
+      "valid": "2017-11-24 .. 2017-12-09",
+      "test": "2017-12-10 .. 2017-12-25"
+    },
+    "samples": {
+      "n_obs": 40292,
+      "n_dias": 2001,
+      "n_series": 50
+    },
+    "candidate": {
+      "WAPE": 12.77,
+      "MAE": 89.285,
+      "RMSE": 117.77
+    },
+    "frozen": {
+      "WAPE": 35.828,
+      "MAE": 250.507,
+      "RMSE": 292.675
+    },
+    "baseline": {
+      "name": "BASELINE media_movil_7",
+      "WAPE": 17.867,
+      "MAE": 124.92,
+      "RMSE": 152.432
+    },
+    "candidate_model": "Ensemble(XGBoost_Tweedie+LightGBM_Poisson+LightGBM_Tweedie+XGBoost)",
+    "min_improvement_points": 0.0,
+    "improvement_wape_points": 23.058,
+    "beats_frozen": true,
+    "beats_baseline": true
+  },
+  "n_filas_artefacto_final": 38892,
+  "semilla": 42,
+  "origen": "entrenamiento_por_cliente",
+  "version": "regresion_cliente_256317-c5494a09-746743b9_v1",
+  "client_id": "256317-c5494a09",
+  "slug": "256317-c5494a09-746743b9",
+  "version_cliente": 1,
+  "guardado_utc": "2026-06-22T05:34:15.223700+00:00",
+  "artefacto": "regresion_v1.joblib"
+}

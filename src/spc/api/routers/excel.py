@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Form, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from spc.api.dependencies import (
@@ -88,7 +88,7 @@ async def _leer_contenido(archivo: UploadFile) -> bytes:
 def plantilla_sales(
     _auth: Annotated[SessionUser | None, Depends(requiere("module:sales", "action:template_download"))],
 ) -> Response:
-    """Descarga ``sales_template.xlsx`` (hojas history + parameters + instructions)."""
+    """Descarga ``sales_template.xlsx`` (solo datos: hojas history + instructions)."""
     return _descarga("sales")
 
 
@@ -107,10 +107,24 @@ async def cargar_sales(
     resolutor: Annotated[ResolutorModeloCliente | None, Depends(obtener_resolutor_cliente)],
     client_id: Annotated[str, Depends(obtener_client_id)],
     _auth: Annotated[SessionUser | None, Depends(requiere("module:sales", "action:template_upload"))],
+    horizon: Annotated[int, Form(description="Períodos futuros a pronosticar (> 0).")],
+    granularity: Annotated[str, Form(description="Granularidad: day/week/month.")] = "day",
 ) -> dict | JSONResponse:
-    """Sube el Excel de SALES y devuelve el mismo resultado que ``POST /sales``."""
+    """Sube el Excel de SALES (solo datos) y pronostica con la configuración de pantalla.
+
+    El archivo trae únicamente el bloque ``history``; la ``granularity`` y el
+    ``horizon`` llegan como campos de formulario desde la petición en pantalla, que es
+    la **única fuente** de la configuración del pronóstico (ADR-0022). Tipos y reglas se
+    validan con el **mismo modelo strict** que el JSON; el resultado es idéntico al de
+    ``POST /sales`` con esa configuración.
+    """
     contenido = await _leer_contenido(file)
-    peticion = cast(VentasRequest, lector.leer_peticion(contenido, "sales"))
+    peticion = cast(
+        VentasRequest,
+        lector.leer_peticion(
+            contenido, "sales", extra={"granularity": granularity, "horizon": horizon}
+        ),
+    )
     return responder_segun_volumen(
         "sales", peticion, registro, jobs,
         repositorio=repositorio, resolutor=resolutor, canal="excel", client_id=client_id,

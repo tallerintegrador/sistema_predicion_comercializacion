@@ -12,7 +12,7 @@ export function InventoryRisk({ alerts }: { alerts: AlertItem[] }) {
               {a.store_id} · {a.product_id}
             </span>
             <span className={`badge ${a.demand_class === 'high' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`}>
-              demanda {a.demand_class}
+              {a.demand_class === 'high' ? 'demanda alta' : 'demanda baja'}
             </span>
           </div>
 
@@ -37,8 +37,8 @@ export function InventoryRisk({ alerts }: { alerts: AlertItem[] }) {
           </div>
 
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            <Stat label="Stock recomendado" value={fmtNum(a.recommended_stock)} />
-            <Stat label="Stock de seguridad" value={fmtNum(a.safety_stock)} />
+            <Stat label="Existencias recomendadas" value={fmtNum(a.recommended_stock)} />
+            <Stat label="Existencias de seguridad" value={fmtNum(a.safety_stock)} />
           </dl>
         </div>
       ))}

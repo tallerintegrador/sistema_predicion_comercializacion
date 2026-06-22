@@ -62,10 +62,12 @@ En Swagger, **POST /sales → Try it out**. Pega el ejemplo realista de
 
 Demuestra que **Excel es solo otra puerta al mismo contrato**:
 
-1. **GET /sales/template → Execute → Download file**: se descarga `sales_template.xlsx`
-   con hojas `history`, `parameters` e `instructions` (encabezados en inglés).
+1. **GET /sales/template → Execute → Download file**: se descarga `sales_template.xlsx`,
+   **solo datos**, con hojas `history` e `instructions` (encabezados en inglés). La
+   configuración (`granularity`/`horizon`) ya no va en el archivo (ADR-0022).
 2. (Ya viene con una fila de ejemplo lista para usar.)
-3. **POST /sales/excel → Try it out → "Choose File"**, sube el `.xlsx` y **Execute**.
+3. **POST /sales/excel → Try it out → "Choose File"**, sube el `.xlsx`, completa los campos
+   `granularity` y `horizon` (la configuración de pantalla) y **Execute**.
 
 **Qué decir:** "El resultado es **idéntico** al del JSON del paso 2 — los mismos datos por
 Excel dan la misma respuesta. El cliente puede operar solo con Excel."

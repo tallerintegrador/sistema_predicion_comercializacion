@@ -31,19 +31,24 @@ COLS_HISTORY = ["date", "store_id", "product_id", "units_sold", "on_promotion", 
 
 
 def _xlsx_sales(historico: list[dict]) -> bytes:
-    """Construye un ``.xlsx`` válido de SALES (hojas history + parameters) en memoria."""
+    """Construye un ``.xlsx`` válido de SALES (solo datos: hoja history) en memoria.
+
+    La configuración (granularity/horizon) ya no viaja en el archivo: se envía como
+    campos de formulario en la petición (ADR-0022).
+    """
     wb = Workbook()
     wb.remove(wb.active)
     ws_h = wb.create_sheet(title="history")
     ws_h.append(list(COLS_HISTORY))
     for h in historico:
         ws_h.append([h.get(c) for c in COLS_HISTORY])
-    ws_p = wb.create_sheet(title="parameters")
-    ws_p.append(["granularity", "horizon"])
-    ws_p.append(["day", 5])
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# Configuración del pronóstico de SALES como campos de formulario (pantalla).
+_SALES_FORM = {"granularity": "day", "horizon": 5}
 
 
 def _payloads(historico: list[dict]) -> dict[str, tuple[str, dict]]:
@@ -322,7 +327,9 @@ def test_excel_grande_tambien_rutea_a_lote(client, historico_contrato, monkeypat
     """`POST /sales/excel` por encima del umbral devuelve 202 (mismo ruteo que el JSON)."""
     monkeypatch.setenv("SPC_ONLINE_MAX_ROWS", _UMBRAL_FORZAR_LOTE)
     contenido = _xlsx_sales(historico_contrato)
-    r = client.post("/sales/excel", files={"file": ("datos.xlsx", contenido, XLSX)})
+    r = client.post(
+        "/sales/excel", files={"file": ("datos.xlsx", contenido, XLSX)}, data=_SALES_FORM
+    )
     assert r.status_code == 202, r.text
     acuse = r.json()
     assert acuse["mode"] == "batch" and acuse["domain"] == "sales"
@@ -333,7 +340,9 @@ def test_excel_chico_sigue_en_linea(client, historico_contrato, monkeypatch):
     """Por debajo del umbral, el Excel responde 200 síncrono (sin job_id), como hoy."""
     monkeypatch.setenv("SPC_ONLINE_MAX_ROWS", _UMBRAL_ALTO)
     contenido = _xlsx_sales(historico_contrato)
-    r = client.post("/sales/excel", files={"file": ("datos.xlsx", contenido, XLSX)})
+    r = client.post(
+        "/sales/excel", files={"file": ("datos.xlsx", contenido, XLSX)}, data=_SALES_FORM
+    )
     assert r.status_code == 200, r.text
     assert r.json()["field"] == "sales"
 

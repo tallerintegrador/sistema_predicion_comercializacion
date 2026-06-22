@@ -119,8 +119,13 @@ async def entrenar_sales(
     adopta el modelo por cliente si supera al congelado en validación honesta.
     """
     contenido = await _leer_contenido(file)
-    # Misma validación strict y mismo lector que la predicción por Excel.
-    peticion: VentasRequest = lector.leer_peticion(contenido, "sales")  # type: ignore[assignment]
+    # Misma validación strict y mismo lector que la predicción por Excel. El entrenamiento
+    # solo usa `history`; el `horizon` es irrelevante (no se pronostica un horizonte aquí),
+    # pero el modelo strict lo exige, así que se aporta un valor de relleno (ADR-0022:
+    # la plantilla de Ventas ya no lleva configuración en el archivo).
+    peticion: VentasRequest = lector.leer_peticion(  # type: ignore[assignment]
+        contenido, "sales", extra={"horizon": 1}
+    )
     history_excel = [h.model_dump(mode="json") for h in peticion.history]
 
     root = _client_models_dir(request)

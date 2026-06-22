@@ -28,13 +28,19 @@ import { coerceRows, objectsToRows, rowsComplete } from '../utils/tableData'
 
 const ACCENT = SECTION_BY_ID.purchases.accent
 
+// Explicación en lenguaje claro de cómo se obtiene «cuánto reponer». El backend envía la
+// fórmula cruda en `justification` (contrato en inglés); en la app se muestra esta frase,
+// que la describe fielmente, sin exponer la fórmula (ADR-0022).
+export const PORQUE =
+  'Demanda estimada durante el tiempo de entrega más la cobertura, y unas existencias de seguridad.'
+
 const cols: Column<RecommendationItem>[] = [
   { header: 'Tienda', render: (r) => r.store_id },
   { header: 'Producto', render: (r) => r.product_id },
   { header: 'Demanda estimada', align: 'right', render: (r) => fmtNum(r.expected_demand_horizon) },
   { header: 'Reponer al bajar a', align: 'right', render: (r) => fmtNum(r.reorder_point) },
   { header: 'Cuánto reponer', align: 'right', render: (r) => fmtNum(r.replenishment_quantity) },
-  { header: 'Por qué', render: (r) => <span className="text-xs text-slate-500">{r.justification}</span> },
+  { header: 'Por qué', render: () => <span className="text-xs text-slate-500">{PORQUE}</span> },
 ]
 
 export function PurchasesPage() {

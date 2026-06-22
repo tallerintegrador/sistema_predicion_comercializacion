@@ -10,7 +10,9 @@ más parámetros/listas por dominio); Excel es tabular, así que cada bloque va 
 propia **hoja**:
 
 - una hoja `history` (bloque común, una fila por observación),
-- SALES: una hoja `parameters` (escalares `granularity`, `horizon`: una sola fila),
+- SALES: **solo datos** (`history`). La configuración del pronóstico
+  (`granularity`, `horizon`) **no** viaja en el archivo: se toma de la petición en
+  pantalla (ADR-0022); por eso la plantilla de Ventas no tiene hoja de parámetros.
 - PURCHASES: una hoja `replenishment_params` (una fila por producto),
 - INVENTORY: una hoja `inventory_status` (una fila por producto).
 
@@ -31,7 +33,6 @@ from pydantic import BaseModel
 from spc.api.schemas.almacen import EstadoInventarioItem
 from spc.api.schemas.compras import ParametroReposicion
 from spc.api.schemas.comunes import EJEMPLO_HISTORICO, HistoricoItem
-from spc.api.schemas.ventas import VentasRequest
 
 # Tipos de conversión explícita célula → contrato (ver `lector.convertir_celda`).
 Conversor = str  # uno de: "date" | "id" | "number" | "integer" | "boolean" | "enum"
@@ -103,7 +104,9 @@ class HojaExcel:
     - ``es_lista=True``: cada fila es un ítem de una lista del contrato (`history`,
       `replenishment_params`, `inventory_status`); va a ``peticion[clave]``.
     - ``es_lista=False``: una sola fila de escalares que se **funden en la raíz** de la
-      petición (los `parameters` de SALES: `granularity`, `horizon`).
+      petición. Hoy ningún dominio la usa: la configuración escalar de SALES
+      (`granularity`, `horizon`) viaja en la petición en pantalla, no en el archivo
+      (ADR-0022). El mecanismo se conserva por si un dominio futuro lo necesita.
     """
 
     nombre: str
@@ -163,16 +166,9 @@ PLANTILLAS: dict[str, PlantillaDominio] = {
         dominio="sales",
         archivo="sales_template.xlsx",
         titulo="SALES — pronóstico de demanda",
-        hojas=(
-            _hoja_history(),
-            HojaExcel(
-                nombre="parameters",
-                es_lista=False,
-                clave_peticion=None,  # granularity/horizon se funden en la raíz
-                columnas=_columnas(VentasRequest, excluir=("history",)),
-                ejemplos=({"granularity": "day", "horizon": 7},),
-            ),
-        ),
+        # Solo datos: la configuración (granularity/horizon) se envía desde la
+        # petición en pantalla, no en el archivo (ADR-0022).
+        hojas=(_hoja_history(),),
     ),
     "purchases": PlantillaDominio(
         dominio="purchases",

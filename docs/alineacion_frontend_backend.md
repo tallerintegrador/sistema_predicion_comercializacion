@@ -30,13 +30,13 @@ anti-desync.
 | 9 | Resúmenes en lenguaje natural | ✅ Implementada | calculado en el cliente sobre datos reales | — |
 | 10 | Reentrenamiento por cliente (Ventas) | ✅ Implementada | `POST /training/sales/excel`, `GET /training/jobs/{id}`, `GET /training/sales/status`, `POST /training/sales/serving` | — |
 | 11 | Administración de usuarios/roles con etiquetas legibles | ✅ Implementada | `GET /permissions`, `GET/POST /roles`, `GET/POST/PATCH /users` | etiquetas vienen de `permisos.py` |
-| 12 | **Filtrar por valores concretos** de una dimensión (Ventas) | 🟡 Parcial | solo con JSON/manual (valores del histórico en el cliente) | **`AGREGAR EN BACKEND:`** ver §3 |
+| 12 | **Filtrar por valores concretos** de una dimensión (Ventas) | ✅ Implementada | **filtro sobre el resultado**: los valores salen de `forecast[]` (cualquier canal, también Excel) | resuelto en ADR-0022 (ver §3 y §10) |
 | 13 | **Rango estimado (80%)** (`interval_80`) | 🟥 Falta (visible, «Próximamente») | el modelo no lo produce; la respuesta lo omite | **`AGREGAR EN BACKEND:`** ver §4 |
 | 14 | **Filtros de resultado en Compras/Almacén** (tienda, producto, segmento, «solo reposición/riesgo», orden) | 🟡 Parcial | derivados de los **campos reales** de la respuesta (ADR-0021) | resto «Próximamente»: ver §9 |
 | 15 | **Verificación automática de «datos suficientes»** antes de entrenar | 🟥 Falta (visible, «Próximamente») | hoy solo veredicto `insufficient_data` *durante* el entrenamiento | **`AGREGAR EN BACKEND:`** ver §6 |
 | 16 | **Reentrenamiento para Compras/Almacén** | 🟥 Falta (Almacén visible, «Próximamente») | solo Ventas tiene ajuste por cliente | **`AGREGAR EN BACKEND:`** ver §5 y §9 |
 | 17 | **Reentrenamiento del modelo base** desde la UI | 🟥 Falta (no expuesto) | proceso offline (scripts), sin endpoint | **`AGREGAR EN BACKEND:`** ver §5 |
-| 18 | **«Configuración detectada en tu archivo» (Excel)** mostrada/ajustable en pantalla | 🟥 Falta | `POST /{dominio}/excel` aplica la config del archivo pero no la devuelve | **`AGREGAR EN BACKEND:`** ver §4b y §9 |
+| 18 | **«Configuración detectada en tu archivo» (Excel)** mostrada/ajustable en pantalla | ✅ Sin objeto | el Excel de Ventas es **solo datos**: la config viaja en la petición en pantalla (ADR-0022) | resuelto por diseño (ver §4b, §9.5 y §10) |
 | 19 | **Defaults editables** de tiempo de entrega y días de cobertura en la carga manual | ✅ Implementada | `CatalogColumn.default` ← política (`spc.config`, ADR-0010) | añade `SPC_PURCHASES_TARGET_COVERAGE_DAYS`; ver §9 |
 | 20 | **Historial de ventas solo por archivo** (Compras/Almacén) y resumen sin filas vacías | ✅ Implementada | usa los endpoints existentes | regla unificada (ADR-0021) |
 | 21 | **Reutilización del historial guardado** entre módulos | 🟥 Falta (visible, «Próximamente») | el corpus se persiste por cliente (ADR-0011) pero no se expone al frontend | **`AGREGAR EN BACKEND:`** ver §9 |
@@ -67,13 +67,13 @@ desglose/filtrado por dimensión en Compras/Almacén, exponer `query_options` ta
 dominios (mismas dimensiones identificadoras del `history`). Mientras tanto, la UI no muestra
 ese filtro en Compras/Almacén.
 
-**`AGREGAR EN BACKEND:` valores disponibles por dimensión.**
-La UI puede filtrar por valores concretos (p. ej. ciertas tiendas) cuando el histórico está en
-el cliente (JSON/manual). En el flujo **Excel** el histórico se procesa en el servidor y el
-cliente no conoce los valores. Opciones:
-- (a) un endpoint `GET /{dominio}/dimensions/{name}/values` que, dado un conjunto de datos cargado/sesión, liste los valores distintos; o
-- (b) que la respuesta de predicción incluya los valores presentes.
-Recomendación: (b) es más barato (no añade estado) y suficiente para poblar el filtro tras el primer pronóstico. Marcar la versión Excel del filtro como «Próximamente» hasta entonces (ya hecho en la UI).
+**✅ Resuelto (ADR-0022): valores por dimensión como filtro sobre el resultado.**
+Se adoptó la opción (b): la respuesta de Ventas **ya es granular** (`forecast[]` por
+`date × store_id × product_id`), así que el filtro «valores concretos» se construye **en el
+cliente a partir de las filas del resultado**, no del histórico previo. Por eso funciona para
+**cualquier canal, también Excel** (deja de ser «Próximamente»). Categoría/familia como eje
+distinto de `product_id` sigue «Próximamente» (la respuesta no lo trae). Para Compras/Almacén la
+misma idea aplica vía sus filtros de resultado (§9.2).
 
 ---
 
@@ -89,23 +89,20 @@ Recomendación: (b) es más barato (no añade estado) y suficiente para poblar e
 
 ---
 
-## 4b. Configuración embebida en el Excel («Configuración detectada en tu archivo»)
+## 4b. Configuración del Excel — **resuelto por diseño** (ADR-0022): el archivo es solo datos
 
-El rediseño del flujo en 3 pasos (datos → configuración → acción) introduce, en el Paso 2 de
-**Ventas**, la idea de mostrar la **configuración que viene dentro del Excel** y permitir
-ajustarla. Hoy no es posible:
+La brecha original asumía que el Excel de Ventas **llevaba** su configuración (hoja `parameters`) y
+había que **mostrarla/ajustarla**. La decisión de ADR-0022 la elimina de raíz:
 
-- **Hoy:** `POST /{dominio}/excel` **lee y aplica** la configuración incluida en el archivo
-  (granularidad, horizonte, etc.) y devuelve directamente el resultado; **no expone** esa
-  configuración embebida. Por eso la UI no puede mostrarla ni permitir editarla: solo informa,
-  con honestidad, que «si subes un Excel con su propia configuración, esa configuración manda».
-  Los controles del Paso 2 aplican al pronosticar por JSON/datos cargados.
-- **`AGREGAR EN BACKEND:`** para mostrar **«Configuración detectada en tu archivo»** y permitir
-  ajustarla, el backend debe **devolver** la configuración leída del Excel (p. ej. en la respuesta
-  de `POST /sales/excel`, un bloque `detected_config { granularity, horizon, … }`), o bien un
-  endpoint de **previsualización** que parsee el Excel y devuelva su configuración **sin** ejecutar
-  el pronóstico, para que la UI la presente como valores por defecto editables antes de calcular.
-  Mientras no exista, la UI mantiene el aviso honesto y no fabrica esa configuración.
+- **Antes:** `POST /sales/excel` **leía y aplicaba** la configuración de la hoja `parameters` del
+  archivo, ignorando la pantalla (doble fuente). 
+- **Ahora:** la plantilla de Ventas es **solo datos** (`instructions` + `history`). La configuración
+  (`granularity`, `horizon`) viaja **en la petición en pantalla** como campos de formulario de
+  `POST /sales/excel` y es la **única fuente**. No hay configuración embebida que detectar ni
+  devolver: ya no existe. (Una plantilla antigua con hoja `parameters` se sigue subiendo: esa hoja se
+  ignora y manda la pantalla.)
+- **Sin cambio de contrato de datos:** `VentasRequest`/`VentasResponse` y `CONTRACT_VERSION` quedan
+  igual; cambia la **firma del canal Excel** (cómo se aportan los escalares).
 
 ---
 
@@ -254,12 +251,40 @@ Marcados **«Próximamente»** (el campo/medida no existe hoy en la respuesta):
   Compras/Almacén podrán pedir **solo el estado actual del inventario**. Hoy la opción se muestra
   deshabilitada con «Próximamente».
 
-### 9.5. Fuente de la configuración del pronóstico (Ventas)
+### 9.5. Fuente de la configuración del pronóstico (Ventas) — **✅ resuelto (ADR-0022)**
 
-- La configuración del pronóstico (qué estimar, cada cuánto, hasta cuándo) es **la solicitud en
-  pantalla**, única fuente de verdad. Se eliminó el texto que sugería que el sistema se adapta a la
-  configuración embebida del Excel.
-- **`AGREGAR EN BACKEND:`** si `POST /sales/excel` hoy **deriva** la configuración del archivo, debe
-  **aceptar/priorizar** la configuración enviada desde la solicitud en pantalla (o devolver la
-  configuración detectada para que la UI la presente como valores por defecto editables; ver §4b). Sin
-  esto, la configuración de pantalla aplica al pronosticar por JSON/datos cargados.
+- La configuración del pronóstico (cada cuánto, hasta cuándo) es **la solicitud en pantalla**, única
+  fuente de verdad, **también por Excel**.
+- **Implementado:** `POST /sales/excel` ya **acepta** `granularity`/`horizon` como campos de
+  formulario (la pantalla) y la plantilla dejó de llevar esa configuración. Ver §4b y §10.
+
+---
+
+## 10. Refinamiento de Ventas (ADR-0022): plantilla solo-datos, filtros sobre el resultado y procesamiento honesto
+
+Consolida lo implementado en [ADR-0022](decisiones/0022-ventas-plantilla-datos-filtros-resultado-async.md).
+Nada de esto toca el motor de ML; vive en la capa **servicio/API** (canal Excel) y en el frontend.
+
+### 10.1. Implementado (sin brechas de backend pendientes)
+
+- **Plantilla de Ventas solo-datos.** `instructions` + `history`; se eliminó la hoja `parameters`
+  (`src/spc/api/ingest/esquema_excel.py`). Compras/Almacén sin cambios.
+- **Configuración por la petición en pantalla.** `POST /sales/excel` recibe `granularity`/`horizon`
+  como campos de formulario (`src/spc/api/routers/excel.py`); el lector los funde antes de validar con
+  el mismo modelo strict (`leer_peticion(..., extra=)`). **Sin cambio de contrato de datos** ni de
+  `CONTRACT_VERSION`.
+- **Filtros sobre el resultado de Ventas.** «Ver total / por dimensión», «Agrupar / filtrar por» y
+  «valores concretos» pasan a explorar el resultado **sin recalcular**; sus valores salen de
+  `forecast[]` (cualquier canal). Lógica pura en `frontend/src/utils/ventasResult.ts`.
+- **Procesamiento honesto de archivos grandes.** La UI muestra «Estamos procesando tu pronóstico…»
+  sin exponer «en línea»/«por lote»/«job». El sondeo de `/jobs/{id}/result` y su tope **ya existían**
+  (no requieren backend nuevo).
+- **Textos en español en la app** (no en plantillas): leyenda del gráfico (unidades vendidas / demanda
+  estimada), clase de demanda (alta/baja), «Por qué» de Compras como frase clara y «existencias» en
+  vez de «stock». El backend sigue enviando `justification` y los encabezados de plantilla **en inglés**
+  (contrato).
+
+### 10.2. Sigue «Próximamente» (registrado arriba)
+
+- **`interval_80`** (rango estimado al 80%): el modelo no lo produce (§4).
+- **Categoría / familia** como eje distinto de `product_id` en Ventas/Compras/Almacén (§3, §9.2).

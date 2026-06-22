@@ -18,6 +18,11 @@ interface Point {
   pronostico?: number
 }
 
+// Etiquetas de la leyenda en español (no se exponen los nombres del contrato como
+// `units_sold`/`forecast_demand`; ADR-0022). Exportadas para poder verificarlas en pruebas.
+export const LEGEND_HISTORICO = 'Histórico (unidades vendidas)'
+export const LEGEND_PRONOSTICO = 'Pronóstico (demanda estimada)'
+
 /**
  * Línea de tiempo: demanda observada (history) vs. pronóstico (forecast).
  * Cuando hay varias series (tienda×producto), agrega por fecha sumando.
@@ -58,7 +63,7 @@ export function SalesChart({
           <Line
             type="monotone"
             dataKey="historico"
-            name="Histórico (units_sold)"
+            name={LEGEND_HISTORICO}
             stroke="#64748b"
             dot={false}
             strokeWidth={2}
@@ -67,7 +72,7 @@ export function SalesChart({
           <Line
             type="monotone"
             dataKey="pronostico"
-            name="Pronóstico (forecast_demand)"
+            name={LEGEND_PRONOSTICO}
             stroke="#4f46e5"
             dot={false}
             strokeWidth={2}

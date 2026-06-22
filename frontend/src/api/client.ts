@@ -120,10 +120,19 @@ export async function getJson<T>(path: string): Promise<{ status: number; data: 
   return { status: res.status, data: (await res.json()) as T }
 }
 
-/** Sube un archivo (campo form `file`). Lanza `ApiError` salvo 2xx/202. */
-export async function postFile<T>(path: string, file: File): Promise<{ status: number; data: T }> {
+/**
+ * Sube un archivo (campo form `file`). `fields` añade campos de formulario adicionales
+ * (p. ej. en Ventas, la configuración de pantalla `granularity`/`horizon`). Lanza
+ * `ApiError` salvo 2xx/202.
+ */
+export async function postFile<T>(
+  path: string,
+  file: File,
+  fields?: Record<string, string | number>,
+): Promise<{ status: number; data: T }> {
   const form = new FormData()
   form.append('file', file)
+  for (const [k, v] of Object.entries(fields ?? {})) form.append(k, String(v))
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: headersBase(), // no fijar Content-Type: el navegador pone el boundary

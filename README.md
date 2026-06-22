@@ -210,6 +210,20 @@ reposición/riesgo», orden), y «Mejorar las predicciones» suma el selector **
 cobertura) salen de la **política configurable** (ADR-0010): se añadió
 `SPC_PURCHASES_TARGET_COVERAGE_DAYS` (default 14) junto a `SPC_INVENTORY_LEAD_TIME_DEFAULT` (7).
 
+**Refinamiento de Ventas ([ADR-0022](docs/decisiones/0022-ventas-plantilla-datos-filtros-resultado-async.md)).**
+La **plantilla de Ventas es solo-datos** (hojas `instructions` + `history`): la configuración del
+pronóstico ya **no viaja en el archivo**. `granularity`/`horizon` se envían **desde la pantalla**
+como campos de formulario en `POST /sales/excel` (única fuente, también con Excel). En Ventas, antes
+de pronosticar se piden **solo** los dos parámetros que el modelo necesita (cada cuánto / hasta
+cuándo); «Ver total / por dimensión», «Agrupar / filtrar por» y **«Valores concretos»** pasan a ser
+**filtros sobre el resultado** (cambian la vista, no el cálculo; sus valores salen de las filas de la
+respuesta, así sirven para cualquier canal). Los archivos grandes muestran un **estado de
+procesamiento honesto** («Estamos procesando tu pronóstico…»), sin exponer los términos internos
+«en línea»/«por lote». Textos en español en la app: leyenda del gráfico (**unidades vendidas** /
+**demanda estimada**), **clase de demanda** (alta/baja), «Por qué» de Compras como frase clara y
+**«existencias»** en lugar de «stock» (sin tocar los encabezados de las plantillas, que son el
+contrato en inglés).
+
 > **Estado:** el frontend corre **en local** (dev). **El despliegue (Fase 4.0–4.4) sigue
 > pendiente**: no hay backend ni frontend desplegados. La conexión a una API desplegada
 > con su CORS real es la Fase 4.5. Ver `docs/SPC_Entrega_Despliegue_Valentin.md` §8.

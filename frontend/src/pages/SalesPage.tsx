@@ -5,6 +5,7 @@ import type {
   ForecastItem,
   Granularity,
   HistoryItem,
+  QueryOptions,
   SalesRequest,
   SalesResponse,
 } from '../api/types'
@@ -29,9 +30,14 @@ import { TechnicalDetails } from '../components/ui/TechnicalDetails'
 import { SECTION_BY_ID } from '../theme/modules'
 import { fmtNum } from '../utils/format'
 import { resumenVentas } from '../utils/resumen'
-
-// Solo se desglosa/filtra por columnas identificadoras del histórico (R2).
-type DimKey = 'store_id' | 'product_id'
+import {
+  contarSeries,
+  filasPorDimension,
+  filtrarPorValores,
+  totalesPorPeriodo,
+  valoresDimension,
+} from '../utils/ventasResult'
+import type { DimKey } from '../utils/ventasResult'
 
 const ACCENT = SECTION_BY_ID.sales.accent
 
@@ -48,12 +54,10 @@ export function SalesPage() {
   const { domain, loading: optsLoading, error: optsError } = useDomainCatalog('sales')
   const options = domain?.query_options ?? null
 
-  // Configuración del pronóstico (override del usuario; null = valor por defecto del catálogo).
-  const [typology, setTypology] = useState<string | null>(null)
-  const [dimension, setDimension] = useState<string | null>(null)
+  // Configuración del pronóstico: lo único que el modelo necesita para calcular.
+  // (override del usuario; null = valor por defecto del catálogo).
   const [granularity, setGranularity] = useState<Granularity | null>(null)
   const [horizon, setHorizon] = useState<number | null>(null)
-  const [selectedValues, setSelectedValues] = useState<string[]>([])
 
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [shownHistory, setShownHistory] = useState<HistoryItem[]>([])
@@ -63,25 +67,8 @@ export function SalesPage() {
   const busy = pred.status === 'loading' || pred.status === 'polling'
 
   // Valores efectivos: el override del usuario o el valor por defecto del catálogo.
-  const effTypology = typology ?? options?.typologies[0]?.name ?? ''
-  const effDimension = dimension ?? options?.dimensions[0]?.name ?? ''
   const effGranularity: Granularity = granularity ?? options?.granularities[0]?.name ?? 'day'
   const effHorizon = horizon ?? options?.horizon.default ?? 1
-
-  const currentTypology = options?.typologies.find((t) => t.name === effTypology) ?? null
-  const requiresDimension = currentTypology?.requires_dimension ?? false
-  const dimKey = (effDimension || 'product_id') as DimKey
-
-  const changeDimension = (name: string) => {
-    setDimension(name)
-    setSelectedValues([])
-  }
-  const dimLabel = (name: string) => options?.dimensions.find((d) => d.name === name)?.label ?? name
-
-  const dimensionValues = useMemo(() => {
-    if (!effDimension) return []
-    return Array.from(new Set(history.map((h) => String(h[dimKey])))).sort()
-  }, [history, dimKey, effDimension])
 
   const hasHistory = history.length > 0
 
@@ -93,25 +80,22 @@ export function SalesPage() {
     }
     setJsonError(null)
     setHistory(hist)
-    setSelectedValues([])
     pred.reset()
   }
 
-  const buildHistory = (): HistoryItem[] => {
-    if (!requiresDimension || selectedValues.length === 0) return history
-    return history.filter((h) => selectedValues.includes(String(h[dimKey])))
-  }
-
   const predict = () => {
-    const used = buildHistory()
-    setShownHistory(used)
-    const req: SalesRequest = { granularity: effGranularity, horizon: effHorizon, history: used }
+    setShownHistory(history)
+    const req: SalesRequest = { granularity: effGranularity, horizon: effHorizon, history }
     pred.run(() => postSales(req))
   }
 
   const onExcel = (file: File) => {
+    // El archivo es solo datos: la configuración de pantalla viaja como campos de
+    // formulario (única fuente del pronóstico, ADR-0022).
     setShownHistory([])
-    pred.run(() => uploadExcel<SalesResponse>('sales', file))
+    pred.run(() =>
+      uploadExcel<SalesResponse>('sales', file, { granularity: effGranularity, horizon: effHorizon }),
+    )
   }
 
   return (
@@ -139,101 +123,75 @@ export function SalesPage() {
         )}
       </StepSection>
 
-      {/* PASO 2 — Configuración del pronóstico sobre los datos ya cargados. */}
+      {/* PASO 2 — Configuración: SOLO lo que el modelo necesita para calcular. */}
       <StepSection
         step={2}
         title="Configuración del pronóstico"
         accentChip={ACCENT.chip}
-        description="Define qué quieres estimar y con qué detalle. Se aplica sobre los datos del Paso 1."
+        description="Define cada cuánto y hasta cuándo estimar. Se aplica sobre los datos del Paso 1."
       >
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Descarga la plantilla Excel, complétala con tus datos y súbela. Qué estimar, cada cuánto
-          y hasta cuándo lo eliges aquí en pantalla: esta configuración es la única que se aplica.
+          Qué estimar, cada cuánto y hasta cuándo lo eliges aquí en pantalla: esta configuración es
+          la única que se aplica, también cuando subes un Excel. Después de pronosticar podrás
+          explorar el resultado por tienda, producto o valores concretos sin recalcular.
         </div>
 
         {optsLoading && <p className="text-sm text-slate-500">Cargando opciones…</p>}
         {optsError && <ErrorPanel error={optsError} />}
 
         {options && (
-          <>
-            <TypologySelect
-              typologies={options.typologies}
-              value={effTypology}
-              onChange={setTypology}
-              disabled={busy}
-            />
-
-            {requiresDimension && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <DimensionSelect
-                  dimensions={options.dimensions}
-                  value={effDimension}
-                  onChange={changeDimension}
-                  disabled={busy}
-                  label="Agrupar / filtrar por"
-                />
-                <DimensionValuesFilter
-                  label={`Valores de ${dimLabel(effDimension)}`}
-                  values={dimensionValues}
-                  selected={selectedValues}
-                  onChange={setSelectedValues}
-                  disabled={busy || !hasHistory}
-                  disabledHint="Sube tus ventas en JSON para elegir valores concretos. (Con Excel, esta opción llegará pronto)."
-                />
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-start gap-4">
-              <div>
-                <label className="label" htmlFor="granularity">
-                  ¿Cada cuánto?
-                </label>
-                <select
-                  id="granularity"
-                  className="input"
-                  value={effGranularity}
-                  disabled={busy}
-                  onChange={(e) => setGranularity(e.target.value as Granularity)}
-                >
-                  {options.granularities.map((g) => (
-                    <option key={g.name} value={g.name}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="help">Día, semana o mes.</p>
-              </div>
-              <div>
-                <label className="label" htmlFor="horizon">
-                  ¿Hasta cuándo? ({options.horizon.min}–{options.horizon.max})
-                </label>
-                <input
-                  id="horizon"
-                  type="number"
-                  min={options.horizon.min}
-                  max={options.horizon.max}
-                  className="input w-32"
-                  value={effHorizon}
-                  disabled={busy}
-                  onChange={(e) => {
-                    const n = Number(e.target.value)
-                    const { min, max } = options.horizon
-                    setHorizon(Number.isNaN(n) ? min : Math.min(Math.max(n, min), max))
-                  }}
-                />
-                <p className="help">Cuántos períodos quieres estimar.</p>
-              </div>
-              <div className="opacity-60">
-                <span className="label flex items-center gap-2">
-                  Rango estimado (80%) <ComingSoon />
-                </span>
-                <label className="mt-1 inline-flex items-center gap-2 text-sm text-slate-400">
-                  <input type="checkbox" disabled />
-                  Mostrar el margen alto/bajo
-                </label>
-              </div>
+          <div className="flex flex-wrap items-start gap-4">
+            <div>
+              <label className="label" htmlFor="granularity">
+                ¿Cada cuánto?
+              </label>
+              <select
+                id="granularity"
+                className="input"
+                value={effGranularity}
+                disabled={busy}
+                onChange={(e) => setGranularity(e.target.value as Granularity)}
+              >
+                {options.granularities.map((g) => (
+                  <option key={g.name} value={g.name}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+              <p className="help">Día, semana o mes.</p>
             </div>
-          </>
+            <div>
+              <label className="label" htmlFor="horizon">
+                ¿Hasta cuándo? ({options.horizon.min}–{options.horizon.max})
+              </label>
+              <input
+                id="horizon"
+                type="number"
+                min={options.horizon.min}
+                max={options.horizon.max}
+                className="input w-32"
+                value={effHorizon}
+                disabled={busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  const { min, max } = options.horizon
+                  setHorizon(Number.isNaN(n) ? min : Math.min(Math.max(n, min), max))
+                }}
+              />
+              <p className="help">
+                Se cuenta en períodos de la granularidad elegida (p. ej. 7 días, 7 semanas o 7 meses).
+              </p>
+            </div>
+            <div className="opacity-60">
+              <span className="label flex items-center gap-2">
+                Rango estimado (80%) <ComingSoon />
+              </span>
+              <label className="mt-1 inline-flex items-center gap-2 text-sm text-slate-400">
+                <input type="checkbox" disabled />
+                Mostrar el margen alto/bajo
+              </label>
+            </div>
+          </div>
         )}
       </StepSection>
 
@@ -268,55 +226,72 @@ export function SalesPage() {
       )}
 
       {pred.status === 'done' && pred.data && (
-        <ResultSection
-          data={pred.data}
-          history={shownHistory}
-          granularity={effGranularity}
-          typologyLabel={currentTypology?.label ?? null}
-          byDimension={requiresDimension}
-          dimKey={dimKey}
-          dimLabel={dimLabel}
-        />
+        <ResultSection data={pred.data} history={shownHistory} granularity={effGranularity} options={options} />
       )}
     </div>
   )
 }
 
-/** Resultado del pronóstico, presentado según la tipología elegida (R1). */
+/**
+ * Resultado del pronóstico con FILTROS SOBRE EL RESULTADO (mismo principio que Compras y
+ * Almacén): el usuario pronostica una vez y explora el mismo resultado de varias formas
+ * sin recalcular. «Ver total / por dimensión», «Agrupar / filtrar por» y «Valores concretos»
+ * cambian la vista, no el cálculo; sus valores salen de las filas reales de la respuesta
+ * (sirven para cualquier canal, también Excel).
+ */
 function ResultSection({
   data,
   history,
   granularity,
-  typologyLabel,
-  byDimension,
-  dimKey,
-  dimLabel,
+  options,
 }: {
   data: SalesResponse
   history: HistoryItem[]
   granularity: Granularity
-  typologyLabel: string | null
-  byDimension: boolean
-  dimKey: DimKey
-  dimLabel: (name: string) => string
+  options: QueryOptions | null
 }) {
-  const forecast = data.forecast
+  // Estado de los filtros del resultado (se reinicia con cada pronóstico).
+  const [typology, setTypology] = useState<string | null>(null)
+  const [dimension, setDimension] = useState<string | null>(null)
+  const [selectedValues, setSelectedValues] = useState<string[]>([])
+
+  const effTypology = typology ?? options?.typologies[0]?.name ?? 'time_series'
+  const effDimension = dimension ?? options?.dimensions[0]?.name ?? 'product_id'
+  const currentTypology = options?.typologies.find((t) => t.name === effTypology) ?? null
+  const byDimension = currentTypology?.requires_dimension ?? false
+  const dimKey = (effDimension || 'product_id') as DimKey
   const otherKey: DimKey = dimKey === 'store_id' ? 'product_id' : 'store_id'
 
-  const periodTotals = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const f of forecast) m.set(f.date, (m.get(f.date) ?? 0) + f.forecast_demand)
-    return Array.from(m, ([date, total]) => ({ date, total })).sort((a, b) => a.date.localeCompare(b.date))
-  }, [forecast])
+  const dimLabel = (name: string) => options?.dimensions.find((d) => d.name === name)?.label ?? name
+  const changeDimension = (name: string) => {
+    setDimension(name)
+    setSelectedValues([])
+  }
 
-  const dimensionRows = useMemo(
-    () =>
-      [...forecast].sort((a, b) => {
-        const k = String(a[dimKey]).localeCompare(String(b[dimKey]))
-        return k !== 0 ? k : a.date.localeCompare(b.date)
-      }),
-    [forecast, dimKey],
+  const forecast = data.forecast
+
+  // Valores concretos: derivados de las filas del RESULTADO (no del histórico), así el
+  // filtro funciona también cuando los datos se subieron por Excel.
+  const dimensionValues = useMemo(() => valoresDimension(forecast, dimKey), [forecast, dimKey])
+
+  // El filtro por valores concretos solo aplica en la vista «por dimensión». Una selección
+  // vacía significa «todas». `activeKey` mantiene estable la dependencia de los useMemo.
+  const activeValues = byDimension ? selectedValues : []
+  const activeKey = activeValues.join('|')
+
+  const filteredForecast = useMemo(
+    () => filtrarPorValores(forecast, dimKey, activeValues),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [forecast, dimKey, activeKey],
   )
+  const filteredHistory = useMemo(
+    () => filtrarPorValores(history, dimKey, activeValues),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [history, dimKey, activeKey],
+  )
+
+  const periodTotals = useMemo(() => totalesPorPeriodo(filteredForecast), [filteredForecast])
+  const dimensionRows = useMemo(() => filasPorDimension(filteredForecast, dimKey), [filteredForecast, dimKey])
 
   const periodCols: Column<{ date: string; total: number }>[] = [
     { header: 'Período', render: (r) => r.date },
@@ -329,16 +304,61 @@ function ResultSection({
     { header: 'Demanda estimada', align: 'right', render: (r) => fmtNum(r.forecast_demand) },
   ]
 
+  const filteredSeries = contarSeries(filteredForecast)
+  const totalSeries = contarSeries(forecast)
+
   return (
     <section className="card space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-base font-semibold text-slate-800">Resultado</h3>
-        {typologyLabel && <span className={`badge ${ACCENT.badge}`}>{typologyLabel}</span>}
+        {currentTypology && <span className={`badge ${ACCENT.badge}`}>{currentTypology.label}</span>}
       </div>
 
-      <ResultSummary text={resumenVentas(forecast, granularity)} tone="bg-sales-50 text-sales-700" />
+      {/* Filtros sobre el resultado: cambian la vista, no el cálculo. */}
+      {options && (
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+          <TypologySelect
+            typologies={options.typologies}
+            value={effTypology}
+            onChange={setTypology}
+            label="Ver"
+          />
+          {byDimension && (
+            <>
+              <DimensionSelect
+                dimensions={options.dimensions}
+                value={effDimension}
+                onChange={changeDimension}
+                label="Agrupar / filtrar por"
+              />
+              <DimensionValuesFilter
+                label={`Valores de ${dimLabel(effDimension)}`}
+                values={dimensionValues}
+                selected={selectedValues}
+                onChange={setSelectedValues}
+              />
+            </>
+          )}
+          <div className="opacity-60" title="Disponible cuando el sistema indique la categoría o familia de cada producto.">
+            <span className="label flex items-center gap-1">
+              Categoría / familia <ComingSoon />
+            </span>
+            <select className="input" disabled aria-disabled="true">
+              <option>Todas</option>
+            </select>
+          </div>
+        </div>
+      )}
 
-      <SalesChart history={history} forecast={forecast} />
+      <ResultSummary text={resumenVentas(filteredForecast, granularity)} tone="bg-sales-50 text-sales-700" />
+
+      {byDimension && filteredSeries !== totalSeries && (
+        <p className="text-xs text-slate-500">
+          Mostrando {filteredSeries} de {totalSeries} series.
+        </p>
+      )}
+
+      <SalesChart history={filteredHistory} forecast={filteredForecast} />
 
       {byDimension ? (
         <>

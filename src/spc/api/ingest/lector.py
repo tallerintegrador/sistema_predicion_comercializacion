@@ -314,12 +314,19 @@ def _detalle_desde_loc(
 # ---------------------------------------------------------------------------
 # API pública del lector
 # ---------------------------------------------------------------------------
-def leer_peticion(contenido: bytes, dominio: str) -> BaseModel:
+def leer_peticion(
+    contenido: bytes, dominio: str, extra: dict[str, Any] | None = None
+) -> BaseModel:
     """Lee el ``.xlsx`` de un dominio y devuelve la **petición validada** del contrato.
 
     Convierte tipos explícitamente, arma la misma estructura que el JSON y la valida
     con el mismo modelo strict. Lanza ``ErrorExcel`` (→ HTTP 422) con hoja/fila/columna
     si el archivo es ilegible o no cumple el contrato.
+
+    ``extra`` aporta los **escalares de la petición en pantalla** (p. ej. en SALES,
+    ``granularity`` y ``horizon``) que ya no viajan en el archivo (ADR-0022): se funden
+    en la raíz de la petición y se validan con el mismo modelo strict. Sus errores se
+    mapean al nombre del campo (no a una hoja/fila), porque no provienen del Excel.
     """
     plantilla = plantilla_de(dominio)
     try:
@@ -342,10 +349,15 @@ def leer_peticion(contenido: bytes, dominio: str) -> BaseModel:
                 peticion[hoja.clave_peticion] = filas
                 nros[hoja.nombre] = fila_nros
             else:
-                # Parámetros escalares: una sola fila que se funde en la raíz.
+                # Parámetros escalares en el archivo: una sola fila que se funde en la raíz.
                 if filas:
                     peticion.update(filas[0])
                     fila_escalar = fila_nros[0]
+
+        # Escalares de la petición en pantalla (ADR-0022): se funden en la raíz. Su
+        # presencia no depende del archivo, así que no acumulan errores de hoja/fila.
+        if extra:
+            peticion.update(extra)
 
         # Errores de estructura/conversión: cortar aquí con el reporte acumulado.
         if detalles:

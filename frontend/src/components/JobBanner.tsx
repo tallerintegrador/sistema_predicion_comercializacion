@@ -1,8 +1,10 @@
 import type { PredStatus } from '../hooks/usePrediction'
 
 /**
- * Banner de estado de la predicción. En modo lote (status="polling") muestra el
- * job_id y los reintentos del polling a `/jobs/{id}/result`.
+ * Banner de estado de la predicción. Cuando un archivo grande se procesa en segundo
+ * plano, muestra un estado **honesto y sin tecnicismos**: el resultado aparece solo al
+ * terminar. No se exponen los términos internos «en línea» ni «por lote» (ADR-0022); el
+ * sondeo del trabajo ocurre por debajo (ver usePrediction).
  */
 export function JobBanner({
   status,
@@ -10,13 +12,17 @@ export function JobBanner({
   attempts,
 }: {
   status: PredStatus
+  // Se conservan en la firma para diagnóstico, pero no se muestran al usuario.
   jobId: string | null
   attempts: number
 }) {
+  void jobId
+  void attempts
+
   if (status === 'loading') {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">
-        <Spinner /> Enviando petición…
+        <Spinner /> Enviando tus datos…
       </div>
     )
   }
@@ -25,9 +31,9 @@ export function JobBanner({
       <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         <Spinner />
         <div>
-          <div className="font-medium">Modo lote (asíncrono) — procesando en segundo plano</div>
+          <div className="font-medium">Estamos procesando tu pronóstico</div>
           <div className="text-amber-700">
-            job <code className="rounded bg-amber-100 px-1 py-0.5 text-xs">{jobId}</code> · consulta #{attempts}
+            Esto puede tomar un momento. El resultado aparecerá aquí en cuanto esté listo.
           </div>
         </div>
       </div>
@@ -36,11 +42,10 @@ export function JobBanner({
   if (status === 'timeout') {
     return (
       <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-700">
-        <div className="font-medium">El trabajo sigue en proceso en el servidor</div>
+        <div className="font-medium">Tu pronóstico sigue procesándose</div>
         <div className="text-slate-500">
-          Dejamos de consultar tras {attempts} intentos para no sondear sin fin. El job{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{jobId}</code> no se canceló:
-          vuelve a predecir en unos minutos para recuperar el resultado.
+          Está tomando más de lo habitual. Tu trabajo no se perdió: vuelve a pronosticar en
+          unos minutos para recuperar el resultado.
         </div>
       </div>
     )

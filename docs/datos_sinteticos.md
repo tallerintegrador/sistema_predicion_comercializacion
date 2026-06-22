@@ -66,13 +66,13 @@ datos crudos.** Todo deriva de `--seed` (por defecto 42).
   `spc.api.ingest.esquema_excel.PLANTILLAS`, la **misma fuente** que el sistema usa para
   generar y validar sus plantillas. Si el contrato cambia, los archivos lo siguen solos.
 - Hojas y encabezados (en inglés) por dominio:
-  - **ventas:** `history` + `parameters` (`granularity`, `horizon`).
+  - **ventas:** **solo datos** — `history` (la configuración `granularity`/`horizon` ya no
+    viaja en el archivo: se envía en la petición en pantalla, ADR-0022).
   - **compras:** `history` + `replenishment_params` (`current_stock`, `lead_time_days`, `target_coverage_days`).
   - **inventario:** `history` + `inventory_status` (`current_stock`, `lead_time_days` opcional).
 - Rangos respetados: `units_sold ≥ 0`, `on_promotion` entero `≥ 0`, `transactions ≥ 0`
   (vacío en días sin venta de las series intermitentes), `lead_time_days`/
-  `target_coverage_days` enteros `> 0`, `horizon` entero `1–365`, `granularity` en
-  `day/week/month`, fechas ISO válidas, **sin columnas extra**.
+  `target_coverage_days` enteros `> 0`, fechas ISO válidas, **sin columnas extra**.
 - **Realismo:** cada serie `(store_id, product_id)` =
   `nivel_base × tendencia × estacionalidad_semanal × estacionalidad_anual +
   picos_por_promoción + eventos + ruido`, con intermitencia (ceros) opcional. Los

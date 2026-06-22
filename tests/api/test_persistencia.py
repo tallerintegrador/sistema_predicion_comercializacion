@@ -62,16 +62,16 @@ def _submissions(repo: RepositorioPredicciones) -> list[dict]:
 
 
 def _xlsx_sales(historico: list[dict]) -> bytes:
-    """``.xlsx`` válido de SALES (hojas history + parameters), igual que el canal real."""
+    """``.xlsx`` válido de SALES (solo datos: hoja history), igual que el canal real.
+
+    La configuración (granularity/horizon) va por formulario, no en el archivo (ADR-0022).
+    """
     wb = Workbook()
     wb.remove(wb.active)
     ws_h = wb.create_sheet(title="history")
     ws_h.append(list(COLS_HISTORY))
     for h in historico:
         ws_h.append([h.get(c) for c in COLS_HISTORY])
-    ws_p = wb.create_sheet(title="parameters")
-    ws_p.append(["granularity", "horizon"])
-    ws_p.append(["day", 5])
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -125,6 +125,7 @@ def test_excel_se_persiste_con_canal_excel(client_persistente, repo, historico_c
     r = client_persistente.post(
         "/sales/excel",
         files={"file": ("sales.xlsx", contenido, XLSX)},
+        data={"granularity": "day", "horizon": 5},
     )
     assert r.status_code == 200, r.text
     sub = _submissions(repo)[-1]
