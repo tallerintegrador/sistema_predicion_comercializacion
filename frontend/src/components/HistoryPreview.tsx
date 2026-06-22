@@ -7,17 +7,24 @@ import { useMemo } from 'react'
  */
 type SummarizableRow = { date?: string; store_id?: string; product_id?: string }
 
+/** ¿La fila tiene algún dato real? (evita contar filas en blanco recién agregadas). */
+function tieneDato(row: SummarizableRow): boolean {
+  return Boolean(row.date || row.store_id || row.product_id)
+}
+
 /** Resumen del histórico cargado: filas, rango de fechas y series. */
 export function HistoryPreview({ history }: { history: SummarizableRow[] }) {
   const summary = useMemo(() => {
-    if (history.length === 0) {
+    // Solo cuenta filas con contenido real: una fila en blanco NO suma a «Filas».
+    const reales = history.filter(tieneDato)
+    if (reales.length === 0) {
       return { rows: 0, from: '—', to: '—', stores: 0, products: 0 }
     }
-    const dates = history.map((h) => h.date).filter((d): d is string => !!d).sort()
-    const stores = new Set(history.map((h) => h.store_id).filter(Boolean))
-    const products = new Set(history.map((h) => h.product_id).filter(Boolean))
+    const dates = reales.map((h) => h.date).filter((d): d is string => !!d).sort()
+    const stores = new Set(reales.map((h) => h.store_id).filter(Boolean))
+    const products = new Set(reales.map((h) => h.product_id).filter(Boolean))
     return {
-      rows: history.length,
+      rows: reales.length,
       from: dates[0] ?? '—',
       to: dates[dates.length - 1] ?? '—',
       stores: stores.size,

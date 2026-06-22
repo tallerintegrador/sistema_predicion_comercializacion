@@ -246,6 +246,7 @@ export interface CatalogColumn {
   type: string // tipo legible (int | float | str | date | bool …)
   required: boolean
   help?: string | null
+  default?: number | string | null // prefill editable (sale de la política, ADR-0010); ausente si no aplica
 }
 
 export interface InputTable {

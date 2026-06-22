@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { coerceRows, objectsToRows, rowsComplete } from './tableData'
-import type { CatalogColumn } from '../api/types'
+import { coerceRows, emptyRow, objectsToRows, rowsComplete } from './tableData'
+import type { CatalogColumn, InputTable } from '../api/types'
 
 const cols: CatalogColumn[] = [
   { name: 'store_id', label: 'Tienda', type: 'str', required: true },
@@ -37,5 +37,23 @@ describe('objectsToRows', () => {
     expect(row.current_stock).toBe('10')
     expect(row.event_active).toBe('true')
     expect(row.lead_time_days).toBe('') // ausente → texto vacío
+  })
+})
+
+describe('emptyRow', () => {
+  it('prellena con los valores por defecto editables del catálogo y deja vacío lo demás', () => {
+    const table: InputTable = {
+      name: 'replenishment_params',
+      label: 'Productos a reponer',
+      columns: [
+        { name: 'store_id', label: 'Tienda', type: 'str', required: true },
+        { name: 'lead_time_days', label: 'Entrega', type: 'int', required: true, default: 7 },
+        { name: 'target_coverage_days', label: 'Cobertura', type: 'int', required: true, default: 14 },
+      ],
+    }
+    const row = emptyRow(table)
+    expect(row.store_id).toBe('') // sin default → vacío
+    expect(row.lead_time_days).toBe('7') // default del catálogo (política), como texto editable
+    expect(row.target_coverage_days).toBe('14')
   })
 })

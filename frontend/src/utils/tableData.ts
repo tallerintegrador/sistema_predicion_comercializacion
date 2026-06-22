@@ -9,9 +9,16 @@ import type { CatalogColumn, InputTable } from '../api/types'
 /** Fila editable: cada columna guarda su valor como texto. */
 export type EditableRow = Record<string, string>
 
-/** Crea una fila vacía con todas las columnas de la tabla. */
+/**
+ * Crea una fila para «Agregar fila» con los valores por defecto EDITABLES que trae el
+ * catálogo (p. ej. tiempo de entrega o días de cobertura, que salen de la política, ADR-0010).
+ * Las columnas sin default quedan vacías. Así no se obliga a llenar esos campos fila por fila
+ * y no se clava ningún literal en el frontend.
+ */
 export function emptyRow(table: InputTable): EditableRow {
-  return Object.fromEntries(table.columns.map((c) => [c.name, '']))
+  return Object.fromEntries(
+    table.columns.map((c) => [c.name, c.default == null ? '' : String(c.default)]),
+  )
 }
 
 /** ¿La fila tiene completos todos los campos obligatorios? */
