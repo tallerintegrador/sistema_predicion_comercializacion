@@ -13,6 +13,9 @@ import { JobBanner } from '../components/JobBanner'
 import { ResultTable } from '../components/ResultTable'
 import type { Column } from '../components/ResultTable'
 import { PurchasesChart } from '../components/charts/PurchasesChart'
+import { ResultFilters } from '../components/result/ResultFilters'
+import { useResultFilters } from '../hooks/useResultFilters'
+import type { ResultFiltersSpec } from '../hooks/useResultFilters'
 import { ModuleHeader } from '../components/ui/ModuleHeader'
 import { StepSection } from '../components/ui/StepSection'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -159,14 +162,82 @@ export function PurchasesPage() {
         />
       )}
 
-      {pred.status === 'done' && pred.data && (
-        <section className="card space-y-4">
-          <h3 className="text-base font-semibold text-slate-800">Recomendación de reposición</h3>
-          <ResultSummary text={resumenCompras(pred.data.recommendation)} tone="bg-purchases-50 text-purchases-700" />
-          <PurchasesChart rows={pred.data.recommendation} />
-          <ResultTable columns={cols} rows={pred.data.recommendation} />
-        </section>
-      )}
+      {pred.status === 'done' && pred.data && <PurchasesResult data={pred.data} />}
     </div>
+  )
+}
+
+/** Resultado de Compras con filtros derivados de los campos reales de la respuesta. */
+function PurchasesResult({ data }: { data: PurchasesResponse }) {
+  const rows = data.recommendation
+
+  const spec = useMemo<ResultFiltersSpec<RecommendationItem>>(
+    () => ({
+      facets: [
+        { key: 'store_id', label: 'Tienda', read: (r) => r.store_id },
+        { key: 'product_id', label: 'Producto', read: (r) => r.product_id },
+      ],
+      toggles: [
+        {
+          key: 'needs',
+          label: 'Solo los que requieren reposición ahora',
+          predicate: (r) => r.replenishment_quantity > 0,
+        },
+      ],
+      sorts: [
+        {
+          key: 'store',
+          label: 'Tienda y producto',
+          compare: (a, b) =>
+            a.store_id.localeCompare(b.store_id, 'es', { numeric: true }) ||
+            a.product_id.localeCompare(b.product_id, 'es', { numeric: true }),
+        },
+        {
+          key: 'qty',
+          label: 'Cantidad a reponer (mayor primero)',
+          compare: (a, b) => b.replenishment_quantity - a.replenishment_quantity,
+        },
+      ],
+    }),
+    [],
+  )
+
+  const filters = useResultFilters(rows, spec)
+  const { filtered } = filters
+
+  return (
+    <section className="card space-y-4">
+      <h3 className="text-base font-semibold text-slate-800">Recomendación de reposición</h3>
+      <ResultSummary text={resumenCompras(filtered)} tone="bg-purchases-50 text-purchases-700" />
+      <ResultFilters
+        spec={spec}
+        filters={filters}
+        comingSoon={[
+          {
+            key: 'category',
+            label: 'Categoría / familia',
+            hint: 'Disponible cuando el sistema indique la categoría o familia de cada producto.',
+          },
+          {
+            key: 'urgency',
+            label: 'Ordenar por urgencia',
+            hint: 'Disponible cuando el sistema entregue una medida de urgencia de reposición.',
+          },
+        ]}
+      />
+      {filtered.length > 0 ? (
+        <>
+          {filtered.length !== rows.length && (
+            <p className="text-xs text-slate-500">
+              Mostrando {filtered.length} de {rows.length} productos.
+            </p>
+          )}
+          <PurchasesChart rows={filtered} />
+          <ResultTable columns={cols} rows={filtered} />
+        </>
+      ) : (
+        <p className="text-sm text-slate-500">No hay productos que cumplan los filtros seleccionados.</p>
+      )}
+    </section>
   )
 }
