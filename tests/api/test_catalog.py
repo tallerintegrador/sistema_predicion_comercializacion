@@ -342,6 +342,63 @@ def test_catalog_input_tables_calzan_con_los_request(client, dominio, esperado):
             assert col["label"] and col["label"] != col["name"], f"columna sin traducir: {col}"
 
 
+def _columna(dom: dict, tabla: str, columna: str) -> dict | None:
+    """Devuelve la columna ``columna`` de la tabla ``tabla`` del dominio, o None."""
+    t = next((t for t in dom["input_tables"] if t["name"] == tabla), None)
+    if t is None:
+        return None
+    return next((c for c in t["columns"] if c["name"] == columna), None)
+
+
+def test_catalog_defaults_de_columnas_salen_de_la_politica(client):
+    """Los defaults editables (lead time / cobertura) se leen de la política, no son literales.
+
+    Anti-desync: el valor declarado en el catálogo coincide con el accesor de ``spc.config``
+    (las variables de entorno de la política, ADR-0010), de modo que si cambia la política,
+    cambia el prellenado de la UI con ella.
+    """
+    from spc.config import inventory_lead_time_default, purchases_target_coverage_days
+
+    por_dominio = {d["domain"]: d for d in client.get("/catalog").json()["domains"]}
+
+    # COMPRAS: lead_time_days y target_coverage_days traen default desde la política.
+    lead = _columna(por_dominio["purchases"], "replenishment_params", "lead_time_days")
+    cobertura = _columna(por_dominio["purchases"], "replenishment_params", "target_coverage_days")
+    assert lead is not None and cobertura is not None
+    assert lead["default"] == inventory_lead_time_default()
+    assert cobertura["default"] == purchases_target_coverage_days()
+
+    # ALMACÉN: el lead time (opcional) comparte el mismo default de política.
+    lead_inv = _columna(por_dominio["inventory"], "inventory_status", "lead_time_days")
+    assert lead_inv is not None and lead_inv["default"] == inventory_lead_time_default()
+
+
+def test_catalog_defaults_son_columnas_reales_y_no_huerfanos(client):
+    """Cada clave de ``_field_defaults`` es una columna real de algún esquema de entrada.
+
+    Evita defaults huérfanos: si el contrato renombra/elimina un campo con default, la prueba
+    avisa. Además, los campos sin default lo omiten en la respuesta (``exclude_none``).
+    """
+    from spc.api.catalog import _field_defaults
+    from spc.api.schemas.almacen import EstadoInventarioItem
+    from spc.api.schemas.comunes import HistoricoItem
+    from spc.api.schemas.compras import ParametroReposicion
+
+    columnas_contrato = (
+        set(HistoricoItem.model_fields)
+        | set(ParametroReposicion.model_fields)
+        | set(EstadoInventarioItem.model_fields)
+    )
+    claves = set(_field_defaults())
+    assert claves, "se esperaba al menos un default editable"
+    assert claves <= columnas_contrato, f"defaults huérfanos: {claves - columnas_contrato}"
+
+    # Un campo sin default (p. ej. current_stock) no incluye la clave 'default' en la respuesta.
+    por_dominio = {d["domain"]: d for d in client.get("/catalog").json()["domains"]}
+    stock = _columna(por_dominio["purchases"], "replenishment_params", "current_stock")
+    assert stock is not None and "default" not in stock
+
+
 def test_catalog_pending_solo_lista_el_cuantil_model_adjacent(client):
     """`pending_policy` ya no lista constantes de política (resueltas); solo el P75 pendiente.
 

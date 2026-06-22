@@ -320,6 +320,13 @@ def auth_token_ttl() -> int:
 
 # Stock de seguridad de PURCHASES (método coverage_days) = este factor × demanda(lead).
 PURCHASES_SAFETY_FACTOR_DEFAULT = 0.30
+# Días de cobertura objetivo SUGERIDOS POR DEFECTO en la UI de COMPRAS cuando el cliente
+# no especifica uno por producto. Es una prefill EDITABLE (la UI la usa para no obligar a
+# llenar el campo fila por fila); NO altera el cálculo: si el cliente no la cambia, se envía
+# este valor como target_coverage_days. Configurable por entorno, mismo patrón que el resto
+# de la política (ADR-0010). Vive aquí —y no como literal en catalog.py— para que la fuente
+# del valor sea la configuración de política, no la capa de presentación.
+PURCHASES_TARGET_COVERAGE_DAYS_DEFAULT = 14
 # Método de stock de seguridad por dominio (knob, ADR-0010). El default de cada dominio
 # es su método histórico: PURCHASES por días de cobertura; INVENTORY por nivel de
 # servicio (z·σ·√lead). Unificar INVENTORY con PURCHASES = poner su método en
@@ -351,6 +358,18 @@ def purchases_safety_factor() -> float:
 def purchases_safety_method() -> str:
     """Método de stock de seguridad de COMPRAS (``SPC_PURCHASES_SAFETY_METHOD`` o coverage_days)."""
     return _metodo_safety_env("SPC_PURCHASES_SAFETY_METHOD", PURCHASES_SAFETY_METHOD_DEFAULT)
+
+
+def purchases_target_coverage_days() -> int:
+    """Días de cobertura objetivo sugeridos por defecto en la UI de COMPRAS.
+
+    Lee ``SPC_PURCHASES_TARGET_COVERAGE_DAYS`` (o 14). Es solo una prefill editable de la
+    interfaz; no cambia el cálculo de reposición (que usa el valor que finalmente envíe el
+    cliente). Centralizado aquí para que la UI no clave un literal.
+    """
+    return _entero_positivo_env(
+        "SPC_PURCHASES_TARGET_COVERAGE_DAYS", PURCHASES_TARGET_COVERAGE_DAYS_DEFAULT
+    )
 
 
 def inventory_safety_method() -> str:

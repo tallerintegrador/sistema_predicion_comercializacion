@@ -21,6 +21,7 @@ from typing import Any
 import annotated_types
 from pydantic import BaseModel
 
+from spc.config import inventory_lead_time_default, purchases_target_coverage_days
 from spc.api.schemas.almacen import AlertaItem, AlmacenRequest, AlmacenResponse, MetadatosAlmacen
 from spc.api.schemas.catalog import (
     Availability,
@@ -186,6 +187,20 @@ _FIELD_LABELS: dict[str, tuple[str, str | None]] = {
     "target_coverage_days": ("Días de cobertura", "Días de demanda que quiere tener cubiertos."),
 }
 
+# Valores por defecto EDITABLES de columnas logísticas, para que la UI prellene la carga
+# manual sin clavar literales y sin obligar a llenarlas fila por fila. La FUENTE de cada
+# valor es la configuración de política (ADR-0010), no este módulo de presentación: se leen
+# de ``spc.config`` (las mismas variables de entorno de la política de inventario/compras).
+# Un campo sin entrada aquí no lleva default (queda en None y se omite de la respuesta). La
+# prueba anti-desync verifica que cada clave es una columna real del contrato.
+def _field_defaults() -> dict[str, int]:
+    """Defaults editables por campo, leídos de la política (no literales en este módulo)."""
+    return {
+        "lead_time_days": inventory_lead_time_default(),
+        "target_coverage_days": purchases_target_coverage_days(),
+    }
+
+
 # Etiqueta + descripción en español por tabla de entrada (nombre del contenedor en el request).
 _TABLE_LABELS: dict[str, tuple[str, str]] = {
     "history": ("Historial de ventas", "Sus ventas pasadas por período, tienda y producto."),
@@ -208,6 +223,7 @@ def _modelo_item(anotacion: Any) -> type[BaseModel] | None:
 
 def _columnas(item: type[BaseModel]) -> list[CatalogColumn]:
     """Columnas de una tabla de entrada, derivadas del esquema del ítem + traducción."""
+    defaults = _field_defaults()
     columnas = []
     for nombre, info in item.model_fields.items():
         etiqueta, ayuda = _FIELD_LABELS.get(nombre, (nombre, None))
@@ -218,6 +234,7 @@ def _columnas(item: type[BaseModel]) -> list[CatalogColumn]:
                 type=_nombre_tipo(info.annotation),
                 required=info.is_required(),
                 help=ayuda,
+                default=defaults.get(nombre),
             )
         )
     return columnas

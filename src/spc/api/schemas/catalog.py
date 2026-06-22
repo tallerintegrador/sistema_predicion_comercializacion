@@ -139,6 +139,14 @@ class CatalogColumn(BaseModel):
     type: str = Field(description="Tipo del campo (legible).")
     required: bool = Field(description="True si el campo es obligatorio al cargar la fila.")
     help: str | None = Field(default=None, description="Ayuda breve para el usuario (en español).")
+    default: int | float | str | None = Field(
+        default=None,
+        description=(
+            "Valor por defecto EDITABLE sugerido para prellenar el campo en la carga manual "
+            "(p. ej. tiempo de entrega o días de cobertura). Sale de la configuración de "
+            "política (no es un literal de presentación); se omite (None) si el campo no tiene."
+        ),
+    )
 
 
 class InputTable(BaseModel):
