@@ -147,9 +147,8 @@ export function SalesPage() {
         description="Define qué quieres estimar y con qué detalle. Se aplica sobre los datos del Paso 1."
       >
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Si subes un Excel con su propia configuración, esa configuración es la que manda: el
-          pronóstico se calcula tal como viene en el archivo. Los controles de abajo se aplican
-          cuando pronosticas con los datos cargados.
+          Descarga la plantilla Excel, complétala con tus datos y súbela. Qué estimar, cada cuánto
+          y hasta cuándo lo eliges aquí en pantalla: esta configuración es la única que se aplica.
         </div>
 
         {optsLoading && <p className="text-sm text-slate-500">Cargando opciones…</p>}
