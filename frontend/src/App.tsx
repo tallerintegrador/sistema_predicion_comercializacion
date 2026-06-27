@@ -10,6 +10,7 @@ import { CatalogPage } from './pages/CatalogPage'
 import { SalesPage } from './pages/SalesPage'
 import { PurchasesPage } from './pages/PurchasesPage'
 import { InventoryPage } from './pages/InventoryPage'
+import { AutoPage } from './pages/AutoPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { UsersPage } from './pages/UsersPage'
 
@@ -43,6 +44,7 @@ function MainApp() {
       {activo === 'sales' && <SalesPage />}
       {activo === 'purchases' && <PurchasesPage />}
       {activo === 'inventory' && <InventoryPage />}
+      {activo === 'auto' && <AutoPage />}
       {activo === 'training' && <TrainingPage />}
       {activo === 'users' && <UsersPage />}
       {activo === 'about' && <AboutPage />}

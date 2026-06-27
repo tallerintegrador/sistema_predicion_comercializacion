@@ -152,4 +152,21 @@ export async function getBlob(path: string): Promise<{ blob: Blob; filename: str
   return { blob: await res.blob(), filename }
 }
 
+/** POST JSON cuya respuesta es un archivo (p. ej. plantilla Excel a medida del esquema). */
+export async function postJsonBlob(
+  path: string,
+  body: unknown,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: headersBase({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw await parseError(res)
+  const disp = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^"]+)"?/.exec(disp)
+  const filename = match?.[1] ?? path.split('/').pop() ?? 'plantilla.xlsx'
+  return { blob: await res.blob(), filename }
+}
+
 export const apiBaseUrl = BASE_URL

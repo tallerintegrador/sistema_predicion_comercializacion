@@ -14,6 +14,7 @@ import {
   ShoppingCart,
   Package,
   Sparkles,
+  Wand2,
   Users,
   BookOpenText,
   Info,
@@ -25,6 +26,7 @@ export type View =
   | 'sales'
   | 'purchases'
   | 'inventory'
+  | 'auto'
   | 'training'
   | 'users'
   | 'about'
@@ -143,6 +145,15 @@ export const SECTIONS: SectionDef[] = [
     icon: Package,
     perms: ['module:inventory'],
     accent: ACCENTS.inventory,
+  },
+  {
+    id: 'auto',
+    label: 'Predicción a tu medida',
+    blurb:
+      'Trae tus propias columnas (de cualquier rubro): declaras qué predecir y con qué datos, y el sistema entrena el mejor modelo al momento y predice.',
+    icon: Wand2,
+    perms: ['module:sales'],
+    accent: ACCENTS.brand,
   },
   {
     id: 'training',
