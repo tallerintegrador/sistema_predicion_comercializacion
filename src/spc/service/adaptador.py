@@ -166,16 +166,22 @@ def agregar_esqueleto_futuro(
     return completo, inicio, fin
 
 
-def marcar_demanda_alta(analitico: pd.DataFrame) -> pd.DataFrame:
-    """Añade ``demanda_alta = sales > P75 de su familia`` (definición del contrato).
+def marcar_demanda_alta(analitico: pd.DataFrame, cuantil: float = 0.75) -> pd.DataFrame:
+    """Añade ``demanda_alta = sales > P{q} de su familia`` (definición del contrato).
+
+    ``cuantil`` es el nivel q de la definición (``0.75`` = P75). Es **model-adjacent**:
+    debe coincidir con el cuantil contra el que se entrenó el clasificador, por lo que
+    idealmente lo provee la metadata del artefacto (lo resuelve
+    ``almacen_service._cuantil_demanda_alta``). El default ``0.75`` es el fallback
+    documentado mientras la metadata no lo exponga numéricamente.
 
     El clustering/perfilado usa ``pct_demanda_alta`` como feature, así que la columna
-    debe existir antes de perfilar. Se calcula sobre el histórico recibido (P75 por
+    debe existir antes de perfilar. Se calcula sobre el histórico recibido (P{q} por
     familia), tal como define el contrato de ALMACÉN.
     """
     df = analitico.copy()
-    p75 = df.groupby("family", observed=True)["sales"].transform(lambda s: s.quantile(0.75))
-    df["demanda_alta"] = (df["sales"].to_numpy() > p75.to_numpy()).astype("int8")
+    pq = df.groupby("family", observed=True)["sales"].transform(lambda s: s.quantile(cuantil))
+    df["demanda_alta"] = (df["sales"].to_numpy() > pq.to_numpy()).astype("int8")
     return df
 
 

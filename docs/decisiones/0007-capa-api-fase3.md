@@ -7,6 +7,13 @@
   `0006` clustering).
 - **No toca** el motor de ML (artefactos de Fase 2 intactos): solo los **carga y sirve**.
 
+> **Nota (alineación de nombres, añadida 2026-06-19).** Este ADR es un **registro
+> histórico** y se conserva tal cual. Usa los nombres genéricos del contrato en su forma de
+> entonces (`historico`, `fecha`, `punto_venta_id`, …). El contrato **canónico vigente está
+> en inglés** (v1.0.1): la frontera pública real son `history`, `date`, `store_id`, … Ver
+> [`contrato_datos.md`](../contrato_datos.md) y su **sección 9** (mapeo `es → en`). La
+> decisión arquitectónica de este ADR no cambia; solo cambiaron los nombres de campo.
+
 ## Contexto
 
 El motor de ML quedó entrenado, validado y serializado en Fase 2 (regresión `regresion_v3`,

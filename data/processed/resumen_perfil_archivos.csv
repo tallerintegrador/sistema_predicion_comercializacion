@@ -1,0 +1,8 @@
+archivo,filas,columnas,memoria_mb,rango_fechas,tiendas_unicas,familias_unicas,duplicados,pct_nulos_total,columnas_y_tipos
+train,3000888,6,60.10127258300781,2013-01-01 a 2017-08-15,54.0,33.0,0,0.0,"id: int32, date: datetime64[us], store_nbr: int16, family: category, sales: float32, onpromotion: int16"
+test,28512,5,0.46425628662109375,2017-08-16 a 2017-08-31,54.0,33.0,0,0.0,"id: int32, date: datetime64[us], store_nbr: int16, family: category, onpromotion: int16"
+stores,54,5,0.0040130615234375,,54.0,,0,0.0,"store_nbr: int16, city: category, state: category, type: category, cluster: int16"
+transactions,83488,3,1.1148109436035156,2013-01-01 a 2017-08-15,54.0,,0,0.0,"date: datetime64[us], store_nbr: int16, transactions: int32"
+oil,1218,2,0.014064788818359375,2013-01-01 a 2017-08-31,,,0,1.7651888341543513,"date: datetime64[us], dcoilwtico: float32"
+holidays_events,350,6,0.013273239135742188,2012-03-02 a 2017-12-26,,,0,0.0,"date: datetime64[us], type: category, locale: category, locale_name: category, description: category, transferred: bool"
+sample_submission,28512,2,0.21765518188476562,,,,0,0.0,"id: int32, sales: float32"

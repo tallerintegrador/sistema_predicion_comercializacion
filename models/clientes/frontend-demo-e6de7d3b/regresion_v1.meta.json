@@ -1,0 +1,76 @@
+{
+  "fecha_entrenamiento": null,
+  "modelo": "XGBoost_Tweedie",
+  "transformacion_objetivo": "identidad",
+  "espacio_objetivo": "unidades",
+  "escala_metricas": "unidades",
+  "ventana_validacion_dias": 7,
+  "cortes_temporales": {
+    "train": "<= 2017-07-26",
+    "valid": "2017-07-27 .. 2017-08-02",
+    "test": "2017-08-03 .. 2017-08-09"
+  },
+  "metricas_test_recursivo": {
+    "MAE": 37.740164620535715,
+    "RMSE": 51.13623235086049,
+    "RMSLE": 0.16156713904942926,
+    "MAPE": 12.611785302217354,
+    "WAPE": 10.541735094820535,
+    "R2": 0.3336705417480411
+  },
+  "metricas_test_recursivo_congelado": {
+    "MAE": 82.12642268130112,
+    "RMSE": 101.19536708924377,
+    "RMSLE": 0.28830710146727284,
+    "MAPE": 26.225405319722583,
+    "WAPE": 22.939883831891134,
+    "R2": -1.6094730791797627
+  },
+  "criterio_adopcion": {
+    "domain": "sales",
+    "outcome": "adopted",
+    "message": "",
+    "metric": "WAPE_recursivo",
+    "window_days": 7,
+    "cuts": {
+      "train": "<= 2017-07-26",
+      "valid": "2017-07-27 .. 2017-08-02",
+      "test": "2017-08-03 .. 2017-08-09"
+    },
+    "samples": {
+      "n_obs": 144,
+      "n_dias": 74,
+      "n_series": 4
+    },
+    "candidate": {
+      "WAPE": 10.542,
+      "MAE": 37.74,
+      "RMSE": 51.136
+    },
+    "frozen": {
+      "WAPE": 22.94,
+      "MAE": 82.126,
+      "RMSE": 101.195
+    },
+    "baseline": {
+      "name": "BASELINE media_movil_7",
+      "WAPE": 14.14,
+      "MAE": 50.622,
+      "RMSE": 57.724
+    },
+    "candidate_model": "XGBoost_Tweedie",
+    "min_improvement_points": 0.0,
+    "improvement_wape_points": 12.398,
+    "beats_frozen": true,
+    "beats_baseline": true
+  },
+  "n_filas_artefacto_final": 84,
+  "semilla": 42,
+  "origen": "entrenamiento_por_cliente",
+  "version": "regresion_cliente_frontend-demo-e6de7d3b_v1",
+  "client_id": "frontend-demo",
+  "slug": "frontend-demo-e6de7d3b",
+  "version_cliente": 1,
+  "guardado_utc": "2026-06-20T12:26:11.737690+00:00",
+  "artefacto": "regresion_v1.joblib"
+}

@@ -17,20 +17,21 @@ dist/
 .ruff_cache/
 .ipynb_checkpoints/
 
-# Datos crudos (pesados, no versionar)
-data/raw/*
-!data/raw/.gitkeep
-
-# Artefactos generados por el EDA
-data/processed/
-figures/
-
 # Datos sinteticos generados (SMOTE / sinteticos de apoyo)
 data/synthetic/*
 !data/synthetic/.gitkeep
+
+# Corpus incremental SQLite (Fase A MEJORADO, ADR-0011) y exports del corpus
+*.db
+*.db-journal
+data/*.db
+data/corpus*.parquet
+data/corpus*.csv
 
 # IDE / SO
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+data/raw/train.csv

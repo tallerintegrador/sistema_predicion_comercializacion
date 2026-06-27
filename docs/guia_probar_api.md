@@ -39,9 +39,9 @@ venv\Scripts\python -m uvicorn spc.api.main:app
 Verás algo como:
 ```
 INFO:     Started server process [...]
-INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
 ```
-Eso significa que **el servidor está arriba** en `http://127.0.0.1:8000`. Déjalo
+Eso significa que **el servidor está arriba** en `http://127.0.0.1:8010`. Déjalo
 corriendo (esta terminal queda "ocupada" mostrando los registros).
 
 > Si ves un error de "artefacto no encontrado", asegúrate de estar en la carpeta del
@@ -51,7 +51,7 @@ corriendo (esta terminal queda "ocupada" mostrando los registros).
 
 En el navegador, abre:
 ```
-http://127.0.0.1:8000/docs
+http://127.0.0.1:8010/docs
 ```
 Verás los tres endpoints documentados con sus ejemplos.
 
@@ -81,17 +81,17 @@ Con el servidor corriendo, abre **otra** terminal (la primera está ocupada) y:
 cd "C:\Users\lucia\OneDrive\Documents\sistema_predicion_comercializacion"
 
 # SALES
-Invoke-RestMethod -Uri http://127.0.0.1:8000/sales -Method Post `
+Invoke-RestMethod -Uri http://127.0.0.1:8010/sales -Method Post `
   -ContentType "application/json" -InFile examples\api\ventas_request.json |
   ConvertTo-Json -Depth 6
 
 # PURCHASES
-Invoke-RestMethod -Uri http://127.0.0.1:8000/purchases -Method Post `
+Invoke-RestMethod -Uri http://127.0.0.1:8010/purchases -Method Post `
   -ContentType "application/json" -InFile examples\api\compras_request.json |
   ConvertTo-Json -Depth 6
 
 # INVENTORY
-Invoke-RestMethod -Uri http://127.0.0.1:8000/inventory -Method Post `
+Invoke-RestMethod -Uri http://127.0.0.1:8010/inventory -Method Post `
   -ContentType "application/json" -InFile examples\api\almacen_request.json |
   ConvertTo-Json -Depth 6
 ```
@@ -100,7 +100,7 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/inventory -Method Post `
 
 Envía algo inválido a propósito (en Swagger o por PowerShell):
 ```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:8000/sales -Method Post `
+Invoke-RestMethod -Uri http://127.0.0.1:8010/sales -Method Post `
   -ContentType "application/json" -Body '{"horizon":0,"history":[]}'
 ```
 Debe responder **422** con un cuerpo claro: `{"error":{"type":"validation", ...}}`,

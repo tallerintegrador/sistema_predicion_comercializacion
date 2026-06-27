@@ -1,0 +1,31 @@
+columna,tipo,origen,descripcion
+id,int32,train,Identificador unico de fila
+date,datetime64[us],train,Fecha de la observacion
+store_nbr,int16,train,Numero de tienda
+family,category,train,Familia de producto
+sales,float32,train,OBJETIVO: ventas (unidades) tienda-familia-dia
+onpromotion,int16,train,Articulos de la familia en promocion ese dia
+city,str,stores,Ciudad de la tienda
+state,str,stores,Provincia/estado de la tienda
+type,category,stores,Tipo de tienda (A-E)
+cluster,int16,stores,Cluster comercial original de la tienda
+transactions,float64,transactions,"Transacciones de la tienda ese dia (crudo, con nulos)"
+transactions_missing,bool,derivada,Bandera: transacciones ausentes al integrar
+transactions_filled,int32,derivada,Transacciones con faltantes imputados a 0
+dcoilwtico,float32,oil,Precio WTI del petroleo (reindexado + ffill/bfill)
+dcoilwtico_original_missing,bool,derivada,Bandera: cotizacion de petroleo imputada
+holiday_national,int16,holidays,Conteo de feriados nacionales activos ese dia
+holiday_national_types,object,holidays,Tipos de feriado nacional activos
+holiday_regional,int16,holidays,Feriados regionales activos (por estado)
+holiday_local,int16,holidays,Feriados locales activos (por ciudad)
+holiday_any,bool,derivada,Bandera: algun feriado/evento activo
+holiday_event_count,int16,derivada,Suma de feriados activos de todos los alcances
+year,int16,calendario,Anio
+month,int8,calendario,Mes
+day,int8,calendario,Dia del mes
+dayofweek,int8,calendario,Dia de semana (0=Lun)
+is_weekend,bool,calendario,Bandera fin de semana
+is_month_end,bool,calendario,Bandera fin de mes
+is_payday,bool,calendario,Bandera quincena (dia 15 o fin de mes)
+family_sales_p75,float64,derivada,P75 de sales dentro de la familia
+demanda_alta,bool,derivada,OBJETIVO clasif.: sales > P75 de su familia

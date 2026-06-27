@@ -95,12 +95,40 @@ decisión de diseño está en `docs/decisiones/0007-capa-api-fase3.md`.
 Levantar el servidor (requiere los artefactos en `models/`):
 
 ```powershell
-venv\Scripts\uvicorn spc.api.main:app --reload
-# Swagger interactivo: http://127.0.0.1:8000/docs
-# Endpoints: POST /ventas, POST /compras, POST /almacen ; salud: GET /salud
+venv\Scripts\uvicorn spc.api.main:app --reload --port 8010
+# Swagger interactivo: http://127.0.0.1:8010/docs
+# Endpoints: POST /sales, POST /purchases, POST /inventory ; salud: GET /health
 ```
 
 CORS configurable con `SPC_CORS_ORIGINS` (orígenes separados por coma; `*` por defecto).
+
+### Control de acceso por roles (Fase 4.5, ADR-0014)
+
+La API exige **autenticación y autorización** en el backend (no basta ocultar elementos en
+la UI). Login por id + contraseña (`POST /auth/login`) que emite un **token firmado**
+(`Authorization: Bearer …`); cada endpoint protegido valida rol/permiso con
+`spc.api.seguridad.requiere`. Usuarios, roles, permisos y perfiles viven en el **mismo
+SQLite** (`spc.db`), con contraseñas **hasheadas** (`hashlib.scrypt`). Detalle en
+[`docs/decisiones/0014-control-acceso-por-roles.md`](docs/decisiones/0014-control-acceso-por-roles.md).
+
+**Cuentas administrador de DEMOSTRACIÓN** sembradas al arranque: **256317** y **256370**,
+con **contraseña inicial igual al id** (almacenada hasheada). ⚠️ **No son credenciales de
+producción**: en un despliegue real hay que cambiarlas y fijar `SPC_AUTH_SECRET`.
+
+Variables de entorno:
+
+| Variable | Default | Uso |
+|---|---|---|
+| `SPC_AUTH_ENABLED` | `true` | Habilita el control de acceso (en `0`, la API no exige credenciales). |
+| `SPC_AUTH_SECRET` | *(secreto de DEV)* | Firma de los tokens; **obligatorio en producción**. |
+| `SPC_AUTH_TOKEN_TTL` | `28800` | Vida útil del token, en segundos (8 h). |
+
+```powershell
+# Levantar fijando un secreto propio y orígenes CORS del frontend:
+$env:SPC_AUTH_SECRET = "un-secreto-largo-y-aleatorio"
+$env:SPC_CORS_ORIGINS = "http://localhost:5173"
+venv\Scripts\python -m uvicorn spc.api.main:app --port 8010 --workers 1
+```
 
 Tests de la API (entrenan artefactos diminutos sobre datos sintéticos; **sin `data/raw`
 ni GPU**):
@@ -144,6 +172,98 @@ Docker. Health check `/health`.
 
 Variable de entorno relevante en ambas: `SPC_CORS_ORIGINS` (orígenes del frontend,
 coma-separados; `*` por defecto).
+
+## Frontend (interfaz web local — aún NO desplegado)
+
+Interfaz web (React + Vite + TypeScript + Tailwind + recharts) en `frontend/`. Consume
+la API con el modelo base; habla solo el **contrato v1.0.1** (no toca el motor ni la capa
+interna). Cubre los tres dominios por JSON y por Excel (plantilla + subida), carga manual
+por tabla editable (Compras/Almacén), modo lote con *polling* de `/jobs/{id}`,
+reentrenamiento por cliente y administración de usuarios.
+
+**Rediseño orientado al cliente (Fase 4.5).** La interfaz está pensada para un dueño de
+PYME no técnico: español claro **sin tecnicismos** (glosario de
+[ADR-0019](docs/decisiones/0019-lenguaje-de-producto-glosario.md)) e **identidad visual
+enriquecida** con acento por módulo (Ventas/Compras/Almacén/Mejorar), tipografía
+Inter + Sora e íconos `lucide-react`
+([ADR-0020](docs/decisiones/0020-rediseno-cliente-identidad-pantallas.md), extiende
+[ADR-0017](docs/decisiones/0017-identidad-visual-sistema-diseno.md)). Pantallas: **Inicio**,
+**¿Qué hace el sistema?** (catálogo amigable), los tres módulos con **resumen en lenguaje
+natural** (Almacén con **semáforo** de riesgo), **Mejorar las predicciones** y **Acerca del
+sistema**. Cualquier tecnicismo necesario vive en bloques colapsables «Detalles técnicos».
+
+Cero hardcodeo: las opciones de Ventas (tipo de pronóstico R1, dimensión R2, granularidad
+**Día/Semana/Mes** y horizonte) y las **columnas de carga manual** (con etiquetas en
+español y `default` editable) provienen de `GET /catalog` (`query_options` e `input_tables`),
+con pruebas anti-desync — ver [ADR-0018](docs/decisiones/0018-catalogo-tipologias-dimensiones.md) y
+`tests/api/test_catalog.py`. Lo no soportado por el backend se muestra deshabilitado como
+**«Próximamente»** (nunca se simula); el contrato frontend↔backend está en
+[docs/alineacion_frontend_backend.md](docs/alineacion_frontend_backend.md).
+
+**Ajustes de experiencia ([ADR-0021](docs/decisiones/0021-ajustes-experiencia-entrada-filtros-reentrenamiento.md)).**
+El **historial de ventas se carga siempre por archivo** (la carga manual queda solo para la lista
+corta del estado actual en Compras/Almacén); el resumen no cuenta filas vacías; Ventas declara la
+**configuración en pantalla como única fuente de verdad**; Compras/Almacén ganan **filtros de
+resultado** derivados de los campos reales de la respuesta (tienda, producto, segmento, «solo
+reposición/riesgo», orden), y «Mejorar las predicciones» suma el selector **«¿Qué quieres mejorar?»**
+(Ventas disponible; Almacén «Próximamente»). Los `default` editables (tiempo de entrega y días de
+cobertura) salen de la **política configurable** (ADR-0010): se añadió
+`SPC_PURCHASES_TARGET_COVERAGE_DAYS` (default 14) junto a `SPC_INVENTORY_LEAD_TIME_DEFAULT` (7).
+
+**Refinamiento de Ventas ([ADR-0022](docs/decisiones/0022-ventas-plantilla-datos-filtros-resultado-async.md)).**
+La **plantilla de Ventas es solo-datos** (hojas `instructions` + `history`): la configuración del
+pronóstico ya **no viaja en el archivo**. `granularity`/`horizon` se envían **desde la pantalla**
+como campos de formulario en `POST /sales/excel` (única fuente, también con Excel). En Ventas, antes
+de pronosticar se piden **solo** los dos parámetros que el modelo necesita (cada cuánto / hasta
+cuándo); «Ver total / por dimensión», «Agrupar / filtrar por» y **«Valores concretos»** pasan a ser
+**filtros sobre el resultado** (cambian la vista, no el cálculo; sus valores salen de las filas de la
+respuesta, así sirven para cualquier canal). Los archivos grandes muestran un **estado de
+procesamiento honesto** («Estamos procesando tu pronóstico…»), sin exponer los términos internos
+«en línea»/«por lote». Textos en español en la app: leyenda del gráfico (**unidades vendidas** /
+**demanda estimada**), **clase de demanda** (alta/baja), «Por qué» de Compras como frase clara y
+**«existencias»** en lugar de «stock» (sin tocar los encabezados de las plantillas, que son el
+contrato en inglés).
+
+> **Estado:** el frontend corre **en local** (dev). **El despliegue (Fase 4.0–4.4) sigue
+> pendiente**: no hay backend ni frontend desplegados. La conexión a una API desplegada
+> con su CORS real es la Fase 4.5. Ver `docs/SPC_Entrega_Despliegue_Valentin.md` §8.
+
+**Pasos clave** (dos terminales):
+
+1. Levantar la API permitiendo el origen del frontend por CORS:
+
+   ```powershell
+   $env:SPC_CORS_ORIGINS = "http://localhost:5173"
+   venv\Scripts\python -m uvicorn spc.api.main:app --port 8010 --workers 1
+   # salud: http://localhost:8010/health  ->  {"status":"ok"}
+   ```
+
+2. Levantar el frontend:
+
+   ```powershell
+   cd frontend
+   npm install
+   copy .env.example .env     # ajustar VITE_API_BASE_URL si la API no está en :8010
+   npm run dev                # http://localhost:5173
+   ```
+
+Build de producción: `npm run build` (typecheck `tsc -b` + `dist/`). Detalle y variables
+(`VITE_API_BASE_URL`, `VITE_CLIENT_ID`) en `frontend/README.md`.
+
+## Persistencia incremental del corpus (ADR-0011)
+
+Cada predicción guarda el `history` del cliente (normalizado y **deduplicado**) en una
+base SQLite local — el **corpus que crece** con cada uso. Es **best-effort** (un fallo de
+BD nunca rompe la predicción) y **configurable** (`SPC_PERSIST_ENABLED`, `SPC_DB_PATH`).
+
+> **Qué es y qué NO es (honestidad).** Esto es **solo acumulación de datos**: construye el
+> corpus que *haría posible* mejorar el modelo más adelante. **NO es** entrenamiento ni
+> "ajuste por cliente": **el modelo se sigue entregando congelado** (ADR-0009) y predice
+> igual con o sin persistencia. El reentrenamiento es un **puente manual y offline**
+> (`scripts/exportar_corpus.py` → deduplicar → `scripts/train_*` en GPU → reemplazar el
+> artefacto en `models/`). En el catálogo, `client_adjustment` **sigue `planned`**: no se
+> ha implementado ni medido ningún ajuste por cliente. El corpus **debe deduplicarse antes
+> de entrenar** (el export ya lo hace).
 
 ## Calidad
 

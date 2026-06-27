@@ -1,0 +1,11 @@
+{
+  "filas":3000888,
+  "columnas":30,
+  "transactions_missing_rows":245784,
+  "transactions_missing_pct":8.1903756488,
+  "oil_original_missing_dates_after_reindex":525,
+  "oil_missing_after_fill":0,
+  "holiday_any_rows":254760,
+  "holiday_any_pct":8.4894871118,
+  "n_predictoras":27
+}

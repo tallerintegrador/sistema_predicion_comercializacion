@@ -1,0 +1,76 @@
+{
+  "fecha_entrenamiento": null,
+  "modelo": "Ensemble(XGBoost_Tweedie+HistGradientBoosting+LightGBM+XGBoost)",
+  "transformacion_objetivo": "identidad",
+  "espacio_objetivo": "unidades",
+  "escala_metricas": "unidades",
+  "ventana_validacion_dias": 16,
+  "cortes_temporales": {
+    "train": "<= 2017-07-08",
+    "valid": "2017-07-09 .. 2017-07-24",
+    "test": "2017-07-25 .. 2017-08-09"
+  },
+  "metricas_test_recursivo": {
+    "MAE": 71.55847321517683,
+    "RMSE": 103.48064643031387,
+    "RMSLE": 0.2437260761534849,
+    "MAPE": 20.811118788904242,
+    "WAPE": 20.358029364203936,
+    "R2": -2.549244666873755
+  },
+  "metricas_test_recursivo_congelado": {
+    "MAE": 86.46703993705611,
+    "RMSE": 114.55094992186415,
+    "RMSLE": 0.31721487275751314,
+    "MAPE": 27.588538439792714,
+    "WAPE": 24.59944237185096,
+    "R2": -3.349256911411003
+  },
+  "criterio_adopcion": {
+    "domain": "sales",
+    "outcome": "adopted",
+    "message": "",
+    "metric": "WAPE_recursivo",
+    "window_days": 16,
+    "cuts": {
+      "train": "<= 2017-07-08",
+      "valid": "2017-07-09 .. 2017-07-24",
+      "test": "2017-07-25 .. 2017-08-09"
+    },
+    "samples": {
+      "n_obs": 294,
+      "n_dias": 224,
+      "n_series": 4
+    },
+    "candidate": {
+      "WAPE": 20.358,
+      "MAE": 71.558,
+      "RMSE": 103.481
+    },
+    "frozen": {
+      "WAPE": 24.599,
+      "MAE": 86.467,
+      "RMSE": 114.551
+    },
+    "baseline": {
+      "name": "BASELINE media_movil_7",
+      "WAPE": 34.05,
+      "MAE": 119.687,
+      "RMSE": 147.565
+    },
+    "candidate_model": "Ensemble(XGBoost_Tweedie+HistGradientBoosting+LightGBM+XGBoost)",
+    "min_improvement_points": 0.0,
+    "improvement_wape_points": 4.241,
+    "beats_frozen": true,
+    "beats_baseline": true
+  },
+  "n_filas_artefacto_final": 234,
+  "semilla": 42,
+  "origen": "entrenamiento_por_cliente",
+  "version": "regresion_cliente_frontend-demo-e6de7d3b_v2",
+  "client_id": "frontend-demo",
+  "slug": "frontend-demo-e6de7d3b",
+  "version_cliente": 2,
+  "guardado_utc": "2026-06-20T15:16:26.454553+00:00",
+  "artefacto": "regresion_v2.joblib"
+}

@@ -1,0 +1,38 @@
+{
+  "domain": "sales",
+  "outcome": "adopted",
+  "message": "",
+  "metric": "WAPE_recursivo",
+  "window_days": 7,
+  "cuts": {
+    "train": "<= 2017-07-26",
+    "valid": "2017-07-27 .. 2017-08-02",
+    "test": "2017-08-03 .. 2017-08-09"
+  },
+  "samples": {
+    "n_obs": 144,
+    "n_dias": 74,
+    "n_series": 4
+  },
+  "candidate": {
+    "WAPE": 10.542,
+    "MAE": 37.74,
+    "RMSE": 51.136
+  },
+  "frozen": {
+    "WAPE": 22.94,
+    "MAE": 82.126,
+    "RMSE": 101.195
+  },
+  "baseline": {
+    "name": "BASELINE media_movil_7",
+    "WAPE": 14.14,
+    "MAE": 50.622,
+    "RMSE": 57.724
+  },
+  "candidate_model": "XGBoost_Tweedie",
+  "min_improvement_points": 0.0,
+  "improvement_wape_points": 12.398,
+  "beats_frozen": true,
+  "beats_baseline": true
+}

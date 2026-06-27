@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/*
+ * Sistema de diseño del SPC (ADR-0017 + ADR-0020). Tailwind v4: los tokens viven aquí.
+ *
+ * Identidad: confiable · clara · moderna · cercana. Pensada para dueños de negocio, no
+ * para desarrolladores. La marca es índigo; cada MÓDULO tiene un acento propio para
+ * orientar al usuario (Ventas índigo, Compras naranja, Almacén teal, Mejorar violeta).
+ * Los neutros son grises fríos (slate) y los semánticos emerald/amber/red/blue con
+ * contraste AA. Los componentes consumen estos tokens vía utilidades y @layer components,
+ * de modo que la identidad se aplica de forma consistente sin clavar colores inline.
+ */
+@theme {
+  /* Tipografía: Inter para el cuerpo, Sora para los títulos (ADR-0020). El stack de
+     sistema queda como respaldo si las fuentes auto-hospedadas no cargan. */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Sora", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Marca (índigo/violeta) — color primario. brand-600 == indigo-600. */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-900: #312e81;
+
+  /* Acento para datos (teal/cian): series secundarias y realces analíticos. */
+  --color-accent-100: #ccfbf1;
+  --color-accent-500: #14b8a6;
+  --color-accent-600: #0d9488;
+
+  /* Acento por módulo (orientación visual). Cada uno con tinte claro (50/100),
+     sólido (600) y texto accesible (700). */
+  /* Ventas — índigo (coincide con la marca). */
+  --color-sales-50: #eef2ff;
+  --color-sales-100: #e0e7ff;
+  --color-sales-600: #4f46e5;
+  --color-sales-700: #4338ca;
+
+  /* Compras — naranja. */
+  --color-purchases-50: #fff7ed;
+  --color-purchases-100: #ffedd5;
+  --color-purchases-600: #ea580c;
+  --color-purchases-700: #c2410c;
+
+  /* Almacén — teal. */
+  --color-inventory-50: #f0fdfa;
+  --color-inventory-100: #ccfbf1;
+  --color-inventory-600: #0d9488;
+  --color-inventory-700: #0f766e;
+
+  /* Mejorar (reentrenamiento) — violeta. */
+  --color-training-50: #f5f3ff;
+  --color-training-100: #ede9fe;
+  --color-training-600: #7c3aed;
+  --color-training-700: #6d28d9;
+}
+
+:root {
+  color-scheme: light;
+  /* Anillo de foco de marca (accesibilidad: foco visible y consistente). */
+  --shadow-focus: 0 0 0 3px rgb(79 70 229 / 0.25);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: #f8fafc; /* slate-50 (fondo de la app) */
+  color: #0f172a; /* slate-900 (texto principal) */
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* Clases utilitarias reutilizables (composición con @apply, Tailwind v4). */
+@layer components {
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50 bg-brand-600 text-white hover:bg-brand-700;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-slate-700;
+  }
+  .help {
+    @apply mt-1 text-xs text-slate-500;
+  }
+  .input {
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  /* Control segmentado (tipología, R1): grupo de opciones tipo radiogroup. */
+  .segmented {
+    @apply inline-flex flex-wrap rounded-lg border border-slate-300 bg-slate-50 p-0.5;
+  }
+  .segmented-option {
+    @apply inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .segmented-option[aria-checked="true"] {
+    @apply bg-white text-brand-700 shadow-sm;
+  }
+  .th {
+    @apply whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .td {
+    @apply whitespace-nowrap px-3 py-2 text-sm text-slate-700;
+  }
+}

@@ -21,10 +21,15 @@ Granularidad = Literal["day", "week", "month"]
 
 
 class VentasRequest(BaseModel):
-    """Petición de pronóstico de VENTAS."""
+    """Petición de pronóstico de VENTAS.
+
+    Validación **estricta** (``strict=True``): sin coerciones silenciosas de tipo
+    (p. ej. ``horizon="7"`` se rechaza, no se convierte a ``7``).
+    """
 
     model_config = ConfigDict(
         extra="forbid",
+        strict=True,
         json_schema_extra={
             "example": {
                 "granularity": "day",
@@ -66,9 +71,11 @@ class PronosticoItem(BaseModel):
 
 
 class MetadatosVentas(BaseModel):
-    """Metadatos informativos del pronóstico (escala y transformación interna)."""
+    """Metadatos informativos del pronóstico (escala y transformación interna).
 
-    model_config = ConfigDict(extra="allow")
+    Declara **todos** los campos que el servicio produce hoy (sin ``extra="allow"``),
+    de modo que el catálogo derivado de este esquema describa la salida completa.
+    """
 
     scale: str = Field(default="units", description="Escala de la salida.")
     internal_transform: str = Field(

@@ -1,0 +1,7 @@
+variable,cardinalidad,valor_mas_frecuente,frecuencia_maxima
+family,33,AUTOMOTIVE,90936
+store_nbr,54,1,55572
+city,22,Quito,18
+state,16,Pichincha,19
+type,5,D,18
+cluster,17,3,7
