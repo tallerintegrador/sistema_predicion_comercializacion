@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   analizarColumnas,
+  candidatasSerie,
+  candidatasTarget,
+  columnasFecha,
   columnasNumericas,
   construirEsquema,
+  esConocidaFutura,
   normalizarFilas,
   sugerirFecha,
   sugerirSeries,
@@ -58,6 +62,62 @@ describe('sugerencias de mapeo', () => {
     expect(nums).toEqual(expect.arrayContaining(['unidades_vendidas', 'ingresos']))
     expect(nums).not.toContain('clima')
     expect(nums).not.toContain('fecha')
+  })
+
+  it('columnasFecha solo ofrece columnas tipo fecha (y todas como respaldo)', () => {
+    expect(columnasFecha(cols).map((c) => c.name)).toEqual(['fecha'])
+    const sinFecha = analizarColumnas([{ tienda: 'lima', unidades_vendidas: 10 }])
+    // Sin columnas fecha, devuelve todas para no dejar el menú vacío.
+    expect(columnasFecha(sinFecha).length).toBe(sinFecha.length)
+  })
+
+  it('candidatasSerie excluye numéricas, fecha y alta cardinalidad', () => {
+    const ser = candidatasSerie(cols, { excluir: ['fecha', 'unidades_vendidas'] }).map((c) => c.name)
+    expect(ser).toEqual(expect.arrayContaining(['tienda', 'sku', 'clima']))
+    expect(ser).not.toContain('ingresos') // numérica
+    expect(candidatasSerie(cols, { excluir: [], maxCardinalidad: 1 }).length).toBe(0)
+  })
+})
+
+describe('known_future y orden de target', () => {
+  it('esConocidaFutura marca los rezagos como solo-pasado', () => {
+    expect(esConocidaFutura('precio')).toBe(true)
+    expect(esConocidaFutura('es_feriado')).toBe(true)
+    expect(esConocidaFutura('ausentismo_prev')).toBe(false)
+    expect(esConocidaFutura('trafico_web_prev')).toBe(false)
+    expect(esConocidaFutura('ventas_ult')).toBe(false)
+  })
+
+  it('candidatasTarget pone medidas continuas antes que flags y rezagos', () => {
+    const rows: AutoRow[] = [
+      { fecha: '2024-01-01', pacientes: 30, es_feriado: 0, ausentismo_prev: 2 },
+      { fecha: '2024-01-02', pacientes: 41, es_feriado: 1, ausentismo_prev: 3 },
+      { fecha: '2024-01-03', pacientes: 25, es_feriado: 0, ausentismo_prev: 1 },
+    ]
+    const cols = analizarColumnas(rows)
+    const orden = candidatasTarget(cols, ['fecha']).map((c) => c.name)
+    expect(orden[0]).toBe('pacientes')
+    expect(orden.indexOf('ausentismo_prev')).toBeLessThan(orden.indexOf('es_feriado'))
+  })
+
+  it('construirEsquema infiere known_future y respeta el override', () => {
+    const rows: AutoRow[] = [
+      { fecha: '2024-01-01', tienda: 'lima', demanda: 10, precio: 5, trafico_prev: 100 },
+      { fecha: '2024-01-02', tienda: 'lima', demanda: 12, precio: 5, trafico_prev: 120 },
+    ]
+    const cols = analizarColumnas(rows)
+    const schema = construirEsquema({ cols, target: 'demanda', date: 'fecha', seriesKeys: ['tienda'] })
+    const kf = (n: string) => schema.features.find((f) => f.name === n)?.known_future
+    expect(kf('precio')).toBe(true)
+    expect(kf('trafico_prev')).toBe(false) // rezago → solo pasado
+    const conOverride = construirEsquema({
+      cols,
+      target: 'demanda',
+      date: 'fecha',
+      seriesKeys: ['tienda'],
+      futureOverrides: { trafico_prev: true },
+    })
+    expect(conOverride.features.find((f) => f.name === 'trafico_prev')?.known_future).toBe(true)
   })
 })
 

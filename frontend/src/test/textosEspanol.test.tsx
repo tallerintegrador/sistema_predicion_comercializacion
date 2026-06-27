@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { InventoryRisk } from '../components/charts/InventoryRisk'
 import { JobBanner } from '../components/JobBanner'
 import { LEGEND_HISTORICO, LEGEND_PRONOSTICO } from '../components/charts/SalesChart'
-import { PORQUE } from '../pages/PurchasesPage'
+import { PORQUE } from '../components/prediccion/resumen'
 import type { AlertItem } from '../api/types'
 
 // Términos internos/ingleses que no deben filtrarse a la interfaz (ADR-0019/0022).

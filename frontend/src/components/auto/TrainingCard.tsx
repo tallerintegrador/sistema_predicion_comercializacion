@@ -3,8 +3,10 @@
  * si se reutilizó caché y la exactitud sobre datos no vistos (validación honesta) con un
  * veredicto en una frase. Las métricas se traducen a lenguaje claro.
  *
- * Compartida por «Predicción a tu medida» (AutoPage) y «Ventas» (SalesPage). El acento de
- * color llega por prop para respetar la identidad de cada módulo.
+ * Compartida por los modos de predicción a tu medida (Ventas/Compras/Almacén/«Otro rubro»).
+ * El acento de color llega por prop para respetar la identidad de cada módulo. Cuando el
+ * sistema compara el modelo recién entrenado contra el campeón persistido del cliente
+ * («quédate-con-el-mejor», ADR-0023/0013), muestra el veredicto en lenguaje claro.
  */
 import type { AutoTrainingInfo } from '../../api/types'
 import { fmtNum, fmtPct } from '../../utils/format'
@@ -65,6 +67,37 @@ function veredicto(metrics: Record<string, number>): { label: string; tone: stri
   return null
 }
 
+/** Veredicto «quédate-con-el-mejor» en lenguaje claro (candidato vs campeón persistido). */
+function SeleccionMensaje({ training }: { training: AutoTrainingInfo }) {
+  const s = training.seleccion
+  if (!s || !s.comparado) return null
+  const meta = METRIC_META[s.metrica]
+  const fmt = (v: number | null) => (v == null ? '—' : meta ? fmtMetric(meta, v) : fmtNum(v))
+
+  if (s.adoptado === 'campeon') {
+    return (
+      <p className="mt-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+        Entrenamos con tus datos nuevos, pero <strong>no superó</strong> al modelo anterior
+        {s.candidato != null && s.campeon != null ? <> ({fmt(s.candidato)} vs {fmt(s.campeon)})</> : null}.
+        Mantuvimos el anterior, que predice mejor.
+      </p>
+    )
+  }
+  if (s.campeon == null) {
+    return (
+      <p className="mt-1 text-xs text-slate-500">
+        Aprendimos de tus datos y nos quedamos con el mejor modelo.
+      </p>
+    )
+  }
+  return (
+    <p className="mt-2 rounded-md bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-800">
+      Aprendimos de tus datos nuevos y <strong>mejoró</strong>: {fmt(s.candidato)} frente a{' '}
+      {fmt(s.campeon)} del modelo anterior. Adoptamos el nuevo.
+    </p>
+  )
+}
+
 function MetricBadge({ k, v, accentBadge }: { k: string; v: number; accentBadge: string }) {
   const meta = METRIC_META[k]
   return (
@@ -95,6 +128,17 @@ export function TrainingCard({
         )}
         <span className="text-xs text-slate-500">· {fmtNum(training.trained_rows)} filas</span>
       </div>
+      <SeleccionMensaje training={training} />
+      {!training.seleccion && (
+        <p className="mt-1 text-xs text-slate-500">
+          Entrenamos varios modelos con tus datos y nos quedamos con el que mejor predice
+          {(() => {
+            const n = training.candidates ? Object.keys(training.candidates).length : 0
+            return n > 1 ? <> (el mejor de {fmtNum(n)})</> : null
+          })()}
+          .
+        </p>
+      )}
       {Object.keys(training.honest_metrics).length > 0 && (() => {
         const v = veredicto(training.honest_metrics)
         const entradas = Object.entries(training.honest_metrics)

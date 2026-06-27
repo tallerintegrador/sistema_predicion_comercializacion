@@ -126,6 +126,13 @@ class InfoEntrenamiento(BaseModel):
         description="¿Se reusó un modelo ya entrenado para este (cliente, esquema)?",
     )
     schema_signature: str = Field(description="Firma del esquema declarado (clave de caché).")
+    seleccion: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Veredicto de la comparación candidato-vs-campeón persistido del cliente "
+            "(quédate-con-el-mejor): métrica, valores y cuál se adoptó. Ausente la primera vez."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../api/client'
 import { BrandPanel } from '../components/auth/BrandPanel'
 import { PasswordInput } from '../components/auth/PasswordInput'

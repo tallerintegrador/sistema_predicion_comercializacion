@@ -148,6 +148,16 @@ export interface AutoSchemaSpec {
   features: AutoFeatureSpec[]
 }
 
+/** Veredicto «quédate-con-el-mejor»: candidato recién entrenado vs campeón persistido. */
+export interface SeleccionModelo {
+  comparado: boolean
+  metrica: string // p. ej. "WAPE" | "ROC_AUC"
+  mejor_es: 'mayor' | 'menor'
+  candidato: number | null
+  campeon: number | null
+  adoptado: 'candidato' | 'campeon'
+}
+
 /** Resumen honesto del modelo entrenado al vuelo (común a las tres respuestas). */
 export interface AutoTrainingInfo {
   winner_algorithm: string
@@ -157,6 +167,7 @@ export interface AutoTrainingInfo {
   reused_cached_model: boolean
   schema_signature: string
   threshold_probability?: number | null
+  seleccion?: SeleccionModelo | null
 }
 
 export type AutoRow = Record<string, string | number | boolean | null>

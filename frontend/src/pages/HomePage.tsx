@@ -1,18 +1,18 @@
 import { ArrowRight, Download, FileCheck2, Upload, Sparkles } from 'lucide-react'
-import { useAuth } from '../auth/AuthContext'
-import { useSeccionesVisibles } from '../components/Layout'
-import type { View } from '../theme/modules'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
+import { useSeccionesVisibles } from '../hooks/useSeccionesVisibles'
 
 /**
  * Pantalla de **Inicio / Bienvenida** (ADR-0020). Da la bienvenida, resume qué puede hacer
  * el sistema y ofrece accesos directos a los módulos del usuario, con una guía de 4 pasos
  * para quien aún no cargó datos. Lenguaje claro, sin tecnicismos.
  */
-export function HomePage({ onNavigate }: { onNavigate: (v: View) => void }) {
+export function HomePage() {
   const { user } = useAuth()
   const visibles = useSeccionesVisibles()
   // Solo los módulos "de trabajo" como accesos directos (no Inicio/Acerca/Usuarios).
-  const modulos = visibles.filter((s) => ['sales', 'purchases', 'inventory', 'training'].includes(s.id))
+  const modulos = visibles.filter((s) => ['sales', 'purchases', 'inventory', 'auto'].includes(s.id))
 
   return (
     <div className="space-y-6">
@@ -36,9 +36,9 @@ export function HomePage({ onNavigate }: { onNavigate: (v: View) => void }) {
             {modulos.map((s) => {
               const Icon = s.icon
               return (
-                <button
+                <Link
                   key={s.id}
-                  onClick={() => onNavigate(s.id)}
+                  to={s.path}
                   className="group flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
                 >
                   <span aria-hidden="true" className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${s.accent.chip}`}>
@@ -51,7 +51,7 @@ export function HomePage({ onNavigate }: { onNavigate: (v: View) => void }) {
                     </span>
                     <span className="mt-0.5 block text-sm leading-relaxed text-slate-500">{s.blurb}</span>
                   </span>
-                </button>
+                </Link>
               )
             })}
           </div>

@@ -107,26 +107,70 @@ export function columnasNumericas(cols: ColumnInfo[], excluir: string[] = []): C
   return cols.filter((c) => c.kind === 'numeric' && !excluir.includes(c.name))
 }
 
+/** Columnas tipo fecha (para el menú «Columna de fecha»). Si no hay ninguna, las devuelve
+ *  todas como respaldo: mejor ofrecer algo que dejar el menú vacío. */
+export function columnasFecha(cols: ColumnInfo[]): ColumnInfo[] {
+  const fechas = cols.filter((c) => c.kind === 'date')
+  return fechas.length > 0 ? fechas : cols
+}
+
+// Sufijos/palabras de columnas «solo pasado»: rezagos o acumulados cuyo valor del período a
+// pronosticar NO se conoce de antemano (p. ej. ``ventas_prev``, ``trafico_ult``).
+const RE_SOLO_PASADO = /(^|_)(prev|previo|anterior|ant|lag\d*|ayer|ult|ultimo|último|pasado|hist)($|_)/i
+
+/** ¿La columna se conoce a futuro? Heurística por nombre: los rezagos/acumulados (``*_prev``,
+ *  ``*_ult``…) son solo-pasado; el resto se asume conocido a futuro (precio, calendario…). */
+export function esConocidaFutura(name: string): boolean {
+  return !RE_SOLO_PASADO.test(name)
+}
+
+/** Candidatas a **target**: numéricas, ordenadas con las más sensatas primero (medidas
+ *  continuas conocidas a futuro), luego rezagos, y al final las binarias tipo flag (0/1).
+ *  No descarta ninguna: el usuario sigue pudiendo elegirla, solo cambia el orden. */
+export function candidatasTarget(cols: ColumnInfo[], excluir: string[] = []): ColumnInfo[] {
+  const num = cols.filter((c) => c.kind === 'numeric' && !excluir.includes(c.name))
+  const rango = (c: ColumnInfo): number =>
+    c.cardinality <= 2 ? 2 : esConocidaFutura(c.name) ? 0 : 1
+  return [...num].sort((a, b) => rango(a) - rango(b))
+}
+
+/** Candidatas a **clave de serie**: categóricas de cardinalidad acotada (excluye la fecha,
+ *  el target, las numéricas y los identificadores de cardinalidad muy alta tipo folio libre). */
+export function candidatasSerie(
+  cols: ColumnInfo[],
+  opts: { excluir: string[]; maxCardinalidad?: number },
+): ColumnInfo[] {
+  const max = opts.maxCardinalidad ?? 50
+  return cols.filter(
+    (c) =>
+      !opts.excluir.includes(c.name) &&
+      c.kind === 'categorical' &&
+      c.cardinality > 1 &&
+      c.cardinality <= max,
+  )
+}
+
 /**
  * Construye el `AutoSchemaSpec` a partir de las elecciones del usuario. Las columnas que no
- * son target/fecha/serie pasan a `features` con su tipo inferido. `known_future` queda en
- * `true` por defecto: si el cliente no aporta un bloque `future`, el backend arrastra el
- * último valor (categóricas) o asume 0 (numéricas) — decisión B del diseño de Ventas.
+ * son target/fecha/serie pasan a `features` con su tipo inferido. `known_future` se infiere
+ * por nombre con {@link esConocidaFutura} (los rezagos ``*_prev`` quedan en `false`, evitando
+ * fuga), salvo que `futureOverrides` lo fije explícitamente desde la UI.
  */
 export function construirEsquema(opts: {
   cols: ColumnInfo[]
   target: string
   date: string
   seriesKeys: string[]
+  futureOverrides?: Record<string, boolean>
 }): AutoSchemaSpec {
-  const { cols, target, date, seriesKeys } = opts
+  const { cols, target, date, seriesKeys, futureOverrides } = opts
   const reservadas = new Set([target, date, ...seriesKeys])
   const features: AutoFeatureSpec[] = cols
     .filter((c) => !reservadas.has(c.name) && c.kind !== 'date')
     .map((c) => ({
       name: c.name,
       type: c.kind === 'numeric' ? 'numeric' : 'categorical',
-      known_future: true,
+      known_future: futureOverrides?.[c.name] ?? esConocidaFutura(c.name),
     }))
   return { target, date, series_keys: seriesKeys, features }
 }

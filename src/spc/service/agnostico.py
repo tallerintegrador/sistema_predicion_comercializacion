@@ -23,7 +23,7 @@ from spc.api.schemas.agnostico import (
 )
 from spc.features.generico import EspecEsquema
 from spc.models import automl
-from spc.service import politica
+from spc.service import politica, seleccion_modelo
 from spc.service.cache_agnostico import CacheModelosAgnosticos, firma_datos, firma_esquema
 from spc.service.errores import SolicitudInvalida
 from spc.utils.logging import get_logger
@@ -116,10 +116,19 @@ def _resolver_regresion(
             predictor, info = cacheado
             return predictor, {**info, "reused_cached_model": True, "schema_signature": sig_e}
     res = automl.entrenar_regresion(df, spec, seed=seed)
+    predictor = res.predictor
     info = _info(res.ganador, res.n_filas, res.metricas_test, sig_e, candidates=res.candidatos)
     if cache is not None:
-        cache.guardar(client_id, "sales", sig_e, sig_d, res.predictor, info)
-    return res.predictor, info
+        # Data nueva: entrena el candidato y, si ya hay un campeón persistido, conserva el
+        # mejor de ambos (comparados sobre la misma ventana TEST). Así "mejorar" de verdad
+        # mejora, y un modelo peor nunca reemplaza a uno bueno (ADR-0023/0013).
+        campeon = cache.obtener_campeon(client_id, "sales", sig_e)
+        if campeon is not None:
+            predictor, info = seleccion_modelo.elegir_mejor_regresion(
+                candidato_info=info, res=res, campeon=campeon, spec=spec
+            )
+        cache.guardar(client_id, "sales", sig_e, sig_d, predictor, info)
+    return predictor, info
 
 
 # ===========================================================================
@@ -316,6 +325,13 @@ def alertas_inventario(
         info = _info(res.ganador, res.n_filas, res.metricas_test, sig_e)
         info["threshold_probability"] = round(res.umbral, 4)
         if cache is not None:
+            # Conserva el mejor entre el candidato y el campeón persistido (misma TEST).
+            campeon = cache.obtener_campeon(client_id, "inventory", sig_e)
+            if campeon is not None:
+                predictor, info = seleccion_modelo.elegir_mejor_clasificacion(
+                    candidato_info=info, res=res, campeon=campeon, spec=spec_clf
+                )
+                info.setdefault("threshold_probability", round(float(predictor.umbral), 4))
             cache.guardar(client_id, "inventory", sig_e, sig_d, predictor, info)
 
     # Régimen actual por serie: última fila clasificada.

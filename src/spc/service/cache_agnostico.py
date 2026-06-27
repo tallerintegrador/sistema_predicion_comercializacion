@@ -87,6 +87,29 @@ class CacheModelosAgnosticos:
             self._guardar_mem(clave, sig_datos, objeto, info)
         return objeto, info
 
+    def obtener_campeon(
+        self, client_id: str, dominio: str, sig_esquema: str
+    ) -> tuple[Any, dict[str, Any]] | None:
+        """Devuelve el **campeón persistido** ``(predictor, info)`` para (cliente, dominio,
+        esquema), **sin importar la firma de datos**. A diferencia de ``obtener`` (que solo
+        reusa si la data es idéntica), esto recupera el último modelo guardado para
+        comparar contra un candidato recién entrenado con data nueva y quedarse con el
+        mejor (ADR-0023/0013). ``None`` si aún no hay ninguno."""
+        clave = self._clave_mem(client_id, dominio, sig_esquema)
+        with self._lock:
+            cacheado = self._mem.get(clave)
+            if cacheado is not None:
+                return cacheado[1], cacheado[2]
+        ruta = self._ruta(client_id, dominio, sig_esquema)
+        if not ruta.exists():
+            return None
+        try:
+            objeto, meta = cargar_artefacto(ruta)
+        except Exception as exc:  # noqa: BLE001 - best-effort: nunca romper la predicción
+            log.warning("No se pudo cargar el campeón agnóstico (%s): %s", ruta.name, exc)
+            return None
+        return objeto, meta.get("info", {})
+
     def guardar(
         self,
         client_id: str,

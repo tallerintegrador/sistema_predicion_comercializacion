@@ -189,6 +189,10 @@ class ResultadoAutoMLRegresion:
     cortes: CortesTemporales
     n_filas: int
     candidatos: dict[str, float] = field(default_factory=dict)
+    # Marco con features (incl. columnas crudas) usado para entrenar. Permite re-evaluar un
+    # modelo rival (el campeón persistido) sobre la MISMA ventana TEST de estos datos —
+    # comparación honesta para quedarse con el mejor (ADR-0023/0013).
+    df_model: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def _matriz_por_tipo(
@@ -346,7 +350,21 @@ def entrenar_regresion(
         cortes=cortes if cortes is not None else cortes_adaptativos(pd.Series([pd.Timestamp.today()])),
         n_filas=int(len(df_model)),
         candidatos={k: round(v, 3) for k, v in sorted(mae_valid.items(), key=lambda kv: kv[1])},
+        df_model=df_model,
     )
+
+
+def evaluar_regresion_en_test(
+    predictor: PredictorGenericoRegresion,
+    df_model: pd.DataFrame,
+    spec: EspecEsquema,
+    cortes: CortesTemporales | None,
+) -> dict[str, float]:
+    """Métrica honesta (WAPE/MAE…) de un predictor **rival** sobre la ventana TEST de
+    ``df_model``. Se usa para evaluar el campeón persistido en los datos nuevos y decidir,
+    con la misma base, si el candidato recién entrenado lo supera."""
+    metricas, _ = _evaluar_test_recursivo(predictor, df_model, spec, cortes)
+    return metricas
 
 
 def _evaluar_test_recursivo(
@@ -436,6 +454,37 @@ class ResultadoAutoMLClasificacion:
     metricas_test: dict[str, float]
     prevalencia: float
     n_filas: int
+    cortes: CortesTemporales | None = None
+    # Marco con features (incl. la etiqueta binaria) para re-evaluar el campeón en la misma
+    # ventana TEST de estos datos (comparación honesta, quedarse con el mejor).
+    df_model: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+
+def evaluar_clasificacion_en_test(
+    predictor: PredictorGenericoClasificacion,
+    df_model: pd.DataFrame,
+    spec: EspecEsquema,
+    cortes: CortesTemporales | None,
+) -> dict[str, float]:
+    """Métricas de clasificación (PR-AUC/ROC-AUC…) de un clasificador **rival** sobre la
+    ventana TEST de ``df_model``, con su propio umbral. Comparable con el candidato nuevo."""
+    from spc.utils.metrics import classification_metrics_min
+
+    if cortes is None or not spec.es_temporal:
+        return {}
+    fechas = pd.to_datetime(df_model[spec.col_fecha])
+    m_test = ((fechas >= pd.Timestamp(cortes.test_ini)) & (fechas <= pd.Timestamp(cortes.test_fin))).to_numpy()
+    if m_test.sum() == 0:
+        return {}
+    y_true = df_model[spec.objetivo].to_numpy("int8")[m_test]
+    if y_true.sum() == 0 or y_true.sum() == len(y_true):
+        return {}  # PR/ROC-AUC indefinidas con una sola clase
+    try:
+        proba = predictor.predecir_proba(df_model).to_numpy("float64")[m_test]
+    except Exception as exc:  # noqa: BLE001 - frontera: nunca romper por evaluar al rival
+        log.warning("No se pudo evaluar el clasificador rival en TEST: %s", exc)
+        return {}
+    return classification_metrics_min(y_true, proba, predictor.umbral)
 
 
 def entrenar_clasificacion(
@@ -536,4 +585,5 @@ def entrenar_clasificacion(
     return ResultadoAutoMLClasificacion(
         predictor=predictor, ganador=f"LightGBM[{estrategia}]", umbral=umbral,
         metricas_test=met_test, prevalencia=prevalencia, n_filas=int(len(df_model)),
+        cortes=cortes, df_model=df_model,
     )

@@ -13,7 +13,6 @@ import {
   BarChart3,
   ShoppingCart,
   Package,
-  Sparkles,
   Wand2,
   Users,
   BookOpenText,
@@ -27,7 +26,6 @@ export type View =
   | 'purchases'
   | 'inventory'
   | 'auto'
-  | 'training'
   | 'users'
   | 'about'
 
@@ -92,6 +90,8 @@ const ACCENTS: Record<string, Accent> = {
 
 export interface SectionDef {
   id: View
+  /** Ruta URL (en inglés). El sidebar y el router la usan como única fuente. */
+  path: string
   /** Etiqueta del sidebar. */
   label: string
   /** Frase corta de "qué hace y para qué sirve" (lenguaje claro, sin tecnicismos). */
@@ -105,6 +105,7 @@ export interface SectionDef {
 export const SECTIONS: SectionDef[] = [
   {
     id: 'home',
+    path: '/',
     label: 'Inicio',
     blurb: 'Tu punto de partida: qué puede hacer el sistema y cómo empezar.',
     icon: LayoutDashboard,
@@ -113,6 +114,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     id: 'catalog',
+    path: '/what-it-does',
     label: '¿Qué hace el sistema?',
     blurb: 'Conoce los tres módulos, qué datos piden y qué resultado entregan.',
     icon: BookOpenText,
@@ -121,6 +123,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     id: 'sales',
+    path: '/sales',
     label: 'Ventas',
     blurb:
       'Calcula cuánto vas a vender en los próximos días, semanas o meses, por tienda y producto, para que planifiques tu demanda.',
@@ -130,6 +133,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     id: 'purchases',
+    path: '/purchases',
     label: 'Compras',
     blurb:
       'Te dice cuánto y cuándo reponer cada producto para no quedarte sin existencias ni comprar de más.',
@@ -139,6 +143,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     id: 'inventory',
+    path: '/inventory',
     label: 'Almacén',
     blurb:
       'Señala qué productos tienen riesgo de agotarse y te sugiere un nivel de existencias objetivo.',
@@ -148,24 +153,17 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     id: 'auto',
+    path: '/custom',
     label: 'Predicción a tu medida',
     blurb:
-      'Trae tus propias columnas (de cualquier rubro): declaras qué predecir y con qué datos, y el sistema entrena el mejor modelo al momento y predice.',
+      'Cualquier rubro: elige qué quieres (pronóstico, riesgo de quiebre o reposición), trae tus columnas y el sistema entrena varios modelos, se queda con el mejor y predice.',
     icon: Wand2,
     perms: ['module:sales'],
     accent: ACCENTS.brand,
   },
   {
-    id: 'training',
-    label: 'Mejorar las predicciones',
-    blurb:
-      'Mejora las predicciones usando tu propia historia — solo si tienes suficientes datos y solo si de verdad mejora.',
-    icon: Sparkles,
-    perms: ['action:training'],
-    accent: ACCENTS.training,
-  },
-  {
     id: 'users',
+    path: '/users',
     label: 'Usuarios y permisos',
     blurb: 'Administra las cuentas que pueden entrar y qué puede hacer cada una.',
     icon: Users,
@@ -174,6 +172,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     id: 'about',
+    path: '/about',
     label: 'Acerca del sistema',
     blurb: 'Cómo funciona el sistema, en qué datos se entrenó y qué tan exactas son sus estimaciones.',
     icon: Info,

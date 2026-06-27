@@ -3,7 +3,7 @@ import { render } from '@testing-library/react'
 import { HistoryPreview } from './HistoryPreview'
 
 /** Normaliza el espacio duro (&nbsp;) para poder comparar el texto renderizado. */
-const texto = (el: HTMLElement) => (el.textContent ?? '').replace(/ /g, ' ')
+const texto = (el: HTMLElement) => (el.textContent ?? '').replace(/\u00a0/g, ' ')
 
 describe('HistoryPreview (resumen sin filas vacías)', () => {
   it('no cuenta filas en blanco en «Filas»', () => {

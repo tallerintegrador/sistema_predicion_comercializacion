@@ -1,26 +1,11 @@
-import type { ReactNode } from 'react'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { apiBaseUrl } from '../api/client'
-import { useAuth } from '../auth/AuthContext'
-import { SECTIONS, type SectionDef, type View } from '../theme/modules'
+import { useAuth } from '../auth/useAuth'
+import { useSeccionesVisibles } from '../hooks/useSeccionesVisibles'
+import { SECTION_BY_ID } from '../theme/modules'
 
-export type { View }
-
-/** Secciones visibles para el usuario actual, según sus permisos (la verdad la da el backend). */
-export function useSeccionesVisibles(): SectionDef[] {
-  const { hasPerm } = useAuth()
-  return SECTIONS.filter((item) => item.perms.every(hasPerm))
-}
-
-export function Layout({
-  active,
-  onChange,
-  children,
-}: {
-  active: View
-  onChange: (v: View) => void
-  children: ReactNode
-}) {
+export function Layout() {
   const { user, logout, isAdmin } = useAuth()
   const items = useSeccionesVisibles()
 
@@ -44,20 +29,21 @@ export function Layout({
         <nav className="flex-1 space-y-1 px-2 py-3" aria-label="Secciones">
           {items.map((item) => {
             const Icon = item.icon
-            const isActive = active === item.id
             return (
-              <button
+              <NavLink
                 key={item.id}
-                onClick={() => onChange(item.id)}
-                aria-current={isActive ? 'page' : undefined}
+                to={item.path}
+                end={item.path === '/'}
                 title={item.label}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 ${
-                  isActive ? item.accent.navActive : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+                className={({ isActive }) =>
+                  `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 ${
+                    isActive ? item.accent.navActive : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`
+                }
               >
                 <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
                 <span className="hidden truncate md:inline">{item.label}</span>
-              </button>
+              </NavLink>
             )
           })}
         </nav>
@@ -85,16 +71,17 @@ export function Layout({
             </span>
           </header>
         )}
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
+          <Outlet />
+        </main>
         <footer className="flex flex-wrap items-center justify-center gap-1 border-t border-slate-200 px-4 py-3 text-center text-xs text-slate-400">
           <span>Las estimaciones son referenciales y se basan en un comercio de ejemplo.</span>
-          <button
-            type="button"
-            onClick={() => onChange('about')}
+          <Link
+            to={SECTION_BY_ID.about.path}
             className="font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
           >
             Acerca del sistema
-          </button>
+          </Link>
         </footer>
       </div>
     </div>
