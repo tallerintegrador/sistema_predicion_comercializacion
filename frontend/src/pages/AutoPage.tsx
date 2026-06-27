@@ -14,17 +14,17 @@ import type {
   AutoRow,
   AutoSalesResponse,
   AutoSchemaSpec,
-  AutoTrainingInfo,
 } from '../api/types'
 import { ErrorPanel } from '../components/ErrorPanel'
 import { ResultTable } from '../components/ResultTable'
-import type { Column } from '../components/ResultTable'
 import { ModuleHeader } from '../components/ui/ModuleHeader'
 import { StepSection } from '../components/ui/StepSection'
 import { EmptyState } from '../components/ui/EmptyState'
 import { TechnicalDetails } from '../components/ui/TechnicalDetails'
+import { TrainingCard } from '../components/auto/TrainingCard'
 import { SECTION_BY_ID } from '../theme/modules'
 import { fmtNum } from '../utils/format'
+import { columnasDinamicas } from '../utils/autoColumns'
 
 const ACCENT = SECTION_BY_ID.auto.accent
 
@@ -193,7 +193,7 @@ const fuelDia = (s: SerieDemo, i: number, total: number) =>
   r2(PAISES_DEMO[s.pais].fuelRef * (1 + (0.05 * i) / total + 0.01 * Math.sin(i / 5)))
 
 /** Factor de demanda: mismos drivers que el generador del backend (compacto). */
-function factorDemanda(s: SerieDemo, d: Date, i: number, ctx: {
+function factorDemanda(s: SerieDemo, d: Date, ctx: {
   promo: number; descuento: number; campaña: number; clima: string; competidor: number
   temperatura: number; precio: number; precioComp: number; trafRel: number; fx: number; fuel: number
 }): number {
@@ -244,7 +244,7 @@ function filasDemo(dias = 70): AutoRow[] {
       const trafico = Math.round(s.traficoBase * (1 + finde) * (clima === 'soleado' ? 1.1 : 1))
       const fx = fxDia(s, i)
       const fuel = fuelDia(s, i, dias)
-      const factor = factorDemanda(s, d, i, {
+      const factor = factorDemanda(s, d, {
         promo, descuento, campaña, clima, competidor, temperatura, precio, precioComp,
         trafRel: trafico / s.traficoBase, fx, fuel,
       })
@@ -400,22 +400,6 @@ function filasResultado(domain: AutoDomain, data: AnyResponse): AutoRow[] {
   if (domain === 'sales') return (data as AutoSalesResponse).forecast
   if (domain === 'inventory') return (data as AutoInventoryResponse).alerts
   return (data as AutoPurchasesResponse).recommendation
-}
-
-/** Columnas dinámicas: unión de las claves de todas las filas (esquema arbitrario). */
-function columnasDinamicas(rows: AutoRow[]): Column<AutoRow>[] {
-  const claves: string[] = []
-  for (const r of rows) for (const k of Object.keys(r)) if (!claves.includes(k)) claves.push(k)
-  return claves.map((k) => ({
-    header: k,
-    align: typeof rows[0]?.[k] === 'number' ? 'right' : 'left',
-    render: (row: AutoRow) => {
-      const v = row[k]
-      if (typeof v === 'number') return fmtNum(v)
-      if (typeof v === 'boolean') return v ? 'sí' : 'no'
-      return v == null ? '—' : String(v)
-    },
-  }))
 }
 
 export function AutoPage() {
@@ -688,41 +672,6 @@ export function AutoPage() {
   )
 }
 
-function MetricBadge({ k, v }: { k: string; v: number }) {
-  return (
-    <span className={`badge ${ACCENT.badge}`}>
-      {k}: <span className="font-semibold">{fmtNum(v)}</span>
-    </span>
-  )
-}
-
-function TrainingCard({ training }: { training: AutoTrainingInfo }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-slate-800">Modelo entrenado</span>
-        <span className={`badge ${ACCENT.solid}`}>{training.winner_algorithm}</span>
-        {training.reused_cached_model ? (
-          <span className="badge bg-slate-200 text-slate-600">reutilizado</span>
-        ) : (
-          <span className="badge bg-emerald-100 text-emerald-700">recién entrenado</span>
-        )}
-        <span className="text-xs text-slate-500">· {fmtNum(training.trained_rows)} filas</span>
-      </div>
-      {Object.keys(training.honest_metrics).length > 0 && (
-        <div className="mt-2">
-          <p className="text-xs text-slate-500">Exactitud en la prueba (sin trampa, sobre datos no vistos):</p>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {Object.entries(training.honest_metrics).map(([k, v]) => (
-              <MetricBadge key={k} k={k} v={v} />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ResultSection({ domain, data }: { domain: AutoDomain; data: AnyResponse }) {
   const rows = filasResultado(domain, data)
   const cols = useMemo(() => columnasDinamicas(rows), [rows])
@@ -731,7 +680,7 @@ function ResultSection({ domain, data }: { domain: AutoDomain; data: AnyResponse
   return (
     <section className="card space-y-4">
       <h3 className="text-base font-semibold text-slate-800">Resultado</h3>
-      <TrainingCard training={data.training} />
+      <TrainingCard training={data.training} accentSolid={ACCENT.solid} accentBadge={ACCENT.badge} />
 
       {rows.length > 0 ? (
         <ResultTable columns={cols} rows={rows} />
@@ -743,6 +692,14 @@ function ResultSection({ domain, data }: { domain: AutoDomain; data: AnyResponse
         <p>
           Firma del esquema: <span className="font-mono text-slate-700">{data.training.schema_signature}</span>
         </p>
+        {Object.keys(data.training.honest_metrics).length > 0 && (
+          <p>
+            Métricas completas:{' '}
+            {Object.entries(data.training.honest_metrics)
+              .map(([k, v]) => `${k}=${fmtNum(v)}`)
+              .join(' · ')}
+          </p>
+        )}
         {data.training.threshold_probability != null && (
           <p>Umbral de probabilidad: {fmtNum(data.training.threshold_probability)}</p>
         )}

@@ -1,0 +1,32 @@
+{
+  "dominio": "sales",
+  "sig_esquema": "2fe1503dbb495737",
+  "sig_datos": "e7b3bc602a3a0483",
+  "client_id": "256370-9b33c4cc",
+  "info": {
+    "winner_algorithm": "Ensemble(LightGBM+LightGBM_Tweedie+LightGBM_Poisson)",
+    "trained_rows": 336,
+    "honest_metrics": {
+      "MAE": 0.8366,
+      "RMSE": 2.2046,
+      "RMSLE": 0.017,
+      "MAPE": 0.9412,
+      "WAPE": 0.9716,
+      "R2": 0.9978
+    },
+    "candidates": {
+      "LightGBM": 6.969,
+      "LightGBM_Tweedie": 7.533,
+      "LightGBM_Poisson": 7.644,
+      "HistGradientBoosting": 8.308,
+      "XGBoost": 8.883,
+      "XGBoost_Tweedie": 9.415,
+      "RandomForest": 11.502,
+      "Ridge": 16.374
+    },
+    "reused_cached_model": false,
+    "schema_signature": "2fe1503dbb495737"
+  },
+  "guardado_utc": "2026-06-27T05:03:36.867111+00:00",
+  "artefacto": "sales__2fe1503dbb495737.joblib"
+}

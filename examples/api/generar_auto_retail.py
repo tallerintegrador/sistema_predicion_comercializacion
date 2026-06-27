@@ -35,6 +35,12 @@ INICIO = date(2024, 1, 1)
 DIAS = 150          # ~5 meses: rezagos hasta 28 + estacionalidad semanal estable
 HORIZON = 14        # días futuros con drivers planificados (bloque `future`)
 
+# Ruido IRREDUCIBLE del objetivo (fija el piso de WAPE: ninguna feature lo predice).
+# Valores por defecto = mundo realista. Una herramienta de diagnóstico puede ponerlos a 0
+# para medir el piso de ruido (WAPE con ruido off = error puro del modelo).
+RUIDO_DEMANDA = 0.12   # sigma del multiplicador lognormal por día
+TASA_QUIEBRE = 0.04    # prob. diaria de quiebre de stock (recorta la demanda atendida)
+
 
 # ===========================================================================
 # Catálogo de países (hemisferio, moneda, tipo de cambio ref, combustible ref)
@@ -330,8 +336,8 @@ def generar():
                     fx=fx_dia[i], fx_ref=fx_ref, fuel=fuel_dia[i], fuel_ref=fuel_ref,
                     conf=conf, flete=flete, flete_ref=flete_ref,
                 )
-                demanda = base * (1 + tendencia * i) * factor * rng.lognormal(0, 0.12)
-                quiebre = 1 if rng.random() < 0.04 else 0
+                demanda = base * (1 + tendencia * i) * factor * rng.lognormal(0, RUIDO_DEMANDA)
+                quiebre = 1 if rng.random() < TASA_QUIEBRE else 0
                 if quiebre:
                     demanda *= rng.uniform(0.40, 0.65)
                 demanda = float(max(0, round(demanda)))

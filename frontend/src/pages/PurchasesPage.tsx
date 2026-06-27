@@ -1,30 +1,31 @@
 import { useMemo, useState } from 'react'
 import { ShoppingCart } from 'lucide-react'
-import { postPurchases, uploadExcel } from '../api/endpoints'
-import type { PurchasesRequest, PurchasesResponse, RecommendationItem } from '../api/types'
-import { usePrediction } from '../hooks/usePrediction'
-import { useDomainCatalog } from '../hooks/useDomainCatalog'
+import { ApiError } from '../api/client'
+import { downloadAutoTemplate, postAutoPurchases, uploadAutoExcel } from '../api/endpoints'
+import type { AutoPurchasesResponse, AutoRow } from '../api/types'
 import { ErrorPanel } from '../components/ErrorPanel'
-import { DataSourcePanel } from '../components/DataSourcePanel'
-import { CatalogTable } from '../components/CatalogTable'
-import { HistoryPreview } from '../components/HistoryPreview'
-import { ReuseHistoryNotice } from '../components/data/ReuseHistoryNotice'
-import { JobBanner } from '../components/JobBanner'
 import { ResultTable } from '../components/ResultTable'
-import type { Column } from '../components/ResultTable'
-import { PurchasesChart } from '../components/charts/PurchasesChart'
-import { ResultFilters } from '../components/result/ResultFilters'
-import { useResultFilters } from '../hooks/useResultFilters'
-import type { ResultFiltersSpec } from '../hooks/useResultFilters'
+import { TrainingCard } from '../components/auto/TrainingCard'
+import { ItemsEditor } from '../components/auto/ItemsEditor'
 import { ModuleHeader } from '../components/ui/ModuleHeader'
 import { StepSection } from '../components/ui/StepSection'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ResultSummary } from '../components/ui/ResultSummary'
+import { TechnicalDetails } from '../components/ui/TechnicalDetails'
 import { SECTION_BY_ID } from '../theme/modules'
 import { fmtNum } from '../utils/format'
-import { resumenCompras } from '../utils/resumen'
-import type { EditableRow } from '../utils/tableData'
-import { coerceRows, objectsToRows, rowsComplete } from '../utils/tableData'
+import { generarFilasDemo, generarItemsDemo } from '../demo/retailDemo'
+import { columnasDinamicas } from '../utils/autoColumns'
+import {
+  analizarColumnas,
+  columnasNumericas,
+  construirEsquema,
+  normalizarFilas,
+  sugerirFecha,
+  sugerirSeries,
+  sugerirTarget,
+} from '../utils/inferSchema'
+import type { ColumnInfo } from '../utils/inferSchema'
 
 const ACCENT = SECTION_BY_ID.purchases.accent
 
@@ -34,133 +35,417 @@ const ACCENT = SECTION_BY_ID.purchases.accent
 export const PORQUE =
   'Demanda estimada durante el tiempo de entrega más la cobertura, y unas existencias de seguridad.'
 
-const cols: Column<RecommendationItem>[] = [
-  { header: 'Tienda', render: (r) => r.store_id },
-  { header: 'Producto', render: (r) => r.product_id },
-  { header: 'Demanda estimada', align: 'right', render: (r) => fmtNum(r.expected_demand_horizon) },
-  { header: 'Reponer al bajar a', align: 'right', render: (r) => fmtNum(r.reorder_point) },
-  { header: 'Cuánto reponer', align: 'right', render: (r) => fmtNum(r.replenishment_quantity) },
-  { header: 'Por qué', render: () => <span className="text-xs text-slate-500">{PORQUE}</span> },
-]
+type Intencion = 'producto' | 'dinero' | 'otro'
+
+const INTENCION_LABEL: Record<Intencion, string> = {
+  producto: 'Demanda en unidades (producto)',
+  dinero: 'Demanda en dinero',
+  otro: 'Otra cantidad',
+}
+
+/** Esquema por defecto (columnas del ejemplo) para descargar la plantilla Excel sin datos. */
+const DEFAULT_SCHEMA = construirEsquema({
+  cols: analizarColumnas(generarFilasDemo()),
+  target: 'unidades_vendidas',
+  date: 'fecha',
+  seriesKeys: ['tienda', 'sku'],
+})
+
+/** Extrae historial + productos a reponer de un JSON (array de filas, u objeto con `rows`/
+ *  `history` e `items`/`replenishment_params`). */
+function extraerCompras(data: unknown): { rows: AutoRow[]; items: AutoRow[] } | null {
+  if (Array.isArray(data)) return { rows: data as AutoRow[], items: [] }
+  if (data && typeof data === 'object') {
+    const o = data as { rows?: unknown; history?: unknown; items?: unknown; replenishment_params?: unknown }
+    const rows = Array.isArray(o.rows) ? o.rows : Array.isArray(o.history) ? o.history : null
+    if (rows) {
+      const items = Array.isArray(o.items)
+        ? o.items
+        : Array.isArray(o.replenishment_params)
+          ? o.replenishment_params
+          : []
+      return { rows: rows as AutoRow[], items: items as AutoRow[] }
+    }
+  }
+  return null
+}
+
+/** Resumen en lenguaje natural de la recomendación de reposición. */
+function resumenComprasAuto(recs: AutoRow[]): string {
+  if (recs.length === 0) return 'No hay recomendaciones para mostrar.'
+  const aReponer = recs.filter((r) => Number(r.replenishment_quantity) > 0)
+  const total = aReponer.reduce((a, r) => a + (Number(r.replenishment_quantity) || 0), 0)
+  if (aReponer.length === 0) {
+    return 'Por ahora no necesitas reponer ninguno de estos productos: tus existencias cubren la demanda estimada.'
+  }
+  return `Conviene reponer alrededor de ${fmtNum(total)} unidades repartidas en ${fmtNum(
+    aReponer.length,
+  )} ${aReponer.length === 1 ? 'producto' : 'productos'}.`
+}
 
 export function PurchasesPage() {
-  const { domain, loading, error } = useDomainCatalog('purchases')
-  const historyTable = domain?.input_tables.find((t) => t.name === 'history') ?? null
-  const paramsTable = domain?.input_tables.find((t) => t.name === 'replenishment_params') ?? null
+  // PASO 1 — datos ricos + productos a reponer.
+  const [rows, setRows] = useState<AutoRow[]>([])
+  const [items, setItems] = useState<AutoRow[]>([])
+  const [excelFile, setExcelFile] = useState<File | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
 
-  const [histRows, setHistRows] = useState<EditableRow[]>([])
-  const [paramRows, setParamRows] = useState<EditableRow[]>([])
-  const [jsonError, setJsonError] = useState<string | null>(null)
+  // PASO 2 — mapeo (override del usuario; null = sugerencia automática).
+  const [intencion, setIntencion] = useState<Intencion>('producto')
+  const [target, setTarget] = useState<string | null>(null)
+  const [date, setDate] = useState<string | null>(null)
+  const [series, setSeries] = useState<string[] | null>(null)
 
-  const pred = usePrediction<PurchasesResponse>()
-  const busy = pred.status === 'loading' || pred.status === 'polling'
+  // PASO 3 — resultado.
+  const [data, setData] = useState<AutoPurchasesResponse | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  const completo = useMemo(
-    () =>
-      !!historyTable &&
-      !!paramsTable &&
-      rowsComplete(historyTable.columns, histRows) &&
-      rowsComplete(paramsTable.columns, paramRows),
-    [historyTable, paramsTable, histRows, paramRows],
-  )
+  const cols = useMemo<ColumnInfo[]>(() => analizarColumnas(rows), [rows])
 
-  const onJson = (data: unknown) => {
-    const obj = (data ?? {}) as { history?: unknown; replenishment_params?: unknown }
-    if (!Array.isArray(obj.history) || !Array.isArray(obj.replenishment_params)) {
-      setJsonError('El JSON debe incluir el historial y los productos a reponer. Usa la plantilla como guía.')
+  const effDate = date ?? sugerirFecha(cols) ?? ''
+  const effTarget =
+    target ?? (intencion === 'otro' ? columnasNumericas(cols, [effDate])[0]?.name ?? '' : sugerirTarget(cols, intencion, [effDate]) ?? '')
+  const effSeries = series ?? sugerirSeries(cols, [effDate, effTarget])
+
+  const hasRows = rows.length > 0
+  const numericas = useMemo(() => columnasNumericas(cols, [effDate]), [cols, effDate])
+
+  const itemsValidos =
+    items.length > 0 &&
+    items.every(
+      (it) =>
+        effSeries.every((k) => String(it[k] ?? '') !== '') &&
+        Number(it.lead_time_days) > 0 &&
+        Number(it.target_coverage_days) > 0,
+    )
+  const puedeCalcular = (hasRows || excelFile != null) && !!effTarget && !!effDate && itemsValidos && !busy
+
+  const resetMapeo = () => {
+    setTarget(null)
+    setDate(null)
+    setSeries(null)
+  }
+
+  const cargarDatos = (nRows: AutoRow[], nItems: AutoRow[]) => {
+    setRows(nRows)
+    setItems(nItems)
+    setExcelFile(null)
+    resetMapeo()
+    setData(null)
+    setError(null)
+    setAviso(null)
+  }
+
+  const onJson = async (file: File) => {
+    setAviso(null)
+    try {
+      const parsed = extraerCompras(JSON.parse(await file.text()))
+      if (!parsed || parsed.rows.length === 0) {
+        setAviso('El JSON no contiene filas de historial. Usa un array de registros o un objeto con «rows».')
+        return
+      }
+      cargarDatos(parsed.rows, parsed.items)
+      if (parsed.items.length === 0) {
+        setAviso('Historial cargado. Genera o agrega los productos a reponer abajo.')
+      }
+    } catch {
+      setAviso('El archivo no es un JSON válido. Revisa el formato.')
+    }
+  }
+
+  const onExcel = (file: File) => {
+    if (cols.length === 0) {
+      setAviso('Para Excel: primero carga un JSON o el ejemplo para configurar las columnas; el Excel debe traer esas mismas columnas.')
       return
     }
-    setJsonError(null)
-    if (historyTable) setHistRows(objectsToRows(historyTable.columns, obj.history as Record<string, unknown>[]))
-    if (paramsTable) setParamRows(objectsToRows(paramsTable.columns, obj.replenishment_params as Record<string, unknown>[]))
-    pred.reset()
+    setExcelFile(file)
+    setData(null)
+    setError(null)
+    setAviso(`Excel «${file.name}» listo: completa los productos a reponer y calcula.`)
   }
 
-  const predict = () => {
-    if (!historyTable || !paramsTable) return
-    const req = {
-      history: coerceRows(historyTable.columns, histRows),
-      replenishment_params: coerceRows(paramsTable.columns, paramRows),
-    } as unknown as PurchasesRequest
-    pred.run(() => postPurchases(req))
+  /** Crea un producto a reponer por cada serie distinta del historial cargado. */
+  const generarItems = () => {
+    const vistos = new Set<string>()
+    const out: AutoRow[] = []
+    for (const r of rows) {
+      const clave = effSeries.map((k) => String(r[k])).join('|')
+      if (vistos.has(clave)) continue
+      vistos.add(clave)
+      const it: AutoRow = {}
+      for (const k of effSeries) it[k] = String(r[k])
+      it.current_stock = 0
+      it.lead_time_days = 5
+      it.target_coverage_days = 14
+      out.push(it)
+    }
+    setItems(out)
   }
-  const onExcel = (file: File) => pred.run(() => uploadExcel<PurchasesResponse>('purchases', file))
+
+  const cambiarIntencion = (i: Intencion) => {
+    setIntencion(i)
+    setTarget(null)
+  }
+
+  const descargarPlantilla = async () => {
+    setError(null)
+    const schema =
+      hasRows && effTarget && effDate
+        ? construirEsquema({ cols, target: effTarget, date: effDate, seriesKeys: effSeries })
+        : DEFAULT_SCHEMA
+    try {
+      const { blob, filename } = await downloadAutoTemplate('purchases', schema)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      if (e instanceof ApiError) setError(e)
+    }
+  }
+
+  const calcular = async () => {
+    setError(null)
+    setAviso(null)
+    const schema = construirEsquema({ cols, target: effTarget, date: effDate, seriesKeys: effSeries })
+    // Coacciona los campos numéricos de los productos a reponer.
+    const itemsLimpios = items.map((it) => ({
+      ...it,
+      current_stock: Number(it.current_stock) || 0,
+      lead_time_days: Number(it.lead_time_days) || 0,
+      target_coverage_days: Number(it.target_coverage_days) || 0,
+    }))
+    setBusy(true)
+    setData(null)
+    try {
+      let res: AutoPurchasesResponse
+      if (excelFile) {
+        res = await uploadAutoExcel<AutoPurchasesResponse>('purchases', excelFile, {
+          schema: JSON.stringify(schema),
+          items: JSON.stringify(itemsLimpios),
+        })
+      } else {
+        res = await postAutoPurchases({ schema, rows: normalizarFilas(rows, cols), items: itemsLimpios })
+      }
+      setData(res)
+    } catch (e) {
+      if (e instanceof ApiError) setError(e)
+      else setAviso(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="space-y-5">
       <ModuleHeader view="purchases" />
 
-      {loading && <p className="text-sm text-slate-500">Cargando…</p>}
+      {/* PASO 1 — Tus datos: historial rico + productos a reponer. */}
+      <StepSection
+        step={1}
+        title="Tus datos"
+        accentChip={ACCENT.chip}
+        description="Sube tu historial de ventas con las columnas que tengas (las mismas columnas ricas que «Predicción a tu medida») y define los productos a reponer."
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <label className={`btn cursor-pointer ${ACCENT.solid}`}>
+            Subir JSON
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void onJson(f)
+                e.target.value = ''
+              }}
+            />
+          </label>
+          <label className="btn-ghost cursor-pointer">
+            Subir Excel
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) onExcel(f)
+                e.target.value = ''
+              }}
+            />
+          </label>
+          <button type="button" className="btn-ghost" onClick={() => void descargarPlantilla()} disabled={busy}>
+            Descargar plantilla Excel
+          </button>
+          <button
+            type="button"
+            className="badge bg-slate-100 text-slate-600 hover:bg-slate-200"
+            onClick={() => cargarDatos(generarFilasDemo(), generarItemsDemo())}
+            disabled={busy}
+          >
+            Cargar datos de ejemplo
+          </button>
+        </div>
+        <p className="help">
+          El JSON se lee aquí para detectar tus columnas. El Excel se procesa en el servidor con
+          esas mismas columnas (configúralas antes con un JSON o el ejemplo).
+        </p>
+
+        {aviso && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" role="alert">
+            {aviso}
+          </p>
+        )}
+
+        {hasRows && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">
+              {fmtNum(rows.length)} filas · {cols.length} columnas detectadas
+            </p>
+            <p className="mt-1 flex flex-wrap gap-1">
+              {cols.map((c) => (
+                <span key={c.name} className={`badge ${ACCENT.badge}`}>
+                  {c.name} · {c.kind === 'numeric' ? 'núm.' : c.kind === 'date' ? 'fecha' : 'categ.'}
+                </span>
+              ))}
+            </p>
+          </div>
+        )}
+
+        <div className="my-1 h-px bg-slate-200" aria-hidden="true" />
+
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-700">Productos a reponer</h4>
+              <p className="help mt-0">Stock actual, días de entrega y cobertura objetivo por producto.</p>
+            </div>
+            <button
+              type="button"
+              className={`badge ${ACCENT.badge}`}
+              onClick={generarItems}
+              disabled={busy || !hasRows}
+            >
+              Generar desde mis datos
+            </button>
+          </div>
+          <ItemsEditor
+            seriesKeys={effSeries.length > 0 ? effSeries : ['tienda', 'sku']}
+            items={items}
+            onChange={setItems}
+            disabled={busy}
+            accentBadge={ACCENT.badge}
+          />
+        </div>
+      </StepSection>
+
+      {/* PASO 2 — ¿Qué demanda pronosticar? + mapeo de columnas. */}
+      <StepSection
+        step={2}
+        title="¿Qué demanda pronosticar?"
+        accentChip={ACCENT.chip}
+        description="Elige qué demanda estimar (unidades, dinero u otra cantidad) y confirma qué columnas son la fecha y las series. El resto de columnas se usan como factores."
+      >
+        {!hasRows && (
+          <p className="text-sm text-slate-500">Carga tus datos en el Paso 1 para configurar el pronóstico.</p>
+        )}
+
+        {hasRows && (
+          <div className="space-y-4">
+            <div>
+              <span className="label">¿Qué estimar?</span>
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(INTENCION_LABEL) as Intencion[]).map((i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => cambiarIntencion(i)}
+                    className={`badge ${intencion === i ? ACCENT.solid : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {INTENCION_LABEL[i]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-start gap-4">
+              <div>
+                <label className="label" htmlFor="target">Columna de demanda</label>
+                <select id="target" className="input" value={effTarget} disabled={busy} onChange={(e) => setTarget(e.target.value)}>
+                  {numericas.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+                <p className="help">El valor numérico cuya demanda futura quieres estimar.</p>
+              </div>
+
+              <div>
+                <label className="label" htmlFor="date">Columna de fecha</label>
+                <select id="date" className="input" value={effDate} disabled={busy} onChange={(e) => setDate(e.target.value)}>
+                  {cols.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+                <p className="help">Cuándo ocurrió cada registro.</p>
+              </div>
+
+              <div>
+                <span className="label">Series (producto a reponer)</span>
+                <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-2">
+                  {cols
+                    .filter((c) => c.name !== effDate && c.name !== effTarget && c.kind !== 'numeric')
+                    .map((c) => (
+                      <label key={c.name} className="inline-flex items-center gap-1 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={effSeries.includes(c.name)}
+                          disabled={busy}
+                          onChange={() =>
+                            setSeries(
+                              effSeries.includes(c.name)
+                                ? effSeries.filter((s) => s !== c.name)
+                                : [...effSeries, c.name],
+                            )
+                          }
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                </div>
+                <p className="help">Tienda, producto… deben coincidir con los productos a reponer.</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </StepSection>
+
+      {/* PASO 3 — Calcular la reposición (motor agnóstico, ADR-0023). */}
+      <StepSection
+        step={3}
+        title="Calcula la reposición"
+        accentChip={ACCENT.chip}
+        description="El sistema entrena el mejor modelo para tu demanda con validación honesta y calcula cuánto y cuándo reponer cada producto."
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className={`btn ${ACCENT.solid}`} onClick={() => void calcular()} disabled={!puedeCalcular}>
+            {busy ? 'Calculando…' : 'Calcular reposición'}
+          </button>
+          {!puedeCalcular && !busy && (
+            <span className="text-sm text-slate-500" role="status">
+              Carga tu historial, elige qué pronosticar y completa los productos a reponer (entrega y cobertura &gt; 0).
+            </span>
+          )}
+        </div>
+      </StepSection>
+
       {error && <ErrorPanel error={error} />}
 
-      {historyTable && paramsTable && (
-        <>
-          {/* PASO 1 — Tus datos: historial SIEMPRE por archivo; productos a reponer a mano o por archivo. */}
-          <StepSection
-            step={1}
-            title="Tus datos"
-            accentChip={ACCENT.chip}
-            description="Sube tu historial de ventas por archivo y añade los productos a reponer."
-          >
-            {/* Historial de ventas: solo por archivo (no se ingresa a mano). */}
-            <div className="space-y-3">
-              <div>
-                <h4 className="text-sm font-semibold text-slate-700">{historyTable.label}</h4>
-                <p className="help mt-0">
-                  Tu historial de ventas se carga siempre por archivo (Excel o JSON); no se ingresa a
-                  mano. Descarga la plantilla, complétala y vuelve a subirla.
-                </p>
-              </div>
-              <DataSourcePanel domain="purchases" onExcel={onExcel} onJson={onJson} busy={busy} accentSolid={ACCENT.solid} />
-              <ReuseHistoryNotice />
-              {histRows.length > 0 && (
-                <div>
-                  <p className="label">Resumen de tu historial</p>
-                  <HistoryPreview history={histRows} />
-                </div>
-              )}
-            </div>
-
-            <div className="my-2 h-px bg-slate-200" aria-hidden="true" />
-
-            {/* Productos a reponer: lista corta del estado actual; se puede ingresar a mano. */}
-            <CatalogTable table={paramsTable} rows={paramRows} onChange={setParamRows} disabled={busy} />
-
-            {jsonError && (
-              <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
-                {jsonError}
-              </p>
-            )}
-          </StepSection>
-
-          {/* No hay configuración de pronóstico aplicable en Compras → se omite ese paso. */}
-
-          {/* PASO 2 — Acción: calcular la reposición con los datos cargados. */}
-          <StepSection
-            step={2}
-            title="Calcula la reposición"
-            accentChip={ACCENT.chip}
-            description="Con tus datos listos, calcula cuánto y cuándo reponer cada producto."
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="button" className={`btn ${ACCENT.solid}`} onClick={predict} disabled={busy || !completo}>
-                {busy ? 'Calculando…' : 'Calcular reposición'}
-              </button>
-              {!completo && (
-                <span className="text-sm text-slate-500" role="status">
-                  Sube tu historial de ventas (Excel o JSON) y completa los productos a reponer
-                  (campos con *).
-                </span>
-              )}
-            </div>
-          </StepSection>
-        </>
-      )}
-
-      <JobBanner status={pred.status} jobId={pred.jobId} attempts={pred.attempts} />
-      {pred.status === 'error' && pred.error && <ErrorPanel error={pred.error} />}
-
-      {pred.status === 'idle' && !busy && (
+      {!data && !busy && !error && (
         <EmptyState
           icon={ShoppingCart}
           title="Aún no hay recomendaciones"
@@ -168,82 +453,46 @@ export function PurchasesPage() {
         />
       )}
 
-      {pred.status === 'done' && pred.data && <PurchasesResult data={pred.data} />}
+      {data && <PurchasesResult data={data} />}
     </div>
   )
 }
 
-/** Resultado de Compras con filtros derivados de los campos reales de la respuesta. */
-function PurchasesResult({ data }: { data: PurchasesResponse }) {
-  const rows = data.recommendation
-
-  const spec = useMemo<ResultFiltersSpec<RecommendationItem>>(
-    () => ({
-      facets: [
-        { key: 'store_id', label: 'Tienda', read: (r) => r.store_id },
-        { key: 'product_id', label: 'Producto', read: (r) => r.product_id },
-      ],
-      toggles: [
-        {
-          key: 'needs',
-          label: 'Solo los que requieren reposición ahora',
-          predicate: (r) => r.replenishment_quantity > 0,
-        },
-      ],
-      sorts: [
-        {
-          key: 'store',
-          label: 'Tienda y producto',
-          compare: (a, b) =>
-            a.store_id.localeCompare(b.store_id, 'es', { numeric: true }) ||
-            a.product_id.localeCompare(b.product_id, 'es', { numeric: true }),
-        },
-        {
-          key: 'qty',
-          label: 'Cantidad a reponer (mayor primero)',
-          compare: (a, b) => b.replenishment_quantity - a.replenishment_quantity,
-        },
-      ],
-    }),
-    [],
-  )
-
-  const filters = useResultFilters(rows, spec)
-  const { filtered } = filters
+function PurchasesResult({ data }: { data: AutoPurchasesResponse }) {
+  const recs = data.recommendation
+  // Tabla dinámica sin la columna `justification` cruda: la explicación va una sola vez como nota.
+  const cols = useMemo(() => columnasDinamicas(recs).filter((c) => c.header !== 'Cálculo'), [recs])
 
   return (
     <section className="card space-y-4">
       <h3 className="text-base font-semibold text-slate-800">Recomendación de reposición</h3>
-      <ResultSummary text={resumenCompras(filtered)} tone="bg-purchases-50 text-purchases-700" />
-      <ResultFilters
-        spec={spec}
-        filters={filters}
-        comingSoon={[
-          {
-            key: 'category',
-            label: 'Categoría / familia',
-            hint: 'Disponible cuando el sistema indique la categoría o familia de cada producto.',
-          },
-          {
-            key: 'urgency',
-            label: 'Ordenar por urgencia',
-            hint: 'Disponible cuando el sistema entregue una medida de urgencia de reposición.',
-          },
-        ]}
-      />
-      {filtered.length > 0 ? (
+      <TrainingCard training={data.training} accentSolid={ACCENT.solid} accentBadge={ACCENT.badge} />
+      <ResultSummary text={resumenComprasAuto(recs)} tone="bg-purchases-50 text-purchases-700" />
+
+      {recs.length > 0 ? (
         <>
-          {filtered.length !== rows.length && (
-            <p className="text-xs text-slate-500">
-              Mostrando {filtered.length} de {rows.length} productos.
-            </p>
-          )}
-          <PurchasesChart rows={filtered} />
-          <ResultTable columns={cols} rows={filtered} />
+          <ResultTable columns={cols} rows={recs} />
+          <p className="text-xs text-slate-500">
+            <span className="font-medium">Cómo se calcula:</span> {PORQUE}
+          </p>
         </>
       ) : (
-        <p className="text-sm text-slate-500">No hay productos que cumplan los filtros seleccionados.</p>
+        <p className="text-sm text-slate-500">El modelo no produjo recomendaciones para esta consulta.</p>
       )}
+
+      <TechnicalDetails>
+        <p>
+          Firma del esquema: <span className="font-mono text-slate-700">{data.training.schema_signature}</span>
+        </p>
+        {Object.keys(data.training.honest_metrics).length > 0 && (
+          <p>
+            Métricas completas:{' '}
+            {Object.entries(data.training.honest_metrics)
+              .map(([k, v]) => `${k}=${fmtNum(v)}`)
+              .join(' · ')}
+          </p>
+        )}
+      </TechnicalDetails>
     </section>
   )
 }
