@@ -130,6 +130,87 @@ export interface DomainResponse {
   inventory: InventoryResponse
 }
 
+// --- Predicción agnóstica auto-entrenada (agnostico.py, ADR-0023) ---
+// El cliente declara su propio esquema y trae columnas arbitrarias; el sistema entrena el
+// algoritmo ganador al vuelo. Las filas/salidas son registros de columnas libres.
+export type AutoFeatureType = 'numeric' | 'categorical'
+
+export interface AutoFeatureSpec {
+  name: string
+  type: AutoFeatureType
+  known_future?: boolean // def true
+}
+
+export interface AutoSchemaSpec {
+  target: string
+  date?: string | null
+  series_keys: string[]
+  features: AutoFeatureSpec[]
+}
+
+/** Veredicto «quédate-con-el-mejor»: candidato recién entrenado vs campeón persistido. */
+export interface SeleccionModelo {
+  comparado: boolean
+  metrica: string // p. ej. "WAPE" | "ROC_AUC"
+  mejor_es: 'mayor' | 'menor'
+  candidato: number | null
+  campeon: number | null
+  adoptado: 'candidato' | 'campeon'
+}
+
+/** Resumen honesto del modelo entrenado al vuelo (común a las tres respuestas). */
+export interface AutoTrainingInfo {
+  winner_algorithm: string
+  trained_rows: number
+  honest_metrics: Record<string, number>
+  candidates?: Record<string, number> | null
+  reused_cached_model: boolean
+  schema_signature: string
+  threshold_probability?: number | null
+  seleccion?: SeleccionModelo | null
+}
+
+export type AutoRow = Record<string, string | number | boolean | null>
+
+export interface AutoSalesRequest {
+  schema: AutoSchemaSpec
+  horizon: number
+  granularity?: Granularity
+  rows: AutoRow[]
+  future?: AutoRow[] | null
+}
+export interface AutoSalesResponse {
+  field: 'sales'
+  training: AutoTrainingInfo
+  forecast: AutoRow[]
+  metadata: Record<string, unknown>
+}
+
+export interface AutoInventoryRequest {
+  schema: AutoSchemaSpec
+  rows: AutoRow[]
+  items: AutoRow[]
+  high_demand_quantile?: number
+}
+export interface AutoInventoryResponse {
+  field: 'inventory'
+  training: AutoTrainingInfo
+  alerts: AutoRow[]
+  metadata: Record<string, unknown>
+}
+
+export interface AutoPurchasesRequest {
+  schema: AutoSchemaSpec
+  rows: AutoRow[]
+  items: AutoRow[]
+}
+export interface AutoPurchasesResponse {
+  field: 'purchases'
+  training: AutoTrainingInfo
+  recommendation: AutoRow[]
+  metadata: Record<string, unknown>
+}
+
 // --- Modo lote (jobs.py) ---
 export type JobStatusValue = 'queued' | 'running' | 'done' | 'error'
 

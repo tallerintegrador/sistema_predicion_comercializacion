@@ -5,8 +5,15 @@
  * dominio; status 202 = `JobAccepted` (modo lote). El caller (usePrediction)
  * decide si hay que hacer polling.
  */
-import { getBlob, getJson, postFile, postJson } from './client'
+import { getBlob, getJson, postFile, postJson, postJsonBlob } from './client'
 import type {
+  AutoInventoryRequest,
+  AutoInventoryResponse,
+  AutoPurchasesRequest,
+  AutoPurchasesResponse,
+  AutoSalesRequest,
+  AutoSalesResponse,
+  AutoSchemaSpec,
   CatalogResponse,
   Domain,
   InventoryRequest,
@@ -46,6 +53,34 @@ export const postPurchases = (req: PurchasesRequest) =>
 
 export const postInventory = (req: InventoryRequest) =>
   predict<InventoryRequest, InventoryResponse>('/inventory', req)
+
+// --- Predicción agnóstica auto-entrenada (ADR-0023) ---
+// El cliente declara su esquema (`schema`) y trae columnas arbitrarias (`rows`). El backend
+// entrena el ganador al vuelo y responde 200 (no hay modo lote: el entrenamiento es síncrono).
+export const postAutoSales = (req: AutoSalesRequest) =>
+  postJson<AutoSalesResponse>('/auto/sales', req).then((r) => r.data)
+
+export const postAutoInventory = (req: AutoInventoryRequest) =>
+  postJson<AutoInventoryResponse>('/auto/inventory', req).then((r) => r.data)
+
+export const postAutoPurchases = (req: AutoPurchasesRequest) =>
+  postJson<AutoPurchasesResponse>('/auto/purchases', req).then((r) => r.data)
+
+export type AutoDomain = 'sales' | 'inventory' | 'purchases'
+
+/** Descarga la plantilla Excel generada a la medida del esquema declarado. */
+export const downloadAutoTemplate = (domain: AutoDomain, schema: AutoSchemaSpec) =>
+  postJsonBlob(`/auto/${domain}/template`, { schema })
+
+/** Sube un Excel (hoja `datos` [+ `items`]) y devuelve el resultado auto-entrenado. */
+export async function uploadAutoExcel<TRes>(
+  domain: AutoDomain,
+  file: File,
+  fields: Record<string, string | number>,
+): Promise<TRes> {
+  const { data } = await postFile<TRes>(`/auto/${domain}/excel`, file, fields)
+  return data
+}
 
 // --- Canal Excel ---
 // `fields` lleva la configuración de pantalla cuando aplica: en Ventas, el archivo es

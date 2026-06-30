@@ -18,6 +18,7 @@ from spc.api.jobs_entrenamiento import GestorEntrenamientos
 from spc.api.schemas.auth import SessionUser
 from spc.api.seguridad import usuario_opcional
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.cache_agnostico import CacheModelosAgnosticos
 from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 
@@ -64,6 +65,18 @@ def obtener_resolutor_cliente(request: Request) -> ResolutorModeloCliente | None
     se inicializó: en ese caso el serving usa siempre el congelado (default intacto).
     """
     return getattr(request.app.state, "resolutor_cliente", None)
+
+
+def obtener_cache_agnostico(request: Request) -> CacheModelosAgnosticos:
+    """Devuelve la caché de modelos agnósticos auto-entrenados (ADR-0023), creada en el arranque.
+
+    Lanza ``ServicioNoDisponible`` (→ 503) si no se inicializó. Es la vía por la que los
+    endpoints ``/auto/*`` reusan o entrenan modelos por (cliente, esquema, datos).
+    """
+    cache = getattr(request.app.state, "cache_agnostico", None)
+    if cache is None:
+        raise ServicioNoDisponible("La predicción agnóstica no está disponible.")
+    return cache
 
 
 def obtener_entrenamientos(request: Request) -> GestorEntrenamientos:

@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
-import { Layout, useSeccionesVisibles } from './components/Layout'
-import type { View } from './components/Layout'
-import { useAuth } from './auth/AuthContext'
+import type { ComponentType } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { Layout } from './components/Layout'
+import { useSeccionesVisibles } from './hooks/useSeccionesVisibles'
+import { useAuth } from './auth/useAuth'
+import type { View } from './theme/modules'
 import { LoginPage } from './pages/LoginPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { HomePage } from './pages/HomePage'
@@ -10,21 +12,24 @@ import { CatalogPage } from './pages/CatalogPage'
 import { SalesPage } from './pages/SalesPage'
 import { PurchasesPage } from './pages/PurchasesPage'
 import { InventoryPage } from './pages/InventoryPage'
-import { TrainingPage } from './pages/TrainingPage'
+import { LibrePage } from './pages/LibrePage'
 import { UsersPage } from './pages/UsersPage'
 
-/** Panel principal (con sesión y onboarding resuelto): sidebar + sección activa. */
+/** Componente de página por sección. La visibilidad la decide el permiso, no este mapa. */
+const PAGES: Record<View, ComponentType> = {
+  home: HomePage,
+  catalog: CatalogPage,
+  sales: SalesPage,
+  purchases: PurchasesPage,
+  inventory: InventoryPage,
+  auto: LibrePage,
+  users: UsersPage,
+  about: AboutPage,
+}
+
+/** Panel principal (con sesión y onboarding resuelto): rutas dentro del layout. */
 function MainApp() {
   const secciones = useSeccionesVisibles()
-  const [view, setView] = useState<View | null>(null)
-
-  // Vista por defecto = primera sección permitida; corrige si la actual deja de estar visible.
-  useEffect(() => {
-    if (secciones.length === 0) return
-    if (view === null || !secciones.some((s) => s.id === view)) {
-      setView(secciones[0].id)
-    }
-  }, [secciones, view])
 
   if (secciones.length === 0) {
     return (
@@ -34,19 +39,19 @@ function MainApp() {
     )
   }
 
-  const activo = view ?? secciones[0].id
+  // Destino de respaldo: primera sección permitida (para rutas desconocidas o sin acceso).
+  const inicio = secciones[0].path
 
   return (
-    <Layout active={activo} onChange={setView}>
-      {activo === 'home' && <HomePage onNavigate={setView} />}
-      {activo === 'catalog' && <CatalogPage />}
-      {activo === 'sales' && <SalesPage />}
-      {activo === 'purchases' && <PurchasesPage />}
-      {activo === 'inventory' && <InventoryPage />}
-      {activo === 'training' && <TrainingPage />}
-      {activo === 'users' && <UsersPage />}
-      {activo === 'about' && <AboutPage />}
-    </Layout>
+    <Routes>
+      <Route element={<Layout />}>
+        {secciones.map((s) => {
+          const Page = PAGES[s.id]
+          return <Route key={s.id} path={s.path} element={<Page />} />
+        })}
+        <Route path="*" element={<Navigate to={inicio} replace />} />
+      </Route>
+    </Routes>
   )
 }
 

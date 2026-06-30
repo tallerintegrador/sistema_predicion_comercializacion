@@ -23,7 +23,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from spc.api.errors import registrar_manejadores
 from spc.api.jobs import GestorTrabajos
 from spc.api.jobs_entrenamiento import GestorEntrenamientos
-from spc.api.routers import almacen, auth, catalog, compras, entrenamiento, excel, jobs, ventas
+from spc.api.routers import (
+    agnostico,
+    almacen,
+    auth,
+    catalog,
+    compras,
+    entrenamiento,
+    excel,
+    jobs,
+    ventas,
+)
 from spc.config import (
     Settings,
     auth_enabled,
@@ -36,6 +46,7 @@ from spc.config import (
 )
 from spc.config import client_models_dir as cfg_client_models_dir
 from spc.service.artefactos import RegistroArtefactos
+from spc.service.cache_agnostico import CacheModelosAgnosticos
 from spc.service.modelo_cliente import ResolutorModeloCliente
 from spc.service.repositorio import RepositorioPredicciones
 from spc.service.repositorio_auth import RepositorioAuth
@@ -64,6 +75,7 @@ TAGS_METADATA = [
     {"name": "SALES", "description": "Pronóstico de demanda por período, punto de venta y producto."},
     {"name": "PURCHASES", "description": "Cantidad a reponer y punto de reorden, derivados del pronóstico."},
     {"name": "INVENTORY", "description": "Clase de demanda, riesgo de quiebre, stock recomendado y segmento de tienda."},
+    {"name": "AUTO", "description": "Predicción agnóstica auto-entrenada: el cliente declara su esquema y columnas (ADR-0023)."},
     {"name": "catalog", "description": "Catálogo de predicciones por dominio (qué entra, qué sale, qué limita)."},
     {"name": "excel", "description": "Canal Excel: descarga de plantilla y carga de datos por dominio (mismo contrato)."},
     {"name": "batch", "description": "Modo por lote (asíncrono): estado y resultado de los envíos grandes (job_id)."},
@@ -170,6 +182,9 @@ def crear_app(
     # serving usa siempre el congelado y los endpoints de training responden 503.
     cmd = client_models_dir or cfg_client_models_dir()
     app.state.client_models_dir = cmd
+    # Caché de modelos agnósticos auto-entrenados (ADR-0023): siempre disponible; reusa la
+    # carpeta de artefactos por cliente (conviven sin pisarse con los del ADR-0013).
+    app.state.cache_agnostico = CacheModelosAgnosticos(cmd)
     if client_adjustment_enabled():
         app.state.resolutor_cliente = ResolutorModeloCliente(cmd)
         app.state.entrenamientos = GestorEntrenamientos(max_workers=training_workers())
@@ -190,6 +205,7 @@ def crear_app(
     app.include_router(ventas.router)
     app.include_router(compras.router)
     app.include_router(almacen.router)
+    app.include_router(agnostico.router)
     app.include_router(catalog.router)
     app.include_router(excel.router)
     app.include_router(jobs.router)

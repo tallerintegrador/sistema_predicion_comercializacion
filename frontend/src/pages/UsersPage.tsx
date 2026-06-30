@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   createRole,
   createUser,
@@ -22,16 +22,21 @@ export function UsersPage() {
   const [usuarios, setUsuarios] = useState<UserOut[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const recargar = async () => {
-    const [r, u] = await Promise.all([getRoles(), getUsers()])
-    setRoles(r)
-    setUsuarios(u)
-  }
+  // Devuelve la promesa y aplica el estado en su callback (no en el cuerpo síncrono),
+  // para no disparar setState directo dentro del efecto de carga inicial.
+  const recargar = useCallback(
+    () =>
+      Promise.all([getRoles(), getUsers()]).then(([r, u]) => {
+        setRoles(r)
+        setUsuarios(u)
+      }),
+    [],
+  )
 
   useEffect(() => {
     getPermissions().then(setPermisos).catch(() => setError('No se pudo cargar el catálogo de permisos.'))
     recargar().catch(() => setError('No se pudieron cargar usuarios y roles.'))
-  }, [])
+  }, [recargar])
 
   const manejar = (fn: () => Promise<void>) => async () => {
     setError(null)

@@ -6,29 +6,16 @@
  * filtrar el sidebar y proteger pantallas. La autorización REAL la aplica el backend en
  * cada endpoint: esto es solo experiencia de usuario (no mostrar lo que no se puede usar).
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { getMe, login as apiLogin } from '../api/auth'
 import type { SessionUser } from '../api/auth'
 import { getAuthToken, setAuthToken, setUnauthorizedHandler } from '../api/client'
-
-type Estado = 'loading' | 'anon' | 'authed'
-
-interface AuthContextValue {
-  status: Estado
-  user: SessionUser | null
-  login: (userId: string, password: string) => Promise<void>
-  logout: () => void
-  refreshUser: () => Promise<void>
-  hasPerm: (key: string) => boolean
-  canModule: (domain: string) => boolean
-  isAdmin: boolean
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null)
+import { AuthContext, type AuthContextValue, type Estado } from './useAuth'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<Estado>('loading')
+  // Estado inicial derivado del token: sin token ⇒ 'anon' directo (sin setState en efecto).
+  const [status, setStatus] = useState<Estado>(() => (getAuthToken() ? 'loading' : 'anon'))
   const [user, setUser] = useState<SessionUser | null>(null)
 
   const logout = useCallback(() => {
@@ -44,12 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout])
 
   // Restauración de sesión al arrancar: si hay token, validarlo con /auth/me.
+  // (Sin token el estado ya nació 'anon', así que aquí no hay nada que hacer.)
   useEffect(() => {
+    if (!getAuthToken()) return
     let activo = true
-    if (!getAuthToken()) {
-      setStatus('anon')
-      return
-    }
     getMe()
       .then((u) => {
         if (!activo) return
@@ -99,10 +84,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth debe usarse dentro de <AuthProvider>.')
-  return ctx
 }

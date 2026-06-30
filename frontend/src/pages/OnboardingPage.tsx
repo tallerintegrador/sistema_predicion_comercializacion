@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { getProfileOptions, saveProfile } from '../api/auth'
 import type { ProfileOptions } from '../api/auth'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../api/client'
 import {
   CURRENCY_LABELS,
