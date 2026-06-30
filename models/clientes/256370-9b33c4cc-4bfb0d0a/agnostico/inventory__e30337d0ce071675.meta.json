@@ -1,0 +1,26 @@
+{
+  "dominio": "inventory",
+  "sig_esquema": "e30337d0ce071675",
+  "sig_datos": "e4b2892785c6ec39",
+  "client_id": "256370-9b33c4cc",
+  "info": {
+    "winner_algorithm": "LightGBM[sin_remuestreo]",
+    "trained_rows": 177,
+    "honest_metrics": {
+      "PR_AUC": 0.1528,
+      "Recall": 0.0,
+      "F1": 0.0,
+      "Precision": 0.0,
+      "ROC_AUC": 0.4074,
+      "Accuracy": 0.619,
+      "prevalencia": 0.1429,
+      "umbral": 0.5915
+    },
+    "candidates": null,
+    "reused_cached_model": false,
+    "schema_signature": "e30337d0ce071675",
+    "threshold_probability": 0.5915
+  },
+  "guardado_utc": "2026-06-30T05:34:49.390744+00:00",
+  "artefacto": "inventory__e30337d0ce071675.joblib"
+}
