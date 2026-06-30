@@ -210,6 +210,7 @@ def entrenar_regresion(
     seed: int = 42,
     usar_gpu: bool = False,
     ensemble: bool = True,
+    usar_zoo_liviano: bool = False,
 ) -> ResultadoAutoMLRegresion:
     """Entrena el zoo sobre el esquema declarado, elige el ganador en VALID y reajusta.
 
@@ -217,6 +218,9 @@ def entrenar_regresion(
     unidades); gana el de menor MAE. Si ``ensemble`` y hay ≥2 boosters, se combinan los
     mejores con pesos convexos. La métrica de cierre (TEST) se calcula con **pronóstico
     recursivo** (honesto). El predictor final se reajusta sobre TODA la historia.
+
+    Con ``usar_zoo_liviano=True`` se usa el zoo **solo sklearn** (rediseño 3×3, modelos en
+    el momento): Ridge/RandomForest/HistGradientBoosting, sin LightGBM/XGBoost/GPU.
     """
     obj = spec.objetivo
     df_feat, features, cats = construir_features(df, spec)
@@ -263,7 +267,12 @@ def entrenar_regresion(
     techo_unidades = float(np.quantile(y_units[m_train], 0.999)) * 2.0 if m_train.any() else None
     techo_log = float(np.log1p(techo_unidades)) if techo_unidades else None
 
-    zoo = construir_zoo(seed, features, cats, usar_gpu=usar_gpu)
+    if usar_zoo_liviano:
+        from spc.models.zoo_liviano import construir_zoo_liviano
+
+        zoo = construir_zoo_liviano(seed, features, cats)
+    else:
+        zoo = construir_zoo(seed, features, cats, usar_gpu=usar_gpu)
     X_cat = _matriz_categorica(df_model, features, cats)
     X_num = _matriz_numerica(df_model, features, cats)
 

@@ -29,6 +29,7 @@ from spc.api.routers import (
     auth,
     catalog,
     compras,
+    dominios_3x3,
     entrenamiento,
     excel,
     jobs,
@@ -76,6 +77,7 @@ TAGS_METADATA = [
     {"name": "PURCHASES", "description": "Cantidad a reponer y punto de reorden, derivados del pronóstico."},
     {"name": "INVENTORY", "description": "Clase de demanda, riesgo de quiebre, stock recomendado y segmento de tienda."},
     {"name": "AUTO", "description": "Predicción agnóstica auto-entrenada: el cliente declara su esquema y columnas (ADR-0023)."},
+    {"name": "3X3", "description": "Rediseño 3×3: un formato por dominio (ventas/compras/almacén) que alimenta los tres modelos (regresión, clasificación, clustering) entrenados en el momento."},
     {"name": "catalog", "description": "Catálogo de predicciones por dominio (qué entra, qué sale, qué limita)."},
     {"name": "excel", "description": "Canal Excel: descarga de plantilla y carga de datos por dominio (mismo contrato)."},
     {"name": "batch", "description": "Modo por lote (asíncrono): estado y resultado de los envíos grandes (job_id)."},
@@ -206,6 +208,7 @@ def crear_app(
     app.include_router(compras.router)
     app.include_router(almacen.router)
     app.include_router(agnostico.router)
+    app.include_router(dominios_3x3.router)
     app.include_router(catalog.router)
     app.include_router(excel.router)
     app.include_router(jobs.router)
