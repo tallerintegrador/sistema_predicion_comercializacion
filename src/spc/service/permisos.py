@@ -6,10 +6,10 @@ para el acceso a un módulo y ``action:<verbo>`` para una acción transversal. E
 catálogo de permisos (``GET /permissions``) la consumen, de modo que no hay listas
 paralelas que se desincronicen.
 
-**Sin hardcodeo de módulos:** los permisos de módulo se DERIVAN de los dominios reales
-del catálogo (``spc.api.catalog``), no de una lista fija aquí. Si mañana el catálogo
-expone un dominio nuevo, su permiso de módulo aparece solo. Las acciones, en cambio, son
-vocabulario operacional del backend (no salen de un artefacto) y sí se declaran aquí.
+Los permisos de módulo cubren los tres dominios del contrato 3×3 (``/v2/*``), con las
+claves en inglés que consume el enforcement por endpoint (``module:sales`` → ventas,
+``module:purchases`` → compras, ``module:inventory`` → almacén). Las acciones son
+vocabulario operacional del backend y se declaran aquí.
 """
 
 from __future__ import annotations
@@ -42,18 +42,11 @@ _ACCIONES: tuple[tuple[str, str], ...] = (
 _ETIQUETA_MODULO = {"sales": "Ventas", "purchases": "Compras", "inventory": "Almacén"}
 
 
-def _dominios_catalogo() -> list[str]:
-    """Ids de dominio del catálogo (import perezoso para evitar ciclos en el arranque)."""
-    from spc.api.catalog import construir_catalogo
-
-    return [d.domain for d in construir_catalogo().domains]
-
-
 def permisos_modulo() -> list[Permiso]:
-    """Permisos de acceso a módulo, derivados de los dominios del catálogo."""
+    """Permisos de acceso a módulo, uno por dominio del contrato 3×3 (``/v2/*``)."""
     return [
         Permiso(key=f"module:{dom}", label=_ETIQUETA_MODULO.get(dom, dom.capitalize()), group="module")
-        for dom in _dominios_catalogo()
+        for dom in _ETIQUETA_MODULO
     ]
 
 

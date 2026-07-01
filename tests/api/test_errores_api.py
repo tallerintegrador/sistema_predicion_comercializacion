@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import pytest
 
+_RUTAS_V2 = ("/v2/ventas", "/v2/compras", "/v2/almacen")
 
-def test_swagger_documenta_los_tres_contratos(client):
-    """El OpenAPI expone los tres endpoints del contrato y la docs de Swagger carga."""
+
+def test_swagger_documenta_los_dominios_3x3(client):
+    """El OpenAPI expone los tres endpoints 3×3 y la docs de Swagger carga."""
     oa = client.get("/openapi.json")
     assert oa.status_code == 200
     esquema = oa.json()
-    assert {"/sales", "/purchases", "/inventory"} <= set(esquema["paths"])
+    assert set(_RUTAS_V2) <= set(esquema["paths"])
     # Cada endpoint documenta una respuesta 200 y los errores 400/422.
-    for ruta in ("/sales", "/purchases", "/inventory"):
+    for ruta in _RUTAS_V2:
         respuestas = esquema["paths"][ruta]["post"]["responses"]
         assert "200" in respuestas
         assert "422" in respuestas
@@ -20,13 +22,13 @@ def test_swagger_documenta_los_tres_contratos(client):
     assert client.get("/docs").status_code == 200
 
 
-def test_swagger_incluye_ejemplos_del_contrato(client):
-    """Los esquemas de request llevan el ejemplo de la sección 3 del contrato."""
+def test_swagger_incluye_ejemplo_del_contrato(client):
+    """El esquema de request 3×3 lleva el ejemplo (rows + horizon)."""
     esquema = client.get("/openapi.json").json()
     componentes = esquema["components"]["schemas"]
-    ejemplo = componentes["VentasRequest"].get("example", {})
-    assert ejemplo.get("granularity") == "day"
-    assert "history" in ejemplo
+    ejemplo = componentes["Analisis3x3Request"].get("example", {})
+    assert ejemplo.get("horizon") == 14
+    assert "rows" in ejemplo
 
 
 def test_salud(client):
@@ -39,10 +41,11 @@ def test_salud(client):
 @pytest.mark.parametrize(
     "ruta,cuerpo",
     [
-        ("/sales", {"horizon": "siete", "history": []}),  # tipo inválido + lista vacía
-        ("/purchases", {"history": "no-es-lista"}),  # falta parametros + tipo inválido
-        ("/inventory", {}),  # faltan campos obligatorios
-        ("/sales", "esto no es json válido para el esquema"),  # cuerpo no-objeto
+        ("/v2/ventas", {"horizon": "siete", "rows": [{"fecha": "2023-01-01"}]}),  # horizon tipo inválido
+        ("/v2/compras", {"rows": "no-es-lista"}),  # tipo inválido
+        ("/v2/almacen", {"rows": []}),  # lista vacía (min_length=1)
+        ("/v2/ventas", "esto no es json válido para el esquema"),  # cuerpo no-objeto
+        ("/v2/ventas", {"rows": [{"fecha": "2023-01-01", "sku": "SKU-001"}], "horizon": 7}),  # faltan columnas → 400
     ],
 )
 def test_entradas_mal_formadas_no_producen_500(client, ruta, cuerpo):

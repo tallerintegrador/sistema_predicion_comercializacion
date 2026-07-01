@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from spc.api.dependencies import obtener_cache_agnostico, obtener_client_id
 from spc.api.ingest import agnostico_excel
-from spc.api.ingest.lector import ArchivoDemasiadoGrande
+from spc.api.ingest.errores_excel import ArchivoDemasiadoGrande
 from spc.api.schemas.agnostico import (
     AutoInventoryRequest,
     AutoInventoryResponse,

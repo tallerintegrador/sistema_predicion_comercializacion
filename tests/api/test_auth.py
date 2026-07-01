@@ -3,7 +3,8 @@
 Activan ``SPC_AUTH_ENABLED`` (la suite previa lo desactiva por defecto) y construyen una
 app con un repositorio de auth **temporal** (no toca el ``spc.db`` del repo). Cubren:
 login, identidad, enforcement por endpoint (401/403), administración de roles/usuarios y
-el onboarding del perfil de cliente.
+el onboarding del perfil de cliente. La predicción protegida se ejercita contra el
+contrato 3×3 (``/v2/ventas``), que entrena en el momento (sin artefactos).
 """
 
 from __future__ import annotations
@@ -13,16 +14,16 @@ from fastapi.testclient import TestClient
 
 from spc.api.main import crear_app
 from spc.service.repositorio_auth import RepositorioAuth
+from spc.synthetic import generar_dominio
 
 
 @pytest.fixture
-def auth_client(registro, tmp_path, monkeypatch):
+def auth_client(tmp_path, monkeypatch):
     """`TestClient` con control de acceso ACTIVO y base de auth temporal (admins sembrados)."""
     monkeypatch.setenv("SPC_AUTH_ENABLED", "1")
     monkeypatch.setenv("SPC_AUTH_SECRET", "secreto-de-prueba")
     repo = RepositorioAuth.crear(tmp_path / "auth.db")
     app = crear_app(
-        registro=registro,
         auth_repo=repo,
         client_models_dir=tmp_path / "clientes",
         cors_origins=["http://localhost:5173"],
@@ -41,8 +42,11 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _cuerpo_sales(historico: list[dict]) -> dict:
-    return {"granularity": "day", "horizon": 7, "history": historico}
+def _cuerpo_ventas() -> dict:
+    """Cuerpo válido de ``/v2/ventas`` (filas pequeñas del formato fijo del dominio)."""
+    df = generar_dominio("ventas", seed=42, n_tiendas=2, n_productos=4, n_dias=120)
+    df["fecha"] = df["fecha"].astype(str)
+    return {"rows": df.to_dict(orient="records"), "horizon": 7}
 
 
 # ---------------------------------------------------------------------------
@@ -89,20 +93,20 @@ def test_me_con_token_devuelve_identidad(auth_client) -> None:
 # ---------------------------------------------------------------------------
 # Enforcement en endpoints existentes
 # ---------------------------------------------------------------------------
-def test_prediccion_sin_token_es_401(auth_client, historico_contrato) -> None:
-    r = auth_client.post("/sales", json=_cuerpo_sales(historico_contrato))
+def test_prediccion_sin_token_es_401(auth_client) -> None:
+    r = auth_client.post("/v2/ventas", json=_cuerpo_ventas())
     assert r.status_code == 401
 
 
-def test_admin_puede_predecir(auth_client, historico_contrato) -> None:
+def test_admin_puede_predecir(auth_client) -> None:
     token = _login(auth_client, "256317", "256317")
-    r = auth_client.post("/sales", json=_cuerpo_sales(historico_contrato), headers=_auth(token))
+    r = auth_client.post("/v2/ventas", json=_cuerpo_ventas(), headers=_auth(token))
     assert r.status_code == 200, r.text
-    assert "forecast" in r.json()
+    assert "regresion" in r.json()
 
 
-def test_catalog_sin_token_es_401(auth_client) -> None:
-    assert auth_client.get("/catalog").status_code == 401
+def test_demo_sin_token_es_401(auth_client) -> None:
+    assert auth_client.get("/v2/ventas/demo").status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -114,13 +118,13 @@ def test_permisos_catalogo_para_admin(auth_client) -> None:
     assert r.status_code == 200
     claves = {p["key"] for p in r.json()["permissions"]}
     assert "module:sales" in claves
-    assert "action:training" in claves
+    assert "action:forecast" in claves
 
 
-def test_flujo_rol_restringido_y_autorizacion(auth_client, historico_contrato) -> None:
+def test_flujo_rol_restringido_y_autorizacion(auth_client) -> None:
     admin = _login(auth_client, "256317", "256317")
 
-    # El admin crea un rol "viewer" que solo puede ver el catálogo.
+    # El admin crea un rol restringido (solo el permiso de catálogo, sin predicción).
     r = auth_client.post(
         "/roles",
         json={"name": "viewer", "description": "Solo lectura", "permissions": ["action:catalog"]},
@@ -140,10 +144,10 @@ def test_flujo_rol_restringido_y_autorizacion(auth_client, historico_contrato) -
 
     viewer = _login(auth_client, "900001", "secret123")
 
-    # Puede ver el catálogo (tiene el permiso)...
-    assert auth_client.get("/catalog", headers=_auth(viewer)).status_code == 200
+    # Puede consultar su propia identidad (autenticado)...
+    assert auth_client.get("/auth/me", headers=_auth(viewer)).status_code == 200
     # ...pero no predecir (le faltan module:sales y action:forecast)...
-    r = auth_client.post("/sales", json=_cuerpo_sales(historico_contrato), headers=_auth(viewer))
+    r = auth_client.post("/v2/ventas", json=_cuerpo_ventas(), headers=_auth(viewer))
     assert r.status_code == 403
     assert r.json()["error"]["type"] == "forbidden"
     # ...ni administrar usuarios.
