@@ -43,6 +43,13 @@ class ConfigDominio:
     # k del clustering: None = automático (mejor silueta); un entero = k fijo. En ALMACÉN se
     # fija k=3 por interpretación ABC (A/B/C), aunque la silueta prefiera k=2 (ADR-0025 c).
     k_fijo: int | None = None
+    # Estilo de la etiqueta narrativa del clustering (ADR-0025 c): "volumen" (ventas),
+    # "abc" (almacén A/B/C) o "servicio" (compras, por lead time). `columna_etiqueta` es la
+    # columna del perfil por la que se ordenan/nombran los grupos; si es None se usa
+    # `columna_volumen`. En COMPRAS se rankea por lead time (lo que de verdad los separa),
+    # no por costo, para que la etiqueta no mienta.
+    estilo_etiqueta: str = "volumen"
+    columna_etiqueta: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +209,9 @@ CONFIGS: dict[str, ConfigDominio] = {
         perfil_entidades=_perfil_compras,
         columna_volumen="costo_medio",
         columnas_clustering=("lead_time_medio", "cumplimiento_medio", "costo_medio"),
+        # Los proveedores se separan por VELOCIDAD de entrega, no por costo: etiqueta por lead time.
+        estilo_etiqueta="servicio",
+        columna_etiqueta="lead_time_medio",
     ),
     "almacen": ConfigDominio(
         dominio="almacen",
@@ -222,6 +232,7 @@ CONFIGS: dict[str, ConfigDominio] = {
         columna_volumen="demanda_media",
         columnas_clustering=("rotacion_media", "demanda_media", "cobertura_media"),
         k_fijo=3,  # A/B/C: tres niveles por interpretación de negocio (ver ADR-0025 c)
+        estilo_etiqueta="abc",  # clase A (mayor demanda) / B / C, ordenado por demanda_media
     ),
 }
 

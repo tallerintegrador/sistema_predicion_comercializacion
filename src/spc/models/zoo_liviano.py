@@ -339,20 +339,47 @@ class ResultadoClustering:
     asignacion: pd.DataFrame
 
 
-def _etiquetas_por_volumen(
-    perfil: pd.DataFrame, columnas: list[str], labels: np.ndarray, columna_volumen: str
+def _etiquetas_narrativas(
+    perfil: pd.DataFrame,
+    columnas: list[str],
+    labels: np.ndarray,
+    columna_rank: str,
+    estilo: str,
 ) -> tuple[dict[int, str], dict[int, dict[str, float]]]:
-    """Etiqueta cada segmento por su nivel de ``columna_volumen`` (bajo/medio/alto)."""
+    """Etiqueta narrativa por segmento, **según el dominio** (ADR-0025 c).
+
+    Ordena los segmentos por la media de ``columna_rank`` (ascendente) y les pone una
+    etiqueta según ``estilo``, para que el nombre **describa lo que de verdad separa** a
+    los grupos y no mienta:
+
+    - ``"volumen"`` (ventas): ``volumen bajo/medio/alto`` por nivel de demanda.
+    - ``"abc"`` (almacén): ``clase A/B/C`` (A = mayor demanda) — el marco ABC clásico.
+    - ``"servicio"`` (compras): ``servicio rápido/medio/lento`` por lead time (menor lead =
+      más rápido); antes se rotulaba "volumen" por costo, lo que ocultaba que el eje real
+      que separa a los proveedores es la velocidad de entrega.
+    """
     medias = perfil.assign(_seg=labels).groupby("_seg")[columnas].mean()
-    orden = medias[columna_volumen].sort_values().index.tolist()  # bajo → alto
+    orden = medias[columna_rank].sort_values().index.tolist()  # menor → mayor
     k = len(orden)
-    if k <= 2:
-        nivel = {orden[0]: "bajo", orden[-1]: "alto"}
-    elif k == 3:
-        nivel = {orden[0]: "bajo", orden[1]: "medio", orden[2]: "alto"}
-    else:
-        nivel = {seg: f"nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
-    etiquetas = {int(s): f"volumen {nivel[s]}" for s in medias.index}
+    if estilo == "abc":
+        letras = ["A", "B", "C", "D", "E", "F"]
+        # A = el de mayor `columna_rank` (mayor demanda); C = el menor.
+        nivel = {seg: f"clase {letras[i]}" for i, seg in enumerate(reversed(orden))}
+    elif estilo == "servicio":
+        if k <= 2:
+            nivel = {orden[0]: "servicio rápido", orden[-1]: "servicio lento"}
+        elif k == 3:
+            nivel = {orden[0]: "servicio rápido", orden[1]: "servicio medio", orden[2]: "servicio lento"}
+        else:
+            nivel = {seg: f"servicio nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+    else:  # "volumen"
+        if k <= 2:
+            nivel = {orden[0]: "volumen bajo", orden[-1]: "volumen alto"}
+        elif k == 3:
+            nivel = {orden[0]: "volumen bajo", orden[1]: "volumen medio", orden[2]: "volumen alto"}
+        else:
+            nivel = {seg: f"volumen nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+    etiquetas = {int(s): nivel[s] for s in medias.index}
     centroides = {
         int(s): {c: round(float(medias.loc[s, c]), 4) for c in columnas} for s in medias.index
     }
@@ -369,6 +396,8 @@ def entrenar_clustering(
     k_min: int = 2,
     k_max: int = 6,
     k_fijo: int | None = None,
+    estilo_etiqueta: str = "volumen",
+    columna_etiqueta: str | None = None,
 ) -> ResultadoClustering:
     """Entrena KMeans sobre el ``perfil`` (índice = entidad).
 
@@ -414,7 +443,8 @@ def entrenar_clustering(
 
     kmeans = KMeans(n_clusters=mejor_k, init="k-means++", n_init=10, random_state=seed).fit(Xs)
     labels = kmeans.labels_
-    etiquetas, centroides = _etiquetas_por_volumen(perfil, columnas, labels, columna_volumen)
+    col_rank = columna_etiqueta or columna_volumen
+    etiquetas, centroides = _etiquetas_narrativas(perfil, columnas, labels, col_rank, estilo_etiqueta)
     valores, conteos = np.unique(labels, return_counts=True)
     n_por_seg: dict[int, int] = {int(v): int(c) for v, c in zip(valores, conteos, strict=True)}
 

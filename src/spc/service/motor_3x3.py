@@ -206,7 +206,8 @@ def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int)
         return _segmentos_terciles(perfil, cfg.clave_entidad, cfg.columna_volumen)
 
     res = zoo_liviano.entrenar_clustering(
-        perfil, cfg.clave_entidad, cols, cfg.columna_volumen, seed=seed, k_fijo=cfg.k_fijo
+        perfil, cfg.clave_entidad, cols, cfg.columna_volumen, seed=seed, k_fijo=cfg.k_fijo,
+        estilo_etiqueta=cfg.estilo_etiqueta, columna_etiqueta=cfg.columna_etiqueta,
     )
     segmentos = [
         {cfg.clave_entidad: str(r[cfg.clave_entidad]), "segmento": int(r["segmento"]), "etiqueta": str(r["etiqueta"])}

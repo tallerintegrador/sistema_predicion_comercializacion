@@ -87,8 +87,9 @@ def analizar_almacen(
     peticion: Analisis3x3Request,
     _auth: Annotated[SessionUser | None, Depends(requiere(*_PERMISO["almacen"]))],
 ) -> dict[str, Any]:
-    """Entrena al vuelo y devuelve: pronóstico de ``dias_de_cobertura``, alerta de
-    ``riesgo_quiebre`` por serie y segmento ABC (clustering) por SKU."""
+    """Entrena al vuelo y devuelve: pronóstico de ``demanda_dia`` (demanda futura) con
+    ``indicadores_inventario`` derivados (cobertura, punto de reposición, stock de
+    seguridad), alerta de ``riesgo_quiebre`` por serie y segmento ABC (clustering) por SKU."""
     return motor_3x3.analizar("almacen", peticion.rows, horizon=peticion.horizon)
 
 
