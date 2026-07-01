@@ -130,6 +130,7 @@ def eval_clustering(dominio: str, df: pd.DataFrame) -> dict:
     res = entrenar_clustering(
         perfil, cfg.clave_entidad, list(cfg.columnas_clustering), cfg.columna_volumen,
         seed=SEED, k_fijo=cfg.k_fijo,
+        estilo_etiqueta=cfg.estilo_etiqueta, columna_etiqueta=cfg.columna_etiqueta,
     )
     cz = res.clusterizador
     grupos = [
