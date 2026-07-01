@@ -57,6 +57,21 @@ def test_demo_compras(client) -> None:
     assert body["clustering"]["k"] >= 2
 
 
+def test_almacen_predice_demanda_y_muestra_indicadores(client) -> None:
+    # ADR-0025 (e): la regresión de almacén predice `demanda_dia` y los KPIs de inventario
+    # (cobertura, punto de reposición, stock de seguridad) se MUESTRAN derivados.
+    resp = client.post("/v2/almacen", json={"rows": _rows("almacen"), "horizon": 7})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["regresion"]["objetivo"] == "demanda_dia"
+    ind = body["indicadores_inventario"]
+    assert len(ind) >= 1
+    assert {
+        "sku", "demanda_diaria_prevista", "stock_seguridad",
+        "punto_reposicion", "dias_cobertura_proyectada", "alerta_reposicion",
+    } <= set(ind[0])
+
+
 def test_rows_invalidas_devuelve_error(client) -> None:
     # Faltan columnas del formato → 400 con el error uniforme.
     resp = client.post("/v2/ventas", json={"rows": [{"fecha": "2023-01-01", "sku": "SKU-001"}], "horizon": 7})

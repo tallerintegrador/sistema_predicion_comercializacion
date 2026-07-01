@@ -24,15 +24,21 @@ from spc.synthetic.esquemas import VENTAS, validar_conforme
 def generar(
     *,
     seed: int = 42,
-    n_tiendas: int = 3,
-    n_productos: int = 8,
-    n_dias: int = 365,
+    n_tiendas: int = 2,
+    n_productos: int = 40,
+    n_dias: int = 120,
     fecha_inicio: date = date(2023, 1, 1),
 ) -> pd.DataFrame:
     """Genera el dataset sintético de VENTAS (DataFrame conforme al esquema).
 
-    El default (3 tiendas × 8 productos × 365 días ≈ 8.760 filas) está pensado para
-    entrenar modelos sklearn livianos **en el momento** sin demora perceptible.
+    El default (2 tiendas × 40 productos × 120 días ≈ 9.600 filas) es el tamaño de
+    **la demo**: prioriza la **variedad de PRODUCTOS** (40 SKUs distintos) —que es lo
+    que hace creíble el clustering (agrupa SKUs) y la clasificación— y mantiene POCAS
+    tiendas a propósito. Motivo (medido): el pronóstico se calcula **serie por serie**
+    (tienda×producto), así que el tiempo de la demo crece con el nº de series, no con
+    los productos del clustering; más tiendas solo la harían lenta sin mejorar el
+    clustering. Para experimentos **offline** sin límite de tiempo (Fase 4), súbanse
+    ``n_tiendas``/``n_dias`` desde el llamador.
     """
     fechas = comun.fechas_dia(fecha_inicio, n_dias)
     finde = comun.es_fin_de_semana(fechas)

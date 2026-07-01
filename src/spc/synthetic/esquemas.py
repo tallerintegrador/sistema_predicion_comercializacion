@@ -147,13 +147,18 @@ ALMACEN = EsquemaDominio(
         Columna("stock_actual", "float", "numerica", "Existencias disponibles ese día."),
         Columna("stock_minimo", "float", "numerica", "Nivel mínimo de política de inventario."),
         Columna("stock_maximo", "float", "numerica", "Nivel máximo de política de inventario."),
-        Columna("demanda_diaria_promedio", "float", "numerica", "Consumo medio diario reciente."),
-        Columna("dias_de_cobertura", "float", "calculada", "stock_actual / demanda_diaria_promedio (KPI, calculada)."),
+        Columna("demanda_dia", "float", "numerica", "Unidades consumidas ESE día (OBJETIVO de regresión: la demanda futura)."),
+        Columna("demanda_diaria_promedio", "float", "numerica", "Consumo medio diario reciente (media móvil; indicador de nivel)."),
+        Columna("dias_de_cobertura", "float", "calculada", "stock_actual / demanda_diaria_promedio (KPI derivado, ya NO es el objetivo)."),
         Columna("rotacion", "float", "numerica", "Índice de rotación de inventario (apoya el análisis ABC)."),
         Columna("tiempo_reposicion_dias", "int", "numerica", "Días que tarda reponer el producto."),
         Columna("zona_almacen", "str", "categorica", "Zona física del almacén."),
     ),
-    objetivo_regresion="dias_de_cobertura",
+    # ADR-0025 (e): el objetivo pasa de `dias_de_cobertura` (casi una fórmula stock/demanda,
+    # sin valor de aprendizaje) a `demanda_dia` (demanda futura, sí aprendible). Los KPIs
+    # `dias_de_cobertura`/punto de reposición/stock de seguridad se siguen MOSTRANDO como
+    # indicadores derivados del pronóstico de demanda (ver spc.service.motor_3x3).
+    objetivo_regresion="demanda_dia",
     etiqueta_clasificacion="riesgo_quiebre",
     derivacion_etiqueta="1 si stock_actual < demanda_diaria_promedio × tiempo_reposicion_dias",
     clave_entidad_clustering="sku",

@@ -40,6 +40,9 @@ class ConfigDominio:
     perfil_entidades: Callable[[pd.DataFrame], pd.DataFrame]
     columna_volumen: str  # columna del perfil que ordena los segmentos (bajo→alto)
     columnas_clustering: tuple[str, ...] = field(default_factory=tuple)
+    # k del clustering: None = automático (mejor silueta); un entero = k fijo. En ALMACÉN se
+    # fija k=3 por interpretación ABC (A/B/C), aunque la silueta prefiera k=2 (ADR-0025 c).
+    k_fijo: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -146,12 +149,16 @@ _COMPRAS_TEMPORAL: dict[str, Any] = {
     "ventanas_media_feature": (3, 6),
 }
 
-# En ALMACÉN, `dias_de_cobertura` (objetivo) = stock/demanda: stock y demanda entran como
-# SOLO-PASADO (sus valores del día revelarían el objetivo). La política (min/max/repo) es
-# conocida a futuro.
+# En ALMACÉN la política (min/max/repo) es conocida a futuro; stock y demanda son solo-pasado.
 _ALMACEN_KF = ("stock_minimo", "stock_maximo", "tiempo_reposicion_dias")
 _ALMACEN_SP = ("stock_actual", "demanda_diaria_promedio", "rotacion")
 _ALMACEN_CATS = ("categoria", "zona_almacen")
+# REGRESIÓN de almacén (ADR-0025 e): objetivo = `demanda_dia` (demanda futura). Sus rezagos
+# los añade solo el motor de features (tgt_lag_*). Como features solo-pasado se usan
+# `stock_actual` y `demanda_diaria_promedio` (su valor del DÍA contiene el consumo del día
+# → solo su historia). Se EXCLUYE `rotacion` (agregado de toda la serie, dudoso para
+# pronóstico) y, por supuesto, `dias_de_cobertura`/`demanda_diaria_promedio` del día (fuga).
+_ALMACEN_REG_SP = ("stock_actual", "demanda_diaria_promedio")
 
 
 CONFIGS: dict[str, ConfigDominio] = {
@@ -199,9 +206,9 @@ CONFIGS: dict[str, ConfigDominio] = {
     "almacen": ConfigDominio(
         dominio="almacen",
         spec_regresion=EspecEsquema(
-            objetivo="dias_de_cobertura", col_fecha="fecha",
+            objetivo="demanda_dia", col_fecha="fecha",
             cols_serie=("id_tienda", "sku"),
-            num_conocidas_futuro=_ALMACEN_KF, num_solo_pasado=_ALMACEN_SP, cats_extra=_ALMACEN_CATS,
+            num_conocidas_futuro=_ALMACEN_KF, num_solo_pasado=_ALMACEN_REG_SP, cats_extra=_ALMACEN_CATS,
         ),
         spec_clasificacion=EspecEsquema(
             objetivo="riesgo_quiebre", col_fecha="fecha",
@@ -214,6 +221,7 @@ CONFIGS: dict[str, ConfigDominio] = {
         perfil_entidades=_perfil_almacen,
         columna_volumen="demanda_media",
         columnas_clustering=("rotacion_media", "demanda_media", "cobertura_media"),
+        k_fijo=3,  # A/B/C: tres niveles por interpretación de negocio (ver ADR-0025 c)
     ),
 }
 

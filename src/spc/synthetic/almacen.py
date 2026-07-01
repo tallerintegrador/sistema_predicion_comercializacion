@@ -6,7 +6,10 @@ de **diente de sierra** (consumo diario + reposiciones), de modo que aparecen ca
 reales de cobertura baja y riesgo de quiebre.
 
 Alimenta los tres modelos del dominio:
-- **Regresión:** ``dias_de_cobertura``.
+- **Regresión:** ``demanda_dia`` (demanda futura; ADR-0025 punto e). Antes se predecía
+  ``dias_de_cobertura``, que es casi una fórmula (stock÷demanda) y no se "aprende"; ahora
+  se predice el consumo diario, que sí tiene señal (estacionalidad semanal + ruido) y del
+  que se derivan los KPIs de inventario (cobertura, punto de reposición, stock de seguridad).
 - **Clasificación:** ``riesgo_quiebre`` (derivada: stock_actual < demanda × tiempo_reposicion).
 - **Clustering:** análisis ABC de ``sku`` por rotación/volumen.
 """
@@ -25,14 +28,18 @@ from spc.synthetic.esquemas import ALMACEN, validar_conforme
 def generar(
     *,
     seed: int = 42,
-    n_tiendas: int = 3,
-    n_productos: int = 8,
-    n_dias: int = 365,
+    n_tiendas: int = 2,
+    n_productos: int = 40,
+    n_dias: int = 120,
     fecha_inicio: date = date(2023, 1, 1),
 ) -> pd.DataFrame:
     """Genera el dataset sintético de ALMACÉN (DataFrame conforme al esquema).
 
-    Default ≈ 3 tiendas × 8 productos × 365 días ≈ 8.760 filas.
+    Default ≈ 2 tiendas × 40 productos × 120 días ≈ 9.600 filas: tamaño de **la demo**.
+    Prioriza la **variedad de PRODUCTOS** (40 SKUs para el análisis ABC del clustering)
+    con POCAS tiendas a propósito, porque el pronóstico se calcula **serie por serie**
+    (tienda×producto) y más tiendas solo harían la demo lenta sin enriquecer el
+    clustering. Para experimentos **offline** (Fase 4), súbanse ``n_tiendas``/``n_dias``.
     """
     fechas = comun.fechas_dia(fecha_inicio, n_dias)
     catalogo = comun.productos(n_productos)
@@ -90,6 +97,7 @@ def generar(
                     "stock_actual": round(float(stock_serie[i]), 2),
                     "stock_minimo": round(float(stock_min), 2),
                     "stock_maximo": round(float(stock_max), 2),
+                    "demanda_dia": round(float(consumo[i]), 2),  # objetivo de regresión (demanda futura)
                     "demanda_diaria_promedio": round(float(demanda_prom_serie[i]), 3),
                     "dias_de_cobertura": round(float(dias_cobertura[i]), 3),  # calculada
                     "rotacion": round(rotacion + float(rng.normal(0.0, 0.05)), 3),

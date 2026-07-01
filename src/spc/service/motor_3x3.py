@@ -206,7 +206,7 @@ def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int)
         return _segmentos_terciles(perfil, cfg.clave_entidad, cfg.columna_volumen)
 
     res = zoo_liviano.entrenar_clustering(
-        perfil, cfg.clave_entidad, cols, cfg.columna_volumen, seed=seed
+        perfil, cfg.clave_entidad, cols, cfg.columna_volumen, seed=seed, k_fijo=cfg.k_fijo
     )
     segmentos = [
         {cfg.clave_entidad: str(r[cfg.clave_entidad]), "segmento": int(r["segmento"]), "etiqueta": str(r["etiqueta"])}
@@ -220,6 +220,56 @@ def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int)
         "curva_silueta": res.curva_silueta,
         "segmentos": segmentos,
     }
+
+
+# ===========================================================================
+# Indicadores de inventario derivados (ALMACÉN) — se MUESTRAN, no se predicen
+# ===========================================================================
+Z_SERVICIO = 1.65  # ~95 % de nivel de servicio para el stock de seguridad
+
+
+def _indicadores_inventario(
+    df: pd.DataFrame, pronostico: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """KPIs de inventario **derivados del pronóstico de demanda** (ADR-0025 e).
+
+    Con ``demanda_dia`` como objetivo, ``dias_de_cobertura``, el punto de reposición y el
+    stock de seguridad dejan de **predecirse** y se **calculan** por serie (tienda×sku) a
+    partir de la demanda prevista, el stock actual conocido y el tiempo de reposición:
+
+    - ``stock_seguridad = z · σ(demanda histórica) · √(tiempo_reposicion)`` (z≈1.65 → ~95 %)
+    - ``punto_reposicion = demanda_prevista · tiempo_reposicion + stock_seguridad``
+    - ``dias_cobertura_proyectada = stock_actual / demanda_prevista``
+    - ``alerta_reposicion = stock_actual ≤ punto_reposicion``
+    """
+    if not pronostico:
+        return []
+    serie = ["id_tienda", "sku"]
+    pred = pd.DataFrame(pronostico)
+    pred["prediccion"] = pd.to_numeric(pred["prediccion"], errors="coerce")
+    dem_prev = pred.groupby(serie)["prediccion"].mean()
+
+    ult = df.sort_values("fecha").groupby(serie, observed=True).tail(1).set_index(serie)
+    sigma = df.groupby(serie, observed=True)["demanda_dia"].std().fillna(0.0)
+
+    indicadores: list[dict[str, Any]] = []
+    for clave, d_prev in dem_prev.items():
+        d_prev = float(d_prev)
+        stock = float(ult.loc[clave, "stock_actual"])
+        lead = float(ult.loc[clave, "tiempo_reposicion_dias"])
+        ss = Z_SERVICIO * float(sigma.loc[clave]) * (lead**0.5)
+        rop = d_prev * lead + ss
+        cobertura = round(stock / d_prev, 1) if d_prev > 0 else None
+        indicadores.append({
+            "id_tienda": str(clave[0]), "sku": str(clave[1]),
+            "demanda_diaria_prevista": round(d_prev, 2),
+            "stock_actual": round(stock, 2),
+            "stock_seguridad": round(ss, 2),
+            "punto_reposicion": round(rop, 2),
+            "dias_cobertura_proyectada": cobertura,
+            "alerta_reposicion": bool(stock <= rop),
+        })
+    return indicadores
 
 
 # ===========================================================================
@@ -237,7 +287,7 @@ def analizar(
     clasificacion = _bloque_clasificacion(df, cfg, seed)
     clustering = _bloque_clustering(df, cfg, seed)
 
-    return {
+    resultado: dict[str, Any] = {
         "dominio": dominio,
         "formato": esquema_de(dominio).grano,
         "n_filas": int(len(df)),
@@ -246,6 +296,11 @@ def analizar(
         "clustering": clustering,
         "nota": "Modelos sklearn entrenados en el momento sobre los datos enviados (sin artefactos congelados).",
     }
+    # ALMACÉN: los KPIs clásicos (cobertura, punto de reposición, stock de seguridad) se
+    # MUESTRAN derivados del pronóstico de demanda, aunque ya no sean el objetivo (ADR-0025 e).
+    if dominio == "almacen":
+        resultado["indicadores_inventario"] = _indicadores_inventario(df, regresion["prediccion"])
+    return resultado
 
 
 def analizar_demo(dominio: str, *, horizon: int = HORIZON_DEFAULT, seed: int = 42) -> dict[str, Any]:

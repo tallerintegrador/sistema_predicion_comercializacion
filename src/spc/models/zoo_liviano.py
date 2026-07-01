@@ -142,6 +142,39 @@ def _proba1(modelo: Any, X: Any) -> np.ndarray:
     return np.asarray(modelo.predict_proba(X), dtype="float64")[:, 1]
 
 
+# Recall mínimo pedido al umbral de operación (fallar en detectar el evento es caro).
+RECALL_MIN_OPERATIVO = 0.75
+
+
+def _umbral_operativo(y: np.ndarray, p: np.ndarray, *, recall_min: float = RECALL_MIN_OPERATIVO) -> float:
+    """Umbral de operación del **camino 3×3** (ADR-0025 c).
+
+    Reemplaza —SOLO aquí, sin tocar ``spc.models.clasificacion.seleccionar_umbral`` del motor
+    viejo/compartido— la elección del punto de corte. Sobre la partición de **VALIDACIÓN**
+    (sin mirar TEST → sin fuga), recorre una grilla de umbrales y, como **no detectar el
+    evento** (p. ej. un retraso) es costoso, **prioriza el recall**: entre los umbrales con
+    ``recall ≥ recall_min`` elige el de **mayor F1**; si ninguno alcanza ese recall, cae al de
+    mayor F1 global. Corrige el punto de operación roto (recall≈0) que el selector automático
+    elegía sobre datos realistas.
+    """
+    y = np.asarray(y).astype(int)
+    if y.min() == y.max():  # una sola clase en validación → sin criterio
+        return 0.5
+    mejor_umbral, mejor_clave = 0.5, (-1, -1.0)
+    for thr in np.linspace(0.05, 0.95, 19):
+        pred = p >= thr
+        tp = int(np.sum(pred & (y == 1)))
+        fp = int(np.sum(pred & (y == 0)))
+        fn = int(np.sum(~pred & (y == 1)))
+        prec = tp / (tp + fp) if (tp + fp) else 0.0
+        rec = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+        clave = (1 if rec >= recall_min else 0, f1)  # 1º: cumplir recall; 2º: maximizar F1
+        if clave > mejor_clave:
+            mejor_clave, mejor_umbral = clave, float(thr)
+    return mejor_umbral
+
+
 def entrenar_clasificacion_liviana(
     df: pd.DataFrame, spec: EspecEsquema, *, seed: int = 42
 ):
@@ -154,7 +187,6 @@ def entrenar_clasificacion_liviana(
     ``ResultadoAutoMLClasificacion`` (mismo contrato que el motor agnóstico).
     """
     from spc.models.automl import PredictorGenericoClasificacion, ResultadoAutoMLClasificacion
-    from spc.models.clasificacion import seleccionar_umbral
 
     obj = spec.objetivo
     df_feat, features, cats = construir_features(df, spec)
@@ -212,7 +244,7 @@ def entrenar_clasificacion_liviana(
         else:
             m = classification_metrics_min(yva, pv)
             pr_auc_valid[nombre] = float(m.get("PR_AUC", 0.0))
-            umbral_valid[nombre], _ = seleccionar_umbral(yva, pv)
+            umbral_valid[nombre] = _umbral_operativo(yva, pv)
 
     ganador = max(pr_auc_valid, key=lambda k: pr_auc_valid[k])
     umbral = umbral_valid[ganador]
@@ -336,12 +368,19 @@ def entrenar_clustering(
     seed: int = 42,
     k_min: int = 2,
     k_max: int = 6,
+    k_fijo: int | None = None,
 ) -> ResultadoClustering:
-    """Entrena KMeans sobre el ``perfil`` (índice = entidad), eligiendo k por silueta.
+    """Entrena KMeans sobre el ``perfil`` (índice = entidad).
 
-    Escala obligatoria (StandardScaler dentro del artefacto). Evalúa k en
-    ``[k_min, min(k_max, n-1)]`` y elige el de **mayor silueta**. Requiere ≥ 3 entidades
-    (si no, lanza: el motor cae a una segmentación por volumen, ver capa de servicio).
+    Escala obligatoria (StandardScaler dentro del artefacto). Siempre calcula la **curva de
+    silueta** en ``[k_min, min(k_max, n-1)]`` (para transparencia). La elección de k:
+
+    - ``k_fijo=None`` (por defecto): elige el k de **mayor silueta** (automático). Es lo que
+      usa COMPRAS, donde el nº de grupos debe **emerger** de datos realistas.
+    - ``k_fijo=<int>``: usa ese k aunque no maximice la silueta. Lo usa ALMACÉN con k=3, por
+      la interpretación de negocio **A/B/C**; la silueta se sigue reportando con honestidad.
+
+    Requiere ≥ 3 entidades (si no, lanza: el motor cae a una segmentación por volumen).
     """
     n = len(perfil)
     if n < 3:
@@ -362,6 +401,16 @@ def entrenar_clustering(
         curva[k] = round(sil, 4)
         if sil > mejor_sil:
             mejor_k, mejor_sil = k, sil
+
+    # k fijo por interpretación de negocio (p. ej. A/B/C): respeta la elección aunque la
+    # silueta prefiera otro k. Solo se aplica si cabe (2 ≤ k ≤ entidades-1).
+    if k_fijo is not None:
+        k_obj = int(k_fijo)
+        if 2 <= k_obj <= k_top:
+            mejor_k = k_obj
+            mejor_sil = curva.get(k_obj, mejor_sil)
+        else:
+            log.warning("k_fijo=%d fuera de rango [2,%d]; se mantiene k automático=%d.", k_obj, k_top, mejor_k)
 
     kmeans = KMeans(n_clusters=mejor_k, init="k-means++", n_init=10, random_state=seed).fit(Xs)
     labels = kmeans.labels_
