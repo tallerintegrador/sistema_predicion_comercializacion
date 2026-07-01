@@ -6,7 +6,7 @@
  *   los tres modelos (regresión, clasificación, clustering) en una sola respuesta.
  * - **Agnóstico** (`/auto/*`): el cliente declara su esquema y trae columnas libres.
  */
-import { getJson, postFile, postJson, postJsonBlob } from './client'
+import { getBlob, getJson, postFile, postJson, postJsonBlob } from './client'
 import type {
   AutoInventoryRequest,
   AutoInventoryResponse,
@@ -17,6 +17,7 @@ import type {
   AutoSchemaSpec,
   AutoRow,
   V2Domain,
+  V2Esquema,
   V2Response,
 } from './types'
 
@@ -29,6 +30,31 @@ export const postV2 = (dominio: V2Domain, rows: AutoRow[], horizon = 14) =>
 /** Corre el análisis 3×3 sobre los datos sintéticos del propio sistema (sin aportar datos). */
 export const getV2Demo = (dominio: V2Domain, horizon = 14) =>
   getJson<V2Response>(`/v2/${dominio}/demo?horizon=${horizon}`).then((r) => r.data)
+
+/** Diccionario de variables del dominio (qué columnas pedir y qué se predice, en simple). */
+export const getV2Esquema = (dominio: V2Domain) =>
+  getJson<V2Esquema>(`/v2/${dominio}/esquema`).then((r) => r.data)
+
+/** Descarga la plantilla/ejemplo del dominio en Excel (blob con nombre de archivo). */
+export const downloadV2Plantilla = (
+  dominio: V2Domain,
+  contenido: 'basica' | 'rica' = 'basica',
+) => getBlob(`/v2/${dominio}/plantilla?formato=excel&contenido=${contenido}`)
+
+/** Obtiene la plantilla/ejemplo del dominio en JSON ({rows, horizon}). */
+export const getV2PlantillaJson = (
+  dominio: V2Domain,
+  contenido: 'basica' | 'rica' = 'basica',
+) =>
+  getJson<{ rows: AutoRow[]; horizon: number }>(
+    `/v2/${dominio}/plantilla?formato=json&contenido=${contenido}`,
+  ).then((r) => r.data)
+
+/** Sube un Excel con el formato del dominio y devuelve el análisis 3×3. */
+export const postV2Excel = (dominio: V2Domain, file: File, horizon = 14) =>
+  postFile<V2Response>(`/v2/${dominio}/excel?horizon=${horizon}`, file, {}, 'archivo').then(
+    (r) => r.data,
+  )
 
 // --- Predicción agnóstica auto-entrenada (ADR-0023) ---
 // El cliente declara su esquema (`schema`) y trae columnas arbitrarias (`rows`). El backend

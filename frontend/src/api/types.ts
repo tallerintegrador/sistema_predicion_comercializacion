@@ -331,6 +331,28 @@ export interface V2Response {
   nota: string
 }
 
+/** Diccionario de variables del dominio (GET /v2/{dominio}/esquema). */
+export interface V2Columna {
+  nombre: string
+  tipo: string
+  rol: string
+  descripcion: string
+  obligatoria: boolean
+  se_calcula_sola: boolean
+  ejemplo: string | number | boolean | null
+}
+
+export interface V2Esquema {
+  dominio: string
+  formato: string
+  columnas: V2Columna[]
+  que_se_predice: {
+    regresion: { objetivo: string; explicacion: string }
+    clasificacion: { alerta: string; cuando: string; explicacion: string }
+    clustering: { agrupa: string; grupos_fijos: number | null; explicacion: string }
+  }
+}
+
 // --- Error uniforme (comunes.py: ErrorResponse) ---
 export interface ErrorDetail {
   field: string
