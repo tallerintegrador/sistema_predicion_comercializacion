@@ -21,6 +21,9 @@ dist/
 data/synthetic/*
 !data/synthetic/.gitkeep
 
+# Ejemplos/plantillas 3x3 generados (reproducibles con scripts/generar_ejemplos_v2.py)
+ejemplos/
+
 # Corpus incremental SQLite (Fase A MEJORADO, ADR-0011) y exports del corpus
 *.db
 *.db-journal

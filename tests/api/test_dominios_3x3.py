@@ -82,3 +82,66 @@ def test_rows_invalidas_devuelve_error(client) -> None:
 def test_rows_vacias_devuelve_422(client) -> None:
     resp = client.post("/v2/almacen", json={"rows": [], "horizon": 7})
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Onboarding: diccionario de variables, plantillas y carga por Excel
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("dominio", ["ventas", "compras", "almacen"])
+def test_esquema_diccionario(client, dominio: str) -> None:
+    resp = client.get(f"/v2/{dominio}/esquema")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["dominio"] == dominio
+    assert len(body["columnas"]) >= 1
+    # Cada columna trae lo mínimo para mostrarla sin tecnicismos.
+    assert {"nombre", "tipo", "rol", "descripcion", "ejemplo"} <= set(body["columnas"][0])
+    # Explica qué predicen los tres modelos.
+    assert {"regresion", "clasificacion", "clustering"} <= set(body["que_se_predice"])
+
+
+def test_esquema_dominio_desconocido_400(client) -> None:
+    resp = client.get("/v2/inexistente/esquema")
+    assert resp.status_code == 400
+
+
+def test_plantilla_json(client) -> None:
+    resp = client.get("/v2/ventas/plantilla", params={"formato": "json", "contenido": "basica"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["rows"], "la plantilla JSON debe traer filas de ejemplo"
+    assert {"fecha", "sku", "unidades_vendidas"} <= set(body["rows"][0])
+
+
+def test_plantilla_excel_descarga(client) -> None:
+    resp = client.get("/v2/almacen/plantilla", params={"formato": "excel"})
+    assert resp.status_code == 200, resp.text
+    assert "spreadsheetml" in resp.headers["content-type"]
+    assert resp.content[:2] == b"PK"  # firma de un .xlsx (zip)
+
+
+def test_subir_excel_corre_analisis(client) -> None:
+    # Genera un Excel con historia suficiente (>28 días) y lo sube: debe entrenar y responder.
+    from spc.api.ingest import dominios_excel
+    from spc.service import onboarding
+
+    df = generar_dominio("ventas", seed=42, n_tiendas=1, n_productos=4, n_dias=120)
+    filas = onboarding._filas_jsonables(df, "ventas")
+    xlsx = dominios_excel.generar_excel("ventas", filas)
+    resp = client.post(
+        "/v2/ventas/excel",
+        files={"archivo": ("datos.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        params={"horizon": 5},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert {"regresion", "clasificacion", "clustering"} <= set(body)
+
+
+def test_subir_excel_malo_devuelve_error(client) -> None:
+    resp = client.post(
+        "/v2/compras/excel",
+        files={"archivo": ("malo.xlsx", b"esto no es un excel", "application/octet-stream")},
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.json()
