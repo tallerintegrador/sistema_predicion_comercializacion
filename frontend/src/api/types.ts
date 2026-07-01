@@ -211,113 +211,6 @@ export interface AutoPurchasesResponse {
   metadata: Record<string, unknown>
 }
 
-// --- Modo lote (jobs.py) ---
-export type JobStatusValue = 'queued' | 'running' | 'done' | 'error'
-
-export interface JobAccepted {
-  job_id: string
-  status: JobStatusValue
-  mode: 'batch'
-  domain: Domain
-  rows: number
-  status_url: string
-  result_url: string
-}
-
-// --- Entrenamiento por cliente bajo demanda (training.py, ADR-0013) ---
-export type TrainingPhase = 'validating' | 'training' | 'evaluating'
-export type TrainingOutcome = 'adopted' | 'not_adopted' | 'insufficient_data' | 'inconclusive'
-export type TrainingSource = 'merged' | 'excel' | 'corpus'
-
-export interface TrainingAccepted {
-  job_id: string
-  status: JobStatusValue
-  domain: 'sales'
-  client_id: string
-  source: string
-  status_url: string
-  result_url: string
-}
-
-export interface TrainingJobStatus {
-  job_id: string
-  status: JobStatusValue
-  phase?: TrainingPhase | null
-  domain: string
-  client_id: string
-  source: string
-  created_at: string
-  finished_at?: string | null
-  result_url: string
-}
-
-export interface MetricTriple {
-  WAPE: number
-  MAE: number
-  RMSE: number
-}
-
-export interface BaselineMetric extends MetricTriple {
-  name: string
-}
-
-/** Resultado del experimento medido (comparación honesta + veredicto de adopción). */
-export interface TrainingResult {
-  domain: 'sales'
-  outcome: TrainingOutcome
-  message: string
-  metric?: string
-  window_days?: number
-  candidate?: MetricTriple
-  frozen?: MetricTriple
-  baseline?: BaselineMetric | null
-  improvement_wape_points?: number
-  beats_frozen?: boolean
-  beats_baseline?: boolean
-  model_version?: string
-  missing?: string[]
-}
-
-export interface ServingStatus {
-  domain: 'sales'
-  client_id: string
-  has_client_model: boolean
-  serving_client_model: boolean
-  adopted_version?: number | null
-  model_version?: string | null
-  trained_versions: number[]
-  last_comparison?: TrainingResult | null
-}
-
-// --- Catálogo (catalog.py) ---
-export type AvailabilityStatus = 'available' | 'planned'
-
-export interface Availability {
-  name: string
-  status: AvailabilityStatus
-  description: string
-}
-
-export interface CatalogField {
-  name: string
-  type: string
-  required: boolean
-  description?: string | null
-}
-
-export interface CatalogInput {
-  name: string
-  type: string
-  required: boolean
-  description?: string | null
-}
-
-export interface OutputGroup {
-  group: 'root' | 'items' | 'metadata'
-  container: string | null
-  fields: CatalogField[]
-}
-
 // --- Tablas de entrada (carga manual / plantilla), con etiquetas en español ---
 // Derivadas de los esquemas nested del contrato (ADR-0020): la UI arma la tabla editable
 // y los encabezados a partir de esto, sin hardcodear columnas ni etiquetas.
@@ -372,26 +265,70 @@ export interface QueryOptions {
   horizon: HorizonRange
 }
 
-export interface DomainCatalog {
-  domain: Domain
-  endpoint: string
-  has_model: boolean
-  summary: string
-  description: string
-  contract_reference: string
-  inputs: CatalogInput[]
-  input_tables: InputTable[] // tablas de entrada con etiquetas en español (ADR-0020)
-  outputs: OutputGroup[]
-  query_options?: QueryOptions | null // presente solo en dominios que lo exponen (hoy sales)
-  notes: string[]
-  pending_policy: string[]
+// --- 3×3 por dominio (motor_3x3.py, ADR-0024/0025) ---
+// Un formato fijo por dominio que alimenta los tres modelos, entrenados en el momento.
+// La respuesta combina los tres bloques (regresión, clasificación, clustering).
+export type V2Domain = 'ventas' | 'compras' | 'almacen'
+
+/** Fila de pronóstico: claves de serie (id_tienda/sku o id_proveedor/sku) + fecha + valor. */
+export type V2PrediccionItem = Record<string, string | number>
+
+export interface V2Regresion {
+  objetivo: string
+  modelo_ganador: string
+  n_filas_entrenamiento: number
+  metricas_honestas: Record<string, number>
+  candidatos: Record<string, number> | string[]
+  horizonte: number
+  prediccion: V2PrediccionItem[]
 }
 
-export interface CatalogResponse {
-  contract_version: string
-  channels: Availability[]
-  modes: Availability[]
-  domains: DomainCatalog[]
+/** Alerta por serie: claves de serie + clase (0/1) + probabilidad. */
+export type V2Alerta = Record<string, string | number>
+
+export interface V2Clasificacion {
+  etiqueta: string
+  definicion: string
+  modelo_ganador: string
+  umbral: number
+  prevalencia: number
+  metricas_honestas: Record<string, number>
+  alertas: V2Alerta[]
+}
+
+/** Segmento de una entidad: su clave + número de segmento + etiqueta narrativa. */
+export type V2Segmento = Record<string, string | number>
+
+export interface V2Clustering {
+  algoritmo: string
+  entidad?: string
+  k: number
+  silueta: number | null
+  curva_silueta?: Record<string, number>
+  segmentos: V2Segmento[]
+}
+
+/** KPIs de inventario derivados del pronóstico de demanda (solo ALMACÉN). */
+export interface V2IndicadorInventario {
+  id_tienda: string
+  sku: string
+  demanda_diaria_prevista: number
+  stock_actual: number
+  stock_seguridad: number
+  punto_reposicion: number
+  dias_cobertura_proyectada: number | null
+  alerta_reposicion: boolean
+}
+
+export interface V2Response {
+  dominio: string
+  formato: string
+  n_filas: number
+  regresion: V2Regresion
+  clasificacion: V2Clasificacion
+  clustering: V2Clustering
+  indicadores_inventario?: V2IndicadorInventario[]
+  nota: string
 }
 
 // --- Error uniforme (comunes.py: ErrorResponse) ---

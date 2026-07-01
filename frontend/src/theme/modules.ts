@@ -15,13 +15,11 @@ import {
   Package,
   Wand2,
   Users,
-  BookOpenText,
   Info,
 } from 'lucide-react'
 
 export type View =
   | 'home'
-  | 'catalog'
   | 'sales'
   | 'purchases'
   | 'inventory'
@@ -110,15 +108,6 @@ export const SECTIONS: SectionDef[] = [
     blurb: 'Tu punto de partida: qué puede hacer el sistema y cómo empezar.',
     icon: LayoutDashboard,
     perms: [],
-    accent: ACCENTS.brand,
-  },
-  {
-    id: 'catalog',
-    path: '/what-it-does',
-    label: '¿Qué hace el sistema?',
-    blurb: 'Conoce los tres módulos, qué datos piden y qué resultado entregan.',
-    icon: BookOpenText,
-    perms: ['action:catalog'],
     accent: ACCENTS.brand,
   },
   {

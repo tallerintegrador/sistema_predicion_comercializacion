@@ -11,7 +11,6 @@ import type { LucideIcon } from 'lucide-react'
 import { ApiError } from '../../api/client'
 import { downloadAutoTemplate } from '../../api/endpoints'
 import type { AutoRow, AutoSchemaSpec, AutoTrainingInfo, Domain, QueryOptions } from '../../api/types'
-import { useDomainCatalog } from '../../hooks/useDomainCatalog'
 import { ErrorPanel } from '../ErrorPanel'
 import { MapeoColumnas, type MapeoLabels } from '../auto/MapeoColumnas'
 import { FactoresPreview } from '../auto/FactoresPreview'
@@ -122,6 +121,20 @@ const DEFAULT_SCHEMA = construirEsquema({
   seriesKeys: ['tienda', 'sku'],
 })
 
+/** Opciones de consulta del flujo guiado (estáticas): granularidad y rango de horizonte.
+ *  Antes venían del `GET /catalog`; ahora el frontend las declara, y el backend queda
+ *  solo-predicción (motores entrenados en el momento). */
+const OPCIONES_GUIADAS: QueryOptions = {
+  typologies: [],
+  dimensions: [],
+  granularities: [
+    { name: 'day', label: 'Día' },
+    { name: 'week', label: 'Semana' },
+    { name: 'month', label: 'Mes' },
+  ],
+  horizon: { min: 1, max: 365, default: 14, unit: 'periods' },
+}
+
 function guardarBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -142,8 +155,7 @@ export function PrediccionGuiada<Res extends { training: AutoTrainingInfo }>({
   intro?: ReactNode
 }) {
   const ACCENT = config.accent
-  const { domain: catalog, loading: optsLoading } = useDomainCatalog(config.domain)
-  const options = catalog?.query_options ?? null
+  const options = OPCIONES_GUIADAS
 
   // Paso 1 — datos ricos (columnas libres) + productos (si el modo los usa).
   const [rows, setRows] = useState<AutoRow[]>([])
@@ -444,7 +456,6 @@ export function PrediccionGuiada<Res extends { training: AutoTrainingInfo }>({
               onToggleFuture={toggleFuture}
             />
 
-            {optsLoading && config.renderExtra && <p className="text-sm text-slate-500">Cargando opciones…</p>}
             {config.renderExtra?.({ extra, set: setExtraKey, busy, options })}
           </div>
         )}

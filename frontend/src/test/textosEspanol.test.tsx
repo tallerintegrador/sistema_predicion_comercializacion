@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { InventoryRisk } from '../components/charts/InventoryRisk'
-import { JobBanner } from '../components/JobBanner'
 import { LEGEND_HISTORICO, LEGEND_PRONOSTICO } from '../components/charts/SalesChart'
 import { PORQUE } from '../components/prediccion/resumen'
 import type { AlertItem } from '../api/types'
@@ -55,17 +54,6 @@ describe('Compras «Por qué» (frase clara, no la fórmula cruda)', () => {
     expect(PORQUE).toContain('existencias de seguridad')
     for (const t of ['forecast_demand', 'safety_stock', 'current_stock', 'lead_time']) {
       expect(PORQUE).not.toContain(t)
-    }
-  })
-})
-
-describe('JobBanner (archivos grandes: estado honesto y sin tecnicismos)', () => {
-  it('al procesar en segundo plano no expone "lote", "asíncrono" ni "job"', () => {
-    const { container } = render(<JobBanner status="polling" jobId="abc123" attempts={3} />)
-    const texto = container.textContent ?? ''
-    expect(texto).toContain('Estamos procesando tu pronóstico')
-    for (const t of ['lote', 'asíncron', 'job', 'abc123']) {
-      expect(texto.toLowerCase()).not.toContain(t.toLowerCase())
     }
   })
 })
