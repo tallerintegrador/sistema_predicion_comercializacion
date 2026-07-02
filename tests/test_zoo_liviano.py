@@ -86,7 +86,11 @@ def test_clustering_liviano(dominio: str) -> None:
         perfil, cfg.clave_entidad, list(cfg.columnas_clustering), cfg.columna_volumen, seed=42
     )
     assert res.k >= 2
-    assert res.silueta > 0.3
+    # Umbral de silueta RELAJADO a título informativo (ADR-0025 c): antes exigía > 0,3, lo
+    # que premiaba clusters muy separados e incentivaba datos artificiales (arquetipos fijos).
+    # Con proveedores realistas y solapados la silueta baja y eso es CORRECTO; solo se
+    # comprueba que los grupos separan algo mejor que el azar (silueta positiva).
+    assert res.silueta > 0.1
     assert len(res.asignacion) == len(perfil)
     assert set(res.asignacion["segmento"].unique()).issubset(set(range(res.k)))
 

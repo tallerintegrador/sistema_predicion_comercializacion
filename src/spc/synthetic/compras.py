@@ -25,10 +25,13 @@ from spc.synthetic.esquemas import COMPRAS, validar_conforme
 
 @dataclass(frozen=True)
 class PerfilProveedor:
-    """Arquetipo de proveedor: define costo, lead time y cumplimiento típicos.
+    """Perfil de un proveedor concreto: costo, lead time y cumplimiento típicos.
 
-    Tres arquetipos contrastados garantizan que el clustering encuentre grupos
-    separables y que la clasificación de retraso tenga señal.
+    ADR-0025 (c): antes había **3 arquetipos fijos** (premium/estándar/económico) y el
+    clustering "descubría" esas mismas 3 cajas — validación **circular**. Ahora cada
+    proveedor se muestrea desde **rangos continuos** a lo largo de un eje latente de
+    "calidad de servicio" con **ruido/solape moderado** (ver ``_perfil_continuo``), de modo
+    que el nº de grupos **emerge** de los datos y no está impuesto de fábrica.
     """
 
     nombre: str
@@ -38,37 +41,51 @@ class PerfilProveedor:
     cumplimiento_medio: float  # fracción recibida/pedida típica (≤1)
 
 
-ARQUETIPOS: tuple[PerfilProveedor, ...] = (
-    PerfilProveedor("premium", 1.25, 4.0, 1.0, 0.99),     # caro, rápido, confiable
-    PerfilProveedor("estandar", 1.00, 9.0, 2.5, 0.95),    # equilibrado
-    PerfilProveedor("economico", 0.80, 18.0, 5.0, 0.88),  # barato, lento, irregular
-)
+def _perfil_continuo(rng: np.random.Generator, pv: int) -> PerfilProveedor:
+    """Muestrea un proveedor desde un **continuo** con solape (reemplaza los 3 arquetipos).
+
+    Se parte de un ``q`` latente en [0,1] ("calidad": alto = rápido, caro, confiable) que
+    correlaciona lead time, costo y cumplimiento —una estructura latente que **sabemos que
+    existe**—, pero se le añade **ruido** a cada dimensión para que los grupos se **solapen**
+    y no formen cajas nítidas. El lead time conserva un rango amplio (~3–20 días) para que la
+    clasificación de "entrega con retraso" siga teniendo señal.
+    """
+    q = float(rng.uniform(0.0, 1.0))
+    lead_medio = float(np.clip(np.interp(q, [0.0, 1.0], [19.0, 4.0]) + rng.normal(0.0, 2.6), 2.0, 24.0))
+    factor_costo = float(np.clip(np.interp(q, [0.0, 1.0], [0.80, 1.28]) + rng.normal(0.0, 0.07), 0.70, 1.40))
+    cumpl_medio = float(np.clip(np.interp(q, [0.0, 1.0], [0.86, 0.99]) + rng.normal(0.0, 0.02), 0.60, 1.0))
+    lead_sigma = float(np.clip(0.25 * lead_medio + rng.uniform(0.0, 1.5), 1.0, 6.0))
+    return PerfilProveedor(f"prov-{pv:02d}", factor_costo, lead_medio, lead_sigma, cumpl_medio)
 
 
 def generar(
     *,
     seed: int = 42,
-    n_proveedores: int = 6,
-    n_productos: int = 8,
-    n_ordenes_por_serie: int = 36,
+    n_proveedores: int = 20,
+    n_productos: int = 4,
+    n_ordenes_por_serie: int = 24,
     fecha_inicio: date = date(2023, 1, 1),
     dias_entre_ordenes: int = 10,
 ) -> pd.DataFrame:
     """Genera el dataset sintético de COMPRAS (DataFrame conforme al esquema).
 
-    Default ≈ 6 proveedores × 8 productos × 36 órdenes ≈ 1.728 filas: suficiente para
-    el split temporal y para que el clustering separe los arquetipos.
+    Default ≈ 20 proveedores × 4 productos × 24 órdenes ≈ 1.920 filas: tamaño de **la
+    demo**. Prioriza la **variedad de PROVEEDORES** (20 entidades, que es lo que agrupa
+    el clustering de compras) con POCOS productos a propósito: el pronóstico se calcula
+    **serie por serie** (proveedor×producto), así que muchos productos solo harían la
+    demo lenta sin enriquecer el clustering de proveedores. Para experimentos
+    **offline** (Fase 4), súbanse ``n_productos``/``n_ordenes_por_serie``.
     """
     catalogo = comun.productos(n_productos)
     filas: list[dict[str, object]] = []
 
     for pv in range(1, n_proveedores + 1):
         id_proveedor = f"PROV-{pv:02d}"
-        perfil = ARQUETIPOS[(pv - 1) % len(ARQUETIPOS)]
         rng_pv = comun.rng_de(seed, 3, pv)
-        # Pequeña dispersión del arquetipo por proveedor concreto.
-        lead_medio = perfil.lead_medio * comun.entre(rng_pv, 0.9, 1.1)
-        cumpl_medio = float(np.clip(perfil.cumplimiento_medio * comun.entre(rng_pv, 0.97, 1.0), 0.6, 1.0))
+        # Proveedor muestreado desde el continuo (con solape): sus costo/lead/cumplimiento.
+        perfil = _perfil_continuo(rng_pv, pv)
+        lead_medio = perfil.lead_medio
+        cumpl_medio = perfil.cumplimiento_medio
 
         for p, (sku, categoria) in enumerate(catalogo):
             rng = comun.rng_de(seed, 4, pv, p)

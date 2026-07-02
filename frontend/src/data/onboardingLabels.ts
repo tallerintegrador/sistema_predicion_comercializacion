@@ -7,7 +7,7 @@
  * backend añade un código nuevo sin etiqueta, `labelFor` muestra el código como último recurso
  * y la prueba de cobertura recuerda añadir su traducción.
  *
- * Algunas opciones deseables (más rubros, "Gran empresa", regiones del Perú, etc.) requieren
+ * Algunas opciones deseables (p. ej. regiones a nivel país, no solo continente) requieren
  * códigos que el backend aún no expone: ver docs/alineacion_frontend_backend.md §8.
  */
 
@@ -16,8 +16,15 @@ export const SECTOR_LABELS: Record<string, string> = {
   wholesale: 'Comercio mayorista',
   supermarket: 'Supermercado / abarrotes',
   pharmacy: 'Farmacia / salud',
-  hardware: 'Ferretería / construcción',
   food_service: 'Restaurante / comida',
+  clothing: 'Ropa y calzado',
+  electronics: 'Tecnología y electrónica',
+  beauty: 'Belleza y cuidado personal',
+  hardware: 'Ferretería / construcción',
+  stationery: 'Librería / papelería',
+  automotive: 'Automotriz / repuestos',
+  agriculture: 'Agricultura / agropecuario',
+  services: 'Servicios',
   other: 'Otro',
 }
 
@@ -25,6 +32,7 @@ export const SIZE_LABELS: Record<string, string> = {
   micro: 'Microempresa',
   small: 'Pequeña empresa',
   medium: 'Mediana empresa',
+  large: 'Gran empresa',
 }
 
 export const REGION_LABELS: Record<string, string> = {

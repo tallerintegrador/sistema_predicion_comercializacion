@@ -1,22 +1,23 @@
-# Dependencias de RUNTIME para SERVIR la API (Fase 3).
+# Dependencias de RUNTIME para SERVIR la API.
 #
-# Subconjunto de pyproject.toml: SOLO lo que se importa al cargar y predecir.
-# Se excluyen a proposito las dependencias de entrenamiento/EDA (matplotlib,
-# seaborn, optuna, nbformat): no participan en la inferencia y solo engordan la
-# imagen.
+# Subconjunto de pyproject.toml (== su bloque `dependencies`): SOLO lo que el servicio
+# importa al cargar, entrenar en el momento y predecir. Se excluyen a proposito las deps
+# solo-legacy (matplotlib, seaborn, optuna, nbformat, jupyter): viven en el extra `legacy`
+# de pyproject y no participan en el servicio; solo engordarian la imagen.
 #
-# Pines EXACTOS, identicos a pyproject.toml: los artefactos .joblib de models/ se
-# serializaron con estas versiones. Cargarlos con otras (sobre todo numpy/pandas/
-# scikit-learn/lightgbm/xgboost) puede romper el unpickle o cambiar predicciones.
+# El servicio entrena en el momento (sin artefactos congelados). Los pines EXACTOS siguen
+# importando: la cache de modelos por-cliente serializa joblib con estas versiones, y
+# cargarlos con otras (sobre todo numpy/pandas/scikit-learn/lightgbm/xgboost) puede romper
+# el unpickle o cambiar predicciones.
 
 # --- Capa API ---
 fastapi==0.137.1
 uvicorn==0.49.0
 pydantic==2.13.4
 python-multipart==0.0.29  # carga de archivos (UploadFile) del canal Excel
-openpyxl==3.1.5           # lectura/escritura .xlsx del canal Excel (Fase 3.3)
+openpyxl==3.1.5           # lectura/escritura .xlsx del canal Excel
 
-# --- Carga/inferencia del motor ---
+# --- Entrenamiento en el momento / inferencia del motor ---
 pandas==3.0.3
 numpy==2.4.6
 scipy==1.17.1
@@ -25,3 +26,9 @@ joblib==1.5.3
 lightgbm==4.6.0
 xgboost==3.2.0
 imbalanced-learn==0.14.2
+
+# --- Persistencia (ADR-0026): corpus + registro de modelos ---
+sqlalchemy>=2.0,<3.0
+alembic>=1.13
+psycopg[binary]>=3.1
+supabase>=2.0

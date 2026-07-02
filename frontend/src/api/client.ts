@@ -129,9 +129,10 @@ export async function postFile<T>(
   path: string,
   file: File,
   fields?: Record<string, string | number>,
+  fieldName = 'file',
 ): Promise<{ status: number; data: T }> {
   const form = new FormData()
-  form.append('file', file)
+  form.append(fieldName, file)
   for (const [k, v] of Object.entries(fields ?? {})) form.append(k, String(v))
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',

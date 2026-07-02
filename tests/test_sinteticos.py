@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from spc.synthetic import generar_dominio
+from spc.synthetic import comun, generar_dominio
 from spc.synthetic.esquemas import ESQUEMAS, esquema_de, validar_conforme
 
 DOMINIOS = ("ventas", "compras", "almacen")
@@ -45,6 +45,36 @@ def test_semilla_distinta_cambia_datos(dominio: str) -> None:
     a = generar_dominio(dominio, seed=42)
     c = generar_dominio(dominio, seed=7)
     assert not a.equals(c)
+
+
+# ---------------------------------------------------------------------------
+# Catálogo grande de productos ÚNICOS (punto b): antes eran 8 fijos que se
+# reciclaban; ahora se generan N SKUs distintos, deterministas y sin repetir.
+# ---------------------------------------------------------------------------
+def test_catalogo_40_skus_unicos_y_reproducible() -> None:
+    cat = comun.productos(40)
+    skus = [sku for sku, _ in cat]
+    # 40 SKUs, todos DISTINTOS (no se reciclan como antes).
+    assert len(cat) == 40
+    assert len(set(skus)) == 40
+    # Cada SKU trae una categoría del vocabulario declarado.
+    assert all(categoria in comun.CATEGORIAS for _, categoria in cat)
+    # Reproducible: la misma llamada da exactamente el mismo catálogo.
+    assert comun.productos(40) == cat
+    # Retrocompatible: los primeros 8 son los históricos (no rompe tests previos).
+    assert cat[:8] == (
+        ("SKU-001", "Bebidas"), ("SKU-002", "Abarrotes"), ("SKU-003", "Lacteos"),
+        ("SKU-004", "Limpieza"), ("SKU-005", "Snacks"), ("SKU-006", "Cuidado personal"),
+        ("SKU-007", "Bebidas"), ("SKU-008", "Abarrotes"),
+    )
+
+
+def test_ventas_default_tiene_40_skus_con_categoria_consistente() -> None:
+    # El dataset por defecto (la demo) ejercita el catálogo grande.
+    df = generar_dominio("ventas", seed=42)
+    assert df["sku"].nunique() == 40
+    # Cada SKU mantiene UNA sola categoría en todo el dataset (consistencia).
+    assert (df.groupby("sku")["categoria"].nunique() == 1).all()
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +153,17 @@ def test_almacen_etiqueta_riesgo_quiebre_dos_clases() -> None:
         df["stock_actual"] < df["demanda_diaria_promedio"] * df["tiempo_reposicion_dias"]
     ).astype(int)
     assert 0 < riesgo.mean() < 1
+
+
+def test_almacen_objetivo_es_demanda_dia() -> None:
+    # ADR-0025 (e): el objetivo de regresión pasa a `demanda_dia` (demanda futura).
+    df = generar_dominio("almacen", seed=42)
+    assert esquema_de("almacen").objetivo_regresion == "demanda_dia"
+    assert "demanda_dia" in df.columns
+    assert (df["demanda_dia"] >= 0).all()          # consumo diario, no negativo
+    assert df["demanda_dia"].std() > 0             # varía (aprendible, no constante)
+    # dias_de_cobertura sobrevive como KPI derivado (ya no es el objetivo).
+    assert "dias_de_cobertura" in df.columns
 
 
 # ---------------------------------------------------------------------------

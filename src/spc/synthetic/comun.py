@@ -16,17 +16,18 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Universo de productos (genérico para una PYME de retail)
 # ---------------------------------------------------------------------------
-# (sku, categoría). Mismo catálogo en los tres dominios para que un cliente pueda
-# cruzar ventas/compras/almacén por `sku`.
-CATALOGO: tuple[tuple[str, str], ...] = (
-    ("SKU-001", "Bebidas"),
-    ("SKU-002", "Abarrotes"),
-    ("SKU-003", "Lacteos"),
-    ("SKU-004", "Limpieza"),
-    ("SKU-005", "Snacks"),
-    ("SKU-006", "Cuidado personal"),
-    ("SKU-007", "Bebidas"),
-    ("SKU-008", "Abarrotes"),
+# Familias de producto (categorías). Los SKU concretos se generan bajo demanda
+# (ver `productos`) asignando una categoría de forma CÍCLICA, de modo que se puede
+# pedir un catálogo tan grande como haga falta (p. ej. 40 productos ÚNICOS) sin
+# repetir SKUs. El mismo catálogo aplica a los tres dominios para que un cliente
+# pueda cruzar ventas/compras/almacén por `sku`.
+CATEGORIAS: tuple[str, ...] = (
+    "Bebidas",
+    "Abarrotes",
+    "Lacteos",
+    "Limpieza",
+    "Snacks",
+    "Cuidado personal",
 )
 
 METODOS_PAGO: tuple[str, ...] = ("efectivo", "tarjeta", "transferencia", "yape_plin")
@@ -115,11 +116,17 @@ def factor_estacional_anual(fechas: list[date], amplitud: float, fase: float) ->
 
 
 def productos(n: int) -> tuple[tuple[str, str], ...]:
-    """Primeros ``n`` (sku, categoría) del catálogo (recicla si se piden de más)."""
-    if n <= len(CATALOGO):
-        return CATALOGO[:n]
-    veces = (n // len(CATALOGO)) + 1
-    return (CATALOGO * veces)[:n]
+    """``n`` productos ÚNICOS ``(sku, categoría)``, deterministas y sin repetir.
+
+    Genera ``SKU-001 … SKU-{n:03d}`` y les asigna una categoría **cíclica** de
+    ``CATEGORIAS``. Al no reciclar, un catálogo grande (p. ej. 40) da 40 SKUs
+    distintos —lo que hace creíbles el clustering y la clasificación—. Es
+    retrocompatible: para ``n ≤ 8`` produce exactamente el catálogo anterior.
+    """
+    return tuple(
+        (f"SKU-{i:03d}", CATEGORIAS[(i - 1) % len(CATEGORIAS)])
+        for i in range(1, n + 1)
+    )
 
 
 def manifiesto_fila(dominio: str, df: pd.DataFrame, seed: int) -> dict[str, object]:

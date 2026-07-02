@@ -21,11 +21,18 @@ SECTORES: tuple[str, ...] = (
     "wholesale",
     "supermarket",
     "pharmacy",
-    "hardware",
     "food_service",
+    "clothing",
+    "electronics",
+    "beauty",
+    "hardware",
+    "stationery",
+    "automotive",
+    "agriculture",
+    "services",
     "other",
 )
-TAMANOS: tuple[str, ...] = ("micro", "small", "medium")
+TAMANOS: tuple[str, ...] = ("micro", "small", "medium", "large")
 REGIONES: tuple[str, ...] = (
     "north_america",
     "central_america",

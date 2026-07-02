@@ -12,6 +12,17 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Carga variables desde el archivo `.env` de la raíz del repo (Postgres/Supabase, auth) si
+# existe, para que la app y Alembic las lean sin exportarlas a mano. Las variables ya
+# presentes en el entorno NO se sobrescriben (override=False), así los tests y CI mandan.
+# `python-dotenv` es una dependencia; el try/except deja el import a prueba de balas.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
+except Exception:  # noqa: BLE001 - sin .env o sin la lib, se usan las variables del entorno
+    pass
+
 # Tope de tamaño (bytes) para un archivo .xlsx subido por el canal Excel.
 # Es un límite plano de protección anti-abuso (DoS), NO el ruteo por volumen
 # (en línea/lote): esa frontera se mide por NÚMERO DE FILAS (ver online_max_rows()).
@@ -307,6 +318,63 @@ def auth_secret_es_default() -> bool:
 def auth_token_ttl() -> int:
     """Vida útil del token de sesión en segundos (``SPC_AUTH_TOKEN_TTL`` o 8 h)."""
     return _entero_positivo_env("SPC_AUTH_TOKEN_TTL", AUTH_TOKEN_TTL_DEFAULT)
+
+
+# ---------------------------------------------------------------------------
+# Base de datos real (Postgres/Supabase) — ADR-0026
+# ---------------------------------------------------------------------------
+# Toda la persistencia (auth + corpus acumulativo + registro de modelos) vive en UNA
+# base de datos, accedida vía SQLAlchemy. En producción se apunta a Postgres/Supabase con
+# SPC_DATABASE_URL (formato SQLAlchemy, p. ej.
+#   postgresql+psycopg://usuario:clave@host:5432/postgres
+# usando el pooler de Supabase). Si la variable NO está, se cae a un archivo SQLite local
+# (``db_path()``) para que la app y los tests sigan funcionando sin infraestructura. Los
+# tests usan SQLite (archivo temporal o ``:memory:``); el ORM es el mismo en ambos motores.
+def database_url() -> str:
+    """URL SQLAlchemy de la base de datos (``SPC_DATABASE_URL`` o SQLite local de respaldo).
+
+    Producción: Postgres/Supabase (``postgresql+psycopg://...``). Sin la variable, deriva
+    una URL SQLite del archivo ``db_path()`` — mismo ORM, motor distinto.
+    """
+    valor = os.getenv("SPC_DATABASE_URL", "").strip()
+    if valor:
+        return valor
+    # SQLite de respaldo: ruta del archivo del corpus histórico (compat + dev/tests).
+    ruta = db_path().as_posix()
+    return f"sqlite:///{ruta}"
+
+
+def usa_postgres() -> bool:
+    """True si la base configurada es Postgres (para elegir tipos/índices específicos)."""
+    return database_url().startswith(("postgres://", "postgresql"))
+
+
+# --- Supabase Storage (bucket de artefactos .joblib) -----------------------
+# Los modelos entrenados se suben a un bucket de Supabase Storage. Si estas variables no
+# están todas configuradas, ``storage_habilitado()`` es False y el registro de modelos cae
+# a disco local (``client_models_dir()``): la funcionalidad no se rompe, solo cambia dónde
+# viven los bytes del artefacto.
+def supabase_url() -> str | None:
+    """URL del proyecto Supabase para Storage (``SUPABASE_URL``) o ``None``."""
+    return os.getenv("SUPABASE_URL", "").strip() or None
+
+
+def supabase_key() -> str | None:
+    """Clave de servicio de Supabase para Storage (``SUPABASE_KEY``) o ``None``.
+
+    Debe ser la *service role key* (no la anon) porque el backend sube/borra artefactos.
+    """
+    return os.getenv("SUPABASE_KEY", "").strip() or None
+
+
+def supabase_bucket() -> str:
+    """Nombre del bucket de artefactos (``SUPABASE_BUCKET`` o ``spc-modelos``)."""
+    return os.getenv("SUPABASE_BUCKET", "").strip() or "spc-modelos"
+
+
+def storage_habilitado() -> bool:
+    """True si hay URL + clave de Supabase para subir artefactos al bucket."""
+    return bool(supabase_url() and supabase_key())
 
 
 # ---------------------------------------------------------------------------

@@ -30,7 +30,7 @@ from sklearn.preprocessing import StandardScaler
 
 from spc.features.generico import EspecEsquema, columnas_lag_objetivo, construir_features
 from spc.models.automl import cortes_adaptativos
-from spc.models.regresion import (
+from spc.models.nucleo import (
     EspecModelo,
     _construir_pipeline_lineal,
     _fijar_categorias,
@@ -50,7 +50,7 @@ def construir_zoo_liviano(
 ) -> dict[str, EspecModelo]:
     """Candidatos de regresión **solo sklearn**, rápidos con pocos datos.
 
-    Misma forma que ``spc.models.regresion.construir_zoo`` (para enchufar sin tocar el
+    Misma forma que ``spc.models.nucleo.construir_zoo`` (para enchufar sin tocar el
     flujo de selección honesta), pero **sin** LightGBM/XGBoost/Tweedie ni GPU:
 
     - ``Ridge`` (lineal, escala log): baseline robusto e interpretable.
@@ -142,6 +142,39 @@ def _proba1(modelo: Any, X: Any) -> np.ndarray:
     return np.asarray(modelo.predict_proba(X), dtype="float64")[:, 1]
 
 
+# Recall mínimo pedido al umbral de operación (fallar en detectar el evento es caro).
+RECALL_MIN_OPERATIVO = 0.75
+
+
+def _umbral_operativo(y: np.ndarray, p: np.ndarray, *, recall_min: float = RECALL_MIN_OPERATIVO) -> float:
+    """Umbral de operación del **camino 3×3** (ADR-0025 c).
+
+    Reemplaza —SOLO aquí, sin tocar ``spc.models.desbalance.seleccionar_umbral`` del núcleo
+    compartido— la elección del punto de corte. Sobre la partición de **VALIDACIÓN**
+    (sin mirar TEST → sin fuga), recorre una grilla de umbrales y, como **no detectar el
+    evento** (p. ej. un retraso) es costoso, **prioriza el recall**: entre los umbrales con
+    ``recall ≥ recall_min`` elige el de **mayor F1**; si ninguno alcanza ese recall, cae al de
+    mayor F1 global. Corrige el punto de operación roto (recall≈0) que el selector automático
+    elegía sobre datos realistas.
+    """
+    y = np.asarray(y).astype(int)
+    if y.min() == y.max():  # una sola clase en validación → sin criterio
+        return 0.5
+    mejor_umbral, mejor_clave = 0.5, (-1, -1.0)
+    for thr in np.linspace(0.05, 0.95, 19):
+        pred = p >= thr
+        tp = int(np.sum(pred & (y == 1)))
+        fp = int(np.sum(pred & (y == 0)))
+        fn = int(np.sum(~pred & (y == 1)))
+        prec = tp / (tp + fp) if (tp + fp) else 0.0
+        rec = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+        clave = (1 if rec >= recall_min else 0, f1)  # 1º: cumplir recall; 2º: maximizar F1
+        if clave > mejor_clave:
+            mejor_clave, mejor_umbral = clave, float(thr)
+    return mejor_umbral
+
+
 def entrenar_clasificacion_liviana(
     df: pd.DataFrame, spec: EspecEsquema, *, seed: int = 42
 ):
@@ -154,7 +187,6 @@ def entrenar_clasificacion_liviana(
     ``ResultadoAutoMLClasificacion`` (mismo contrato que el motor agnóstico).
     """
     from spc.models.automl import PredictorGenericoClasificacion, ResultadoAutoMLClasificacion
-    from spc.models.clasificacion import seleccionar_umbral
 
     obj = spec.objetivo
     df_feat, features, cats = construir_features(df, spec)
@@ -212,7 +244,7 @@ def entrenar_clasificacion_liviana(
         else:
             m = classification_metrics_min(yva, pv)
             pr_auc_valid[nombre] = float(m.get("PR_AUC", 0.0))
-            umbral_valid[nombre], _ = seleccionar_umbral(yva, pv)
+            umbral_valid[nombre] = _umbral_operativo(yva, pv)
 
     ganador = max(pr_auc_valid, key=lambda k: pr_auc_valid[k])
     umbral = umbral_valid[ganador]
@@ -307,20 +339,60 @@ class ResultadoClustering:
     asignacion: pd.DataFrame
 
 
-def _etiquetas_por_volumen(
-    perfil: pd.DataFrame, columnas: list[str], labels: np.ndarray, columna_volumen: str
+def _etiquetas_narrativas(
+    perfil: pd.DataFrame,
+    columnas: list[str],
+    labels: np.ndarray,
+    columna_rank: str,
+    estilo: str,
 ) -> tuple[dict[int, str], dict[int, dict[str, float]]]:
-    """Etiqueta cada segmento por su nivel de ``columna_volumen`` (bajo/medio/alto)."""
+    """Etiqueta narrativa por segmento, **según el dominio** (ADR-0025 c).
+
+    Ordena los segmentos por la media de ``columna_rank`` (ascendente) y les pone una
+    etiqueta según ``estilo``, para que el nombre **describa lo que de verdad separa** a
+    los grupos y no mienta:
+
+    - ``"volumen"`` (ventas): ``volumen bajo/medio/alto`` por nivel de demanda.
+    - ``"abc"`` (almacén): ``clase A/B/C`` (A = mayor demanda) — el marco ABC clásico.
+    - ``"servicio"`` (compras): ``servicio rápido/medio/lento`` por lead time (menor lead =
+      más rápido); antes se rotulaba "volumen" por costo, lo que ocultaba que el eje real
+      que separa a los proveedores es la velocidad de entrega.
+    """
     medias = perfil.assign(_seg=labels).groupby("_seg")[columnas].mean()
-    orden = medias[columna_volumen].sort_values().index.tolist()  # bajo → alto
+    orden = medias[columna_rank].sort_values().index.tolist()  # menor → mayor
     k = len(orden)
-    if k <= 2:
-        nivel = {orden[0]: "bajo", orden[-1]: "alto"}
-    elif k == 3:
-        nivel = {orden[0]: "bajo", orden[1]: "medio", orden[2]: "alto"}
-    else:
-        nivel = {seg: f"nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
-    etiquetas = {int(s): f"volumen {nivel[s]}" for s in medias.index}
+    if estilo == "abc":
+        letras = ["A", "B", "C", "D", "E", "F"]
+        # A = el de mayor `columna_rank` (mayor demanda); C = el menor.
+        nivel = {seg: f"clase {letras[i]}" for i, seg in enumerate(reversed(orden))}
+    elif estilo == "servicio":
+        # orden: menor→mayor lead time (orden[0] = el más rápido).
+        escalas = {
+            2: ["servicio rápido", "servicio lento"],
+            3: ["servicio rápido", "servicio medio", "servicio lento"],
+            4: ["servicio muy rápido", "servicio rápido", "servicio lento", "servicio muy lento"],
+            5: ["servicio muy rápido", "servicio rápido", "servicio medio", "servicio lento", "servicio muy lento"],
+        }
+        terminos = escalas.get(k)
+        nivel = (
+            {orden[i]: terminos[i] for i in range(k)}
+            if terminos
+            else {seg: f"servicio nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+        )
+    else:  # "volumen"
+        escalas = {
+            2: ["volumen bajo", "volumen alto"],
+            3: ["volumen bajo", "volumen medio", "volumen alto"],
+            4: ["volumen muy bajo", "volumen bajo", "volumen alto", "volumen muy alto"],
+            5: ["volumen muy bajo", "volumen bajo", "volumen medio", "volumen alto", "volumen muy alto"],
+        }
+        terminos = escalas.get(k)
+        nivel = (
+            {orden[i]: terminos[i] for i in range(k)}
+            if terminos
+            else {seg: f"volumen nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+        )
+    etiquetas = {int(s): nivel[s] for s in medias.index}
     centroides = {
         int(s): {c: round(float(medias.loc[s, c]), 4) for c in columnas} for s in medias.index
     }
@@ -336,12 +408,21 @@ def entrenar_clustering(
     seed: int = 42,
     k_min: int = 2,
     k_max: int = 6,
+    k_fijo: int | None = None,
+    estilo_etiqueta: str = "volumen",
+    columna_etiqueta: str | None = None,
 ) -> ResultadoClustering:
-    """Entrena KMeans sobre el ``perfil`` (índice = entidad), eligiendo k por silueta.
+    """Entrena KMeans sobre el ``perfil`` (índice = entidad).
 
-    Escala obligatoria (StandardScaler dentro del artefacto). Evalúa k en
-    ``[k_min, min(k_max, n-1)]`` y elige el de **mayor silueta**. Requiere ≥ 3 entidades
-    (si no, lanza: el motor cae a una segmentación por volumen, ver capa de servicio).
+    Escala obligatoria (StandardScaler dentro del artefacto). Siempre calcula la **curva de
+    silueta** en ``[k_min, min(k_max, n-1)]`` (para transparencia). La elección de k:
+
+    - ``k_fijo=None`` (por defecto): elige el k de **mayor silueta** (automático). Es lo que
+      usa COMPRAS, donde el nº de grupos debe **emerger** de datos realistas.
+    - ``k_fijo=<int>``: usa ese k aunque no maximice la silueta. Lo usa ALMACÉN con k=3, por
+      la interpretación de negocio **A/B/C**; la silueta se sigue reportando con honestidad.
+
+    Requiere ≥ 3 entidades (si no, lanza: el motor cae a una segmentación por volumen).
     """
     n = len(perfil)
     if n < 3:
@@ -363,9 +444,20 @@ def entrenar_clustering(
         if sil > mejor_sil:
             mejor_k, mejor_sil = k, sil
 
+    # k fijo por interpretación de negocio (p. ej. A/B/C): respeta la elección aunque la
+    # silueta prefiera otro k. Solo se aplica si cabe (2 ≤ k ≤ entidades-1).
+    if k_fijo is not None:
+        k_obj = int(k_fijo)
+        if 2 <= k_obj <= k_top:
+            mejor_k = k_obj
+            mejor_sil = curva.get(k_obj, mejor_sil)
+        else:
+            log.warning("k_fijo=%d fuera de rango [2,%d]; se mantiene k automático=%d.", k_obj, k_top, mejor_k)
+
     kmeans = KMeans(n_clusters=mejor_k, init="k-means++", n_init=10, random_state=seed).fit(Xs)
     labels = kmeans.labels_
-    etiquetas, centroides = _etiquetas_por_volumen(perfil, columnas, labels, columna_volumen)
+    col_rank = columna_etiqueta or columna_volumen
+    etiquetas, centroides = _etiquetas_narrativas(perfil, columnas, labels, col_rank, estilo_etiqueta)
     valores, conteos = np.unique(labels, return_counts=True)
     n_por_seg: dict[int, int] = {int(v): int(c) for v, c in zip(valores, conteos, strict=True)}
 
