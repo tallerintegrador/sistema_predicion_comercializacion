@@ -18,6 +18,8 @@ import type {
   AutoRow,
   V2Domain,
   V2Esquema,
+  V2ListaModelos,
+  V2Reentrenamiento,
   V2Response,
 } from './types'
 
@@ -55,6 +57,16 @@ export const postV2Excel = (dominio: V2Domain, file: File, horizon = 14) =>
   postFile<V2Response>(`/v2/${dominio}/excel?horizon=${horizon}`, file, {}, 'archivo').then(
     (r) => r.data,
   )
+
+// --- Reentrenamiento y registro de modelos (ADR-0027) ---
+// El corpus se acumula con cada carga; "entrenar" reentrena con TODO el histórico + lo nuevo,
+// versiona los modelos en el registro y marca cuál se sirve.
+export const postV2Entrenar = (dominio: V2Domain, horizon = 14) =>
+  postJson<V2Reentrenamiento>(`/v2/${dominio}/entrenar?horizon=${horizon}`, {}).then((r) => r.data)
+
+/** Historial de versiones de modelos del cliente para el dominio (cuál se sirve, métricas). */
+export const getV2Modelos = (dominio: V2Domain) =>
+  getJson<V2ListaModelos>(`/v2/${dominio}/modelos`).then((r) => r.data)
 
 // --- Predicción agnóstica auto-entrenada (ADR-0023) ---
 // El cliente declara su esquema (`schema`) y trae columnas arbitrarias (`rows`). El backend

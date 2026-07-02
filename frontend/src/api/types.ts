@@ -340,6 +340,41 @@ export interface V2Response {
   nota: string
 }
 
+/** Resultado del reentrenamiento con histórico + nuevos (POST /v2/{dominio}/entrenar, ADR-0027). */
+export interface V2VersionEntrenada {
+  task: string
+  version: number
+  algorithm: string | null
+  metrics: Record<string, number | null> | null
+  is_serving: boolean
+  storage_uri: string | null
+}
+
+export interface V2Reentrenamiento {
+  dominio: string
+  corpus_filas: number
+  versiones: V2VersionEntrenada[]
+  training_run_id: number
+}
+
+/** Una versión del registro de modelos (GET /v2/{dominio}/modelos, ADR-0027). */
+export interface V2Modelo {
+  id: number
+  task: string
+  version: number
+  algorithm: string | null
+  metrics: Record<string, number | null> | null
+  status: string
+  is_serving: boolean
+  trained_rows: number
+  trained_at: string
+}
+
+export interface V2ListaModelos {
+  dominio: string
+  modelos: V2Modelo[]
+}
+
 /** Diccionario de variables del dominio (GET /v2/{dominio}/esquema). */
 export interface V2Columna {
   nombre: string

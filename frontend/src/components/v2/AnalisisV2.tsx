@@ -16,11 +16,21 @@ import {
   downloadV2Plantilla,
   getV2Demo,
   getV2Esquema,
+  getV2Modelos,
   getV2PlantillaJson,
   postV2,
+  postV2Entrenar,
   postV2Excel,
 } from '../../api/endpoints'
-import type { AutoRow, V2Domain, V2Esquema, V2PrediccionItem, V2Response } from '../../api/types'
+import type {
+  AutoRow,
+  V2Domain,
+  V2Esquema,
+  V2Modelo,
+  V2PrediccionItem,
+  V2Reentrenamiento,
+  V2Response,
+} from '../../api/types'
 import { SerieChart } from '../charts/SerieChart'
 import { BarrasTop } from '../charts/BarrasTop'
 import { ModuleHeader } from '../ui/ModuleHeader'
@@ -408,6 +418,16 @@ export function AnalisisV2({ view, dominio, accent, empty }: AnalisisV2Props) {
         )}
       </StepSection>
 
+      {/* PASO 4 — Entrena y guarda tu modelo (histórico acumulado + lo nuevo) */}
+      <StepSection
+        step={4}
+        title="Entrena y guarda tu modelo"
+        accentChip={accent.chip}
+        description="Cada archivo que subes se acumula en tu histórico. Al entrenar, el sistema aprende con TODO tu histórico (lo de antes + lo nuevo) y guarda una versión de tu modelo."
+      >
+        <PanelEntrenamiento dominio={dominio} accent={accent} horizon={horizon} />
+      </StepSection>
+
       {error && <ErrorPanel error={error} />}
 
       {!data && !busy && !error && (
@@ -415,6 +435,114 @@ export function AnalisisV2({ view, dominio, accent, empty }: AnalisisV2Props) {
       )}
 
       {data && <Resultado data={data} accent={accent} />}
+    </div>
+  )
+}
+
+const TAREA_LABEL: Record<string, string> = {
+  regresion: 'Pronóstico',
+  clasificacion: 'Alertas',
+  clustering: 'Grupos',
+}
+
+/** Paso 4: reentrena con TODO el histórico acumulado y muestra el registro de versiones. */
+function PanelEntrenamiento({ dominio, accent, horizon }: { dominio: V2Domain; accent: Accent; horizon: number }) {
+  const [entrenando, setEntrenando] = useState(false)
+  const [resultado, setResultado] = useState<V2Reentrenamiento | null>(null)
+  const [modelos, setModelos] = useState<V2Modelo[] | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  const cargarModelos = async () => {
+    try {
+      const r = await getV2Modelos(dominio)
+      setModelos(r.modelos)
+    } catch {
+      /* si aún no hay registro, no es un error visible */
+    }
+  }
+
+  useEffect(() => {
+    setResultado(null)
+    setModelos(null)
+    setError(null)
+    setAviso(null)
+    void cargarModelos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dominio])
+
+  const entrenar = async () => {
+    setEntrenando(true)
+    setError(null)
+    setAviso(null)
+    try {
+      const r = await postV2Entrenar(dominio, horizon)
+      setResultado(r)
+      await cargarModelos()
+    } catch (e) {
+      if (e instanceof ApiError) setError(e)
+      else setAviso(String(e))
+    } finally {
+      setEntrenando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className={`btn ${accent.solid}`} disabled={entrenando} onClick={() => void entrenar()}>
+          {entrenando ? 'Entrenando con tu histórico…' : 'Entrenar mi modelo (con todo mi histórico)'}
+        </button>
+        <button type="button" className="btn-ghost text-sm" disabled={entrenando} onClick={() => void cargarModelos()}>
+          Actualizar historial
+        </button>
+      </div>
+      <p className="help">Súbelos primero en el paso 3. El entrenamiento no vuelve a duplicar datos que ya subiste.</p>
+
+      {aviso && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" role="alert">{aviso}</p>}
+      {error && <ErrorPanel error={error} />}
+
+      {resultado && (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          Listo: se entrenó con <strong>{NUM.format(resultado.corpus_filas)}</strong> filas de tu histórico y se
+          guardaron <strong>{resultado.versiones.length}</strong> modelo(s) (versión #{resultado.versiones[0]?.version ?? '—'}).
+        </p>
+      )}
+
+      {modelos && modelos.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+                <th className="px-3 py-2 font-medium">Modelo</th>
+                <th className="px-3 py-2 font-medium">Versión</th>
+                <th className="px-3 py-2 font-medium">Algoritmo</th>
+                <th className="px-3 py-2 font-medium">Filas</th>
+                <th className="px-3 py-2 font-medium">Entrenado</th>
+                <th className="px-3 py-2 font-medium">En uso</th>
+              </tr>
+            </thead>
+            <tbody>
+              {modelos.map((m) => (
+                <tr key={m.id} className="border-b border-slate-100 last:border-0">
+                  <td className="px-3 py-2 text-slate-700">{TAREA_LABEL[m.task] ?? m.task}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-slate-500">#{m.version}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-slate-500">{m.algorithm ?? '—'}</td>
+                  <td className="px-3 py-2 text-slate-500">{NUM.format(m.trained_rows)}</td>
+                  <td className="px-3 py-2 text-xs text-slate-500">{m.trained_at.slice(0, 16).replace('T', ' ')}</td>
+                  <td className="px-3 py-2">
+                    {m.is_serving ? (
+                      <span className={`badge ${accent.badge}`}>en uso</span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
