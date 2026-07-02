@@ -11,8 +11,11 @@ import {
 // Códigos que sirve el backend hoy (src/spc/api/schemas/auth.py). Si el backend añade uno,
 // estas listas recuerdan que falta su etiqueta en español (la prueba fallaría).
 const BACKEND = {
-  sectors: ['retail', 'wholesale', 'supermarket', 'pharmacy', 'hardware', 'food_service', 'other'],
-  sizes: ['micro', 'small', 'medium'],
+  sectors: [
+    'retail', 'wholesale', 'supermarket', 'pharmacy', 'food_service', 'clothing', 'electronics',
+    'beauty', 'hardware', 'stationery', 'automotive', 'agriculture', 'services', 'other',
+  ],
+  sizes: ['micro', 'small', 'medium', 'large'],
   regions: ['north_america', 'central_america', 'south_america', 'europe', 'africa', 'asia', 'oceania'],
   currencies: ['USD', 'EUR', 'PEN', 'COP', 'MXN', 'CLP', 'ARS', 'BRL'],
 }

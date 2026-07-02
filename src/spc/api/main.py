@@ -5,10 +5,13 @@ documentación Swagger/OpenAPI. Levantar en desarrollo:
 
     uvicorn spc.api.main:app --reload
 
-El servicio expone dos motores de predicción **entrenados en el momento** (sin
-artefactos congelados): el agnóstico auto-entrenado (``/auto/*``, ADR-0023) y el
-3×3 por dominio (``/v2/*``, ADR-0024/0025). `crear_app` permite inyectar un
+El servicio expone el motor **3×3 por dominio** (``/v2/*``, ADR-0024/0025),
+**entrenado en el momento** (sin artefactos congelados). `crear_app` permite inyectar un
 repositorio de auth ya abierto (lo usan los tests) sin tocar el disco real.
+
+El motor agnóstico ``/auto/*`` (ADR-0023) se **archivó** en ``legacy/auto_api/``: su capa
+de API ya no se expone. Su maquinaria interna reutilizada por el 3×3 (``service.agnostico``,
+``schemas.agnostico``, ``models.automl``) permanece en ``spc`` a propósito.
 """
 
 from __future__ import annotations
@@ -24,7 +27,6 @@ from sqlalchemy import Engine
 
 from spc.api.errors import registrar_manejadores
 from spc.api.routers import (
-    agnostico,
     auth,
     dominios_3x3,
 )
@@ -44,12 +46,9 @@ log = get_logger("api.main")
 
 DESCRIPCION = """
 **Sistema Predictivo de Comercialización** — servicio de pronóstico para PYMEs,
-agnóstico al sector. Dos motores, ambos **entrenados en el momento** con los datos
-que envía el cliente (sin modelos congelados):
+agnóstico al sector. Motor **entrenado en el momento** con los datos que envía el
+cliente (sin modelos congelados):
 
-- **AUTO** (`/auto/*`) — predicción **agnóstica auto-entrenada** (ADR-0023): el
-  cliente declara su propio esquema y trae las columnas que tenga; el backend entrena
-  el mejor modelo con validación honesta y predice en una sola llamada.
 - **3×3** (`/v2/{ventas,compras,almacen}`) — un **formato fijo por dominio** que
   alimenta los tres modelos (regresión, clasificación, clustering) con scikit-learn
   liviano (ADR-0024/0025). Cada dominio ofrece además un endpoint `/demo` con datos
@@ -60,7 +59,6 @@ error controlado y uniforme.
 """
 
 TAGS_METADATA = [
-    {"name": "AUTO", "description": "Predicción agnóstica auto-entrenada: el cliente declara su esquema y columnas (ADR-0023)."},
     {"name": "3X3", "description": "Rediseño 3×3: un formato por dominio (ventas/compras/almacén) que alimenta los tres modelos (regresión, clasificación, clustering) entrenados en el momento."},
     {"name": "auth", "description": "Control de acceso por roles: login, identidad, administración de usuarios y perfil."},
     {"name": "status", "description": "Salud del servicio."},
@@ -162,7 +160,6 @@ def crear_app(
 
     registrar_manejadores(app)
     app.include_router(auth.router)
-    app.include_router(agnostico.router)
     app.include_router(dominios_3x3.router)
 
     @app.get("/health", tags=["status"], summary="Salud del servicio")

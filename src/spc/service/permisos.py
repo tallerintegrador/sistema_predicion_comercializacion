@@ -27,13 +27,12 @@ class Permiso:
 
 
 # Acciones transversales (no dependen de un dominio del catálogo). La etiqueta es para la
-# UI (español); la clave, para el contrato/enforcement (inglés).
+# UI (español); la clave, para el contrato/enforcement (inglés). Solo se declaran las que
+# hoy verifica algún endpoint activo: predecir (bajo `/v2/*`, junto al permiso de módulo) y
+# administrar usuarios. Las acciones de plantilla/carga/reentrenamiento/catálogo del
+# módulo automático (`/auto`) se retiraron al archivarlo (ya no controlaban nada).
 _ACCIONES: tuple[tuple[str, str], ...] = (
-    ("action:catalog", "Ver catálogo"),
     ("action:forecast", "Predecir"),
-    ("action:template_download", "Descargar plantilla"),
-    ("action:template_upload", "Cargar plantilla"),
-    ("action:training", "Reentrenar (opt-in)"),
     ("action:users_manage", "Administrar usuarios"),
 )
 

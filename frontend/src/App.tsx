@@ -11,7 +11,6 @@ import { AboutPage } from './pages/AboutPage'
 import { SalesPage } from './pages/SalesPage'
 import { PurchasesPage } from './pages/PurchasesPage'
 import { InventoryPage } from './pages/InventoryPage'
-import { LibrePage } from './pages/LibrePage'
 import { UsersPage } from './pages/UsersPage'
 
 /** Componente de página por sección. La visibilidad la decide el permiso, no este mapa. */
@@ -20,7 +19,6 @@ const PAGES: Record<View, ComponentType> = {
   sales: SalesPage,
   purchases: PurchasesPage,
   inventory: InventoryPage,
-  auto: LibrePage,
   users: UsersPage,
   about: AboutPage,
 }

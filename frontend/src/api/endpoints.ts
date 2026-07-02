@@ -1,25 +1,15 @@
 /**
  * Endpoints SPC tipados. Una función por operación.
  *
- * Dos motores, ambos entrenados en el momento (sin artefactos):
- * - **3×3** (`/v2/*`): un formato fijo por dominio (ventas/compras/almacén) que devuelve
- *   los tres modelos (regresión, clasificación, clustering) en una sola respuesta.
- * - **Agnóstico** (`/auto/*`): el cliente declara su esquema y trae columnas libres.
+ * Motor **3×3** (`/v2/*`), entrenado en el momento (sin artefactos): un formato fijo por
+ * dominio (ventas/compras/almacén) que devuelve los tres modelos (regresión, clasificación,
+ * clustering) en una sola respuesta.
  */
-import { getBlob, getJson, postFile, postJson, postJsonBlob } from './client'
+import { getBlob, getJson, postFile, postJson } from './client'
 import type {
-  AutoInventoryRequest,
-  AutoInventoryResponse,
-  AutoPurchasesRequest,
-  AutoPurchasesResponse,
-  AutoSalesRequest,
-  AutoSalesResponse,
-  AutoSchemaSpec,
   AutoRow,
   V2Domain,
   V2Esquema,
-  V2ListaModelos,
-  V2Reentrenamiento,
   V2Response,
 } from './types'
 
@@ -57,41 +47,3 @@ export const postV2Excel = (dominio: V2Domain, file: File, horizon = 14) =>
   postFile<V2Response>(`/v2/${dominio}/excel?horizon=${horizon}`, file, {}, 'archivo').then(
     (r) => r.data,
   )
-
-// --- Reentrenamiento y registro de modelos (ADR-0027) ---
-// El corpus se acumula con cada carga; "entrenar" reentrena con TODO el histórico + lo nuevo,
-// versiona los modelos en el registro y marca cuál se sirve.
-export const postV2Entrenar = (dominio: V2Domain, horizon = 14) =>
-  postJson<V2Reentrenamiento>(`/v2/${dominio}/entrenar?horizon=${horizon}`, {}).then((r) => r.data)
-
-/** Historial de versiones de modelos del cliente para el dominio (cuál se sirve, métricas). */
-export const getV2Modelos = (dominio: V2Domain) =>
-  getJson<V2ListaModelos>(`/v2/${dominio}/modelos`).then((r) => r.data)
-
-// --- Predicción agnóstica auto-entrenada (ADR-0023) ---
-// El cliente declara su esquema (`schema`) y trae columnas arbitrarias (`rows`). El backend
-// entrena el ganador al vuelo y responde 200 (no hay modo lote: el entrenamiento es síncrono).
-export const postAutoSales = (req: AutoSalesRequest) =>
-  postJson<AutoSalesResponse>('/auto/sales', req).then((r) => r.data)
-
-export const postAutoInventory = (req: AutoInventoryRequest) =>
-  postJson<AutoInventoryResponse>('/auto/inventory', req).then((r) => r.data)
-
-export const postAutoPurchases = (req: AutoPurchasesRequest) =>
-  postJson<AutoPurchasesResponse>('/auto/purchases', req).then((r) => r.data)
-
-export type AutoDomain = 'sales' | 'inventory' | 'purchases'
-
-/** Descarga la plantilla Excel generada a la medida del esquema declarado. */
-export const downloadAutoTemplate = (domain: AutoDomain, schema: AutoSchemaSpec) =>
-  postJsonBlob(`/auto/${domain}/template`, { schema })
-
-/** Sube un Excel (hoja `datos` [+ `items`]) y devuelve el resultado auto-entrenado. */
-export async function uploadAutoExcel<TRes>(
-  domain: AutoDomain,
-  file: File,
-  fields: Record<string, string | number>,
-): Promise<TRes> {
-  const { data } = await postFile<TRes>(`/auto/${domain}/excel`, file, fields)
-  return data
-}

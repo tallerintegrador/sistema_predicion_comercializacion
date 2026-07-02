@@ -124,10 +124,10 @@ def test_permisos_catalogo_para_admin(auth_client) -> None:
 def test_flujo_rol_restringido_y_autorizacion(auth_client) -> None:
     admin = _login(auth_client, "256317", "256317")
 
-    # El admin crea un rol restringido (solo el permiso de catálogo, sin predicción).
+    # El admin crea un rol restringido (solo la acción de predecir, sin acceso a módulos).
     r = auth_client.post(
         "/roles",
-        json={"name": "viewer", "description": "Solo lectura", "permissions": ["action:catalog"]},
+        json={"name": "viewer", "description": "Solo lectura", "permissions": ["action:forecast"]},
         headers=_auth(admin),
     )
     assert r.status_code == 201, r.text
@@ -146,7 +146,7 @@ def test_flujo_rol_restringido_y_autorizacion(auth_client) -> None:
 
     # Puede consultar su propia identidad (autenticado)...
     assert auth_client.get("/auth/me", headers=_auth(viewer)).status_code == 200
-    # ...pero no predecir (le faltan module:sales y action:forecast)...
+    # ...pero no predecir (tiene action:forecast pero le falta module:sales)...
     r = auth_client.post("/v2/ventas", json=_cuerpo_ventas(), headers=_auth(viewer))
     assert r.status_code == 403
     assert r.json()["error"]["type"] == "forbidden"
@@ -211,7 +211,7 @@ def test_no_se_puede_eliminar_el_rol_admin(auth_client) -> None:
 def test_onboarding_perfil(auth_client) -> None:
     admin = _login(auth_client, "256317", "256317")
     rol = auth_client.post(
-        "/roles", json={"name": "negocio", "permissions": ["action:catalog"]}, headers=_auth(admin)
+        "/roles", json={"name": "negocio", "permissions": ["action:forecast"]}, headers=_auth(admin)
     ).json()["id"]
     auth_client.post(
         "/users",
@@ -248,7 +248,7 @@ def test_onboarding_perfil(auth_client) -> None:
 def test_onboarding_con_opcion_invalida_es_400(auth_client) -> None:
     admin = _login(auth_client, "256317", "256317")
     rol = auth_client.post(
-        "/roles", json={"name": "negocio2", "permissions": ["action:catalog"]}, headers=_auth(admin)
+        "/roles", json={"name": "negocio2", "permissions": ["action:forecast"]}, headers=_auth(admin)
     ).json()["id"]
     auth_client.post(
         "/users",

@@ -13,7 +13,6 @@ import {
   BarChart3,
   ShoppingCart,
   Package,
-  Wand2,
   Users,
   Info,
 } from 'lucide-react'
@@ -23,7 +22,6 @@ export type View =
   | 'sales'
   | 'purchases'
   | 'inventory'
-  | 'auto'
   | 'users'
   | 'about'
 
@@ -139,16 +137,6 @@ export const SECTIONS: SectionDef[] = [
     icon: Package,
     perms: ['module:inventory'],
     accent: ACCENTS.inventory,
-  },
-  {
-    id: 'auto',
-    path: '/custom',
-    label: 'Predicción a tu medida',
-    blurb:
-      'Cualquier rubro: elige qué quieres (pronóstico, riesgo de quiebre o reposición), trae tus columnas y el sistema entrena varios modelos, se queda con el mejor y predice.',
-    icon: Wand2,
-    perms: ['module:sales'],
-    accent: ACCENTS.brand,
   },
   {
     id: 'users',

@@ -96,11 +96,6 @@ export function LoginPage() {
               {busy ? 'Ingresando…' : 'Ingresar'}
             </button>
           </form>
-
-          <p className="mt-6 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-400">
-            Cuentas de demostración (no de producción): <strong>256317</strong> y <strong>256370</strong>,
-            con contraseña igual al usuario.
-          </p>
         </div>
       </div>
     </div>

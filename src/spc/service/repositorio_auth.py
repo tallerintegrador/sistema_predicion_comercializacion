@@ -146,16 +146,24 @@ class RepositorioAuth:
                 )
                 s.add(rol)
                 s.flush()  # asigna rol.id
-            # El administrador SIEMPRE tiene todos los permisos vigentes (si el catálogo creció).
+            # El administrador SIEMPRE refleja EXACTAMENTE el catálogo vigente: se añaden
+            # los permisos nuevos y se podan los que ya no existen (p. ej. acciones de un
+            # módulo archivado), para no arrastrar claves muertas en la base.
+            vigentes = set(permisos.permisos_administrador())
             existentes = {
                 p.permission
                 for p in s.scalars(
                     select(RolePermission).where(RolePermission.role_id == rol.id)
                 )
             }
-            for clave in permisos.permisos_administrador():
-                if clave not in existentes:
-                    s.add(RolePermission(role_id=rol.id, permission=clave))
+            for clave in vigentes - existentes:
+                s.add(RolePermission(role_id=rol.id, permission=clave))
+            for clave in existentes - vigentes:
+                s.execute(
+                    delete(RolePermission).where(
+                        RolePermission.role_id == rol.id, RolePermission.permission == clave
+                    )
+                )
             rol_id = int(rol.id)
             if nuevo:
                 log.info("Rol administrador sembrado (id=%s).", rol_id)
