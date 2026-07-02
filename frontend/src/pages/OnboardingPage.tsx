@@ -111,9 +111,8 @@ export function OnboardingPage() {
         <div className="mb-5 flex items-start gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
-            Nuestro sistema aprendió con los datos de un comercio de ejemplo. Para negocios de otros rubros,
-            las predicciones son una <strong>referencia útil</strong>, no una cifra exacta. Más adelante
-            podrás mejorarlas con tus propios datos.
+            Estas predicciones son una <strong>referencia útil</strong>, no una cifra exacta. Mejoran a
+            medida que cargas y entrenas con los datos de tu propio negocio.
           </p>
         </div>
 

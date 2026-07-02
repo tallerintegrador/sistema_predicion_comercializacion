@@ -3,6 +3,13 @@ venv/
 .venv/
 env/
 
+# Variables de entorno con secretos (Supabase, auth). NO versionar; usar .env.example.
+.env
+.env.*
+!.env.example
+**/.env
+!**/.env.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -21,12 +28,22 @@ dist/
 data/synthetic/*
 !data/synthetic/.gitkeep
 
+# Ejemplos/plantillas 3x3 generados (reproducibles con scripts/generar_ejemplos_v2.py)
+ejemplos/
+# Datos de ejemplo por rubro peruano (reproducibles con scripts/generar_ejemplos_peru.py)
+datos_ejemplo_peru/
+
 # Corpus incremental SQLite (Fase A MEJORADO, ADR-0011) y exports del corpus
 *.db
 *.db-journal
 data/*.db
 data/corpus*.parquet
 data/corpus*.csv
+
+# Artefactos congelados del pipeline Favorita (legacy): el serving entrena en el
+# momento y no los carga. No versionar. (No afecta models/clientes/, cache por-cliente.)
+models/*.joblib
+models/*.meta.json
 
 # IDE / SO
 .vscode/

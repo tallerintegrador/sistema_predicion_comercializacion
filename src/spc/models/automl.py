@@ -1,7 +1,7 @@
 """AutoML **agnóstico al rubro**: entrena el algoritmo ganador sobre un esquema declarado.
 
-Reutiliza el **mismo zoo de modelos** y la **misma selección honesta** del motor retail
-(`spc.models.regresion` / `spc.models.clasificacion`) pero alimentado por el feature
+Reutiliza el **mismo zoo de modelos** y la **misma selección honesta** del núcleo
+(`spc.models.nucleo` / `spc.models.desbalance`) pero alimentado por el feature
 engineering genérico (`spc.features.generico`), de modo que el cliente puede traer
 **columnas arbitrarias** (otro rubro) y el sistema:
 
@@ -29,7 +29,7 @@ from spc.features.generico import (
     columnas_lag_objetivo,
     construir_features,
 )
-from spc.models.regresion import (
+from spc.models.nucleo import (
     CortesTemporales,
     ModeloEnsemble,
     _a_unidades,
@@ -210,6 +210,7 @@ def entrenar_regresion(
     seed: int = 42,
     usar_gpu: bool = False,
     ensemble: bool = True,
+    usar_zoo_liviano: bool = False,
 ) -> ResultadoAutoMLRegresion:
     """Entrena el zoo sobre el esquema declarado, elige el ganador en VALID y reajusta.
 
@@ -217,6 +218,9 @@ def entrenar_regresion(
     unidades); gana el de menor MAE. Si ``ensemble`` y hay ≥2 boosters, se combinan los
     mejores con pesos convexos. La métrica de cierre (TEST) se calcula con **pronóstico
     recursivo** (honesto). El predictor final se reajusta sobre TODA la historia.
+
+    Con ``usar_zoo_liviano=True`` se usa el zoo **solo sklearn** (rediseño 3×3, modelos en
+    el momento): Ridge/RandomForest/HistGradientBoosting, sin LightGBM/XGBoost/GPU.
     """
     obj = spec.objetivo
     df_feat, features, cats = construir_features(df, spec)
@@ -263,7 +267,12 @@ def entrenar_regresion(
     techo_unidades = float(np.quantile(y_units[m_train], 0.999)) * 2.0 if m_train.any() else None
     techo_log = float(np.log1p(techo_unidades)) if techo_unidades else None
 
-    zoo = construir_zoo(seed, features, cats, usar_gpu=usar_gpu)
+    if usar_zoo_liviano:
+        from spc.models.zoo_liviano import construir_zoo_liviano
+
+        zoo = construir_zoo_liviano(seed, features, cats)
+    else:
+        zoo = construir_zoo(seed, features, cats, usar_gpu=usar_gpu)
     X_cat = _matriz_categorica(df_model, features, cats)
     X_num = _matriz_numerica(df_model, features, cats)
 
@@ -497,10 +506,10 @@ def entrenar_clasificacion(
     """Entrena el clasificador ganador (LightGBM, estrategia de desbalance elegida en VALID).
 
     ``spec.objetivo`` debe ser una etiqueta binaria (0/1) ya presente en ``df``. Reutiliza
-    las estrategias de desbalance y la selección de umbral del motor retail
-    (`spc.models.clasificacion`), pero sobre features genéricas.
+    las estrategias de desbalance y la selección de umbral del núcleo
+    (`spc.models.desbalance`), pero sobre features genéricas.
     """
-    from spc.models.clasificacion import (
+    from spc.models.desbalance import (
         ESTRATEGIAS,
         _elegir_estrategia,
         _proba,

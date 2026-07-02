@@ -1,165 +1,49 @@
 /**
- * Endpoints SPC tipados. Una función por operación del contrato.
+ * Endpoints SPC tipados. Una función por operación.
  *
- * Las predicciones devuelven `{ status, data }`: status 200 = resultado del
- * dominio; status 202 = `JobAccepted` (modo lote). El caller (usePrediction)
- * decide si hay que hacer polling.
+ * Motor **3×3** (`/v2/*`), entrenado en el momento (sin artefactos): un formato fijo por
+ * dominio (ventas/compras/almacén) que devuelve los tres modelos (regresión, clasificación,
+ * clustering) en una sola respuesta.
  */
-import { getBlob, getJson, postFile, postJson, postJsonBlob } from './client'
+import { getBlob, getJson, postFile, postJson } from './client'
 import type {
-  AutoInventoryRequest,
-  AutoInventoryResponse,
-  AutoPurchasesRequest,
-  AutoPurchasesResponse,
-  AutoSalesRequest,
-  AutoSalesResponse,
-  AutoSchemaSpec,
-  CatalogResponse,
-  Domain,
-  InventoryRequest,
-  InventoryResponse,
-  JobAccepted,
-  PurchasesRequest,
-  PurchasesResponse,
-  SalesRequest,
-  SalesResponse,
-  ServingStatus,
-  TrainingAccepted,
-  TrainingJobStatus,
-  TrainingPhase,
-  TrainingResult,
-  TrainingSource,
+  AutoRow,
+  V2Domain,
+  V2Esquema,
+  V2Response,
 } from './types'
 
-// Una predicción puede volver como resultado (200) o como comprobante de lote (202).
-export type PredictResult<T> =
-  | { mode: 'online'; data: T }
-  | { mode: 'batch'; job: JobAccepted }
+// --- 3×3 por dominio (ADR-0024/0025) ---
+// Una sola llamada por dominio: envía las filas en el formato fijo y recibe los tres
+// modelos entrenados al vuelo. Es síncrono (no hay modo lote).
+export const postV2 = (dominio: V2Domain, rows: AutoRow[], horizon = 14) =>
+  postJson<V2Response>(`/v2/${dominio}`, { rows, horizon }).then((r) => r.data)
 
-async function predict<TReq, TRes>(
-  path: string,
-  body: TReq,
-): Promise<PredictResult<TRes>> {
-  const { status, data } = await postJson<TRes | JobAccepted>(path, body)
-  if (status === 202) return { mode: 'batch', job: data as JobAccepted }
-  return { mode: 'online', data: data as TRes }
-}
+/** Corre el análisis 3×3 sobre los datos sintéticos del propio sistema (sin aportar datos). */
+export const getV2Demo = (dominio: V2Domain, horizon = 14) =>
+  getJson<V2Response>(`/v2/${dominio}/demo?horizon=${horizon}`).then((r) => r.data)
 
-export const postSales = (req: SalesRequest) =>
-  predict<SalesRequest, SalesResponse>('/sales', req)
+/** Diccionario de variables del dominio (qué columnas pedir y qué se predice, en simple). */
+export const getV2Esquema = (dominio: V2Domain) =>
+  getJson<V2Esquema>(`/v2/${dominio}/esquema`).then((r) => r.data)
 
-export const postPurchases = (req: PurchasesRequest) =>
-  predict<PurchasesRequest, PurchasesResponse>('/purchases', req)
+/** Descarga la plantilla/ejemplo del dominio en Excel (blob con nombre de archivo). */
+export const downloadV2Plantilla = (
+  dominio: V2Domain,
+  contenido: 'basica' | 'rica' = 'basica',
+) => getBlob(`/v2/${dominio}/plantilla?formato=excel&contenido=${contenido}`)
 
-export const postInventory = (req: InventoryRequest) =>
-  predict<InventoryRequest, InventoryResponse>('/inventory', req)
+/** Obtiene la plantilla/ejemplo del dominio en JSON ({rows, horizon}). */
+export const getV2PlantillaJson = (
+  dominio: V2Domain,
+  contenido: 'basica' | 'rica' = 'basica',
+) =>
+  getJson<{ rows: AutoRow[]; horizon: number }>(
+    `/v2/${dominio}/plantilla?formato=json&contenido=${contenido}`,
+  ).then((r) => r.data)
 
-// --- Predicción agnóstica auto-entrenada (ADR-0023) ---
-// El cliente declara su esquema (`schema`) y trae columnas arbitrarias (`rows`). El backend
-// entrena el ganador al vuelo y responde 200 (no hay modo lote: el entrenamiento es síncrono).
-export const postAutoSales = (req: AutoSalesRequest) =>
-  postJson<AutoSalesResponse>('/auto/sales', req).then((r) => r.data)
-
-export const postAutoInventory = (req: AutoInventoryRequest) =>
-  postJson<AutoInventoryResponse>('/auto/inventory', req).then((r) => r.data)
-
-export const postAutoPurchases = (req: AutoPurchasesRequest) =>
-  postJson<AutoPurchasesResponse>('/auto/purchases', req).then((r) => r.data)
-
-export type AutoDomain = 'sales' | 'inventory' | 'purchases'
-
-/** Descarga la plantilla Excel generada a la medida del esquema declarado. */
-export const downloadAutoTemplate = (domain: AutoDomain, schema: AutoSchemaSpec) =>
-  postJsonBlob(`/auto/${domain}/template`, { schema })
-
-/** Sube un Excel (hoja `datos` [+ `items`]) y devuelve el resultado auto-entrenado. */
-export async function uploadAutoExcel<TRes>(
-  domain: AutoDomain,
-  file: File,
-  fields: Record<string, string | number>,
-): Promise<TRes> {
-  const { data } = await postFile<TRes>(`/auto/${domain}/excel`, file, fields)
-  return data
-}
-
-// --- Canal Excel ---
-// `fields` lleva la configuración de pantalla cuando aplica: en Ventas, el archivo es
-// solo datos (history) y `granularity`/`horizon` viajan como campos de formulario, única
-// fuente de la configuración del pronóstico (ADR-0022).
-export async function uploadExcel<TRes>(
-  domain: Domain,
-  file: File,
-  fields?: Record<string, string | number>,
-): Promise<PredictResult<TRes>> {
-  const { status, data } = await postFile<TRes | JobAccepted>(`/${domain}/excel`, file, fields)
-  if (status === 202) return { mode: 'batch', job: data as JobAccepted }
-  return { mode: 'online', data: data as TRes }
-}
-
-export function downloadTemplate(domain: Domain) {
-  return getBlob(`/${domain}/template`)
-}
-
-// --- Modo lote ---
-/**
- * Pide el resultado de un job. Devuelve `pending: true` mientras el backend
- * responde 202 (aún en cola/corriendo); `done` con el cuerpo del dominio al
- * terminar. Un error de negocio (400/500) sale como `ApiError` desde el cliente.
- */
-export async function getJobResult<T>(
-  jobId: string,
-): Promise<{ pending: true } | { pending: false; data: T }> {
-  const { status, data } = await getJson<T>(`/jobs/${jobId}/result`)
-  if (status === 202) return { pending: true }
-  return { pending: false, data }
-}
-
-// --- Catálogo ---
-export async function getCatalog(): Promise<CatalogResponse> {
-  const { data } = await getJson<CatalogResponse>('/catalog')
-  return data
-}
-
-// --- Entrenamiento por cliente bajo demanda (ADR-0013) ---
-/** Sube el Excel de SALES y dispara un entrenamiento LOCAL (opt-in). Devuelve el job. */
-export async function startSalesTraining(
-  file: File,
-  source: TrainingSource = 'merged',
-): Promise<TrainingAccepted> {
-  const { data } = await postFile<TrainingAccepted>(
-    `/training/sales/excel?source=${source}`,
-    file,
+/** Sube un Excel con el formato del dominio y devuelve el análisis 3×3. */
+export const postV2Excel = (dominio: V2Domain, file: File, horizon = 14) =>
+  postFile<V2Response>(`/v2/${dominio}/excel?horizon=${horizon}`, file, {}, 'archivo').then(
+    (r) => r.data,
   )
-  return data
-}
-
-/**
- * Pide el resultado del entrenamiento. Mientras el backend responde 202 devuelve
- * `pending: true` con la fase honesta; al terminar, `done` con la comparación.
- */
-export async function getTrainingResult(
-  jobId: string,
-): Promise<
-  | { pending: true; phase: TrainingPhase | null }
-  | { pending: false; data: TrainingResult }
-> {
-  const { status, data } = await getJson<TrainingResult | TrainingJobStatus>(
-    `/training/jobs/${jobId}/result`,
-  )
-  if (status === 202) {
-    return { pending: true, phase: (data as TrainingJobStatus).phase ?? null }
-  }
-  return { pending: false, data: data as TrainingResult }
-}
-
-/** Estado de adopción/serving del modelo por cliente para el client_id actual. */
-export async function getServingStatus(): Promise<ServingStatus> {
-  const { data } = await getJson<ServingStatus>('/training/sales/status')
-  return data
-}
-
-/** Activa/desactiva servir con el modelo por cliente (switch reversible). */
-export async function setServing(enabled: boolean): Promise<ServingStatus> {
-  const { data } = await postJson<ServingStatus>('/training/sales/serving', { enabled })
-  return data
-}

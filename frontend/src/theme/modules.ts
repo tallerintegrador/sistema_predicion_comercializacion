@@ -13,19 +13,15 @@ import {
   BarChart3,
   ShoppingCart,
   Package,
-  Wand2,
   Users,
-  BookOpenText,
   Info,
 } from 'lucide-react'
 
 export type View =
   | 'home'
-  | 'catalog'
   | 'sales'
   | 'purchases'
   | 'inventory'
-  | 'auto'
   | 'users'
   | 'about'
 
@@ -113,15 +109,6 @@ export const SECTIONS: SectionDef[] = [
     accent: ACCENTS.brand,
   },
   {
-    id: 'catalog',
-    path: '/what-it-does',
-    label: '¿Qué hace el sistema?',
-    blurb: 'Conoce los tres módulos, qué datos piden y qué resultado entregan.',
-    icon: BookOpenText,
-    perms: ['action:catalog'],
-    accent: ACCENTS.brand,
-  },
-  {
     id: 'sales',
     path: '/sales',
     label: 'Ventas',
@@ -150,16 +137,6 @@ export const SECTIONS: SectionDef[] = [
     icon: Package,
     perms: ['module:inventory'],
     accent: ACCENTS.inventory,
-  },
-  {
-    id: 'auto',
-    path: '/custom',
-    label: 'Predicción a tu medida',
-    blurb:
-      'Cualquier rubro: elige qué quieres (pronóstico, riesgo de quiebre o reposición), trae tus columnas y el sistema entrena varios modelos, se queda con el mejor y predice.',
-    icon: Wand2,
-    perms: ['module:sales'],
-    accent: ACCENTS.brand,
   },
   {
     id: 'users',

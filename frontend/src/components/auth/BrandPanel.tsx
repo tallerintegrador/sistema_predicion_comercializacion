@@ -33,7 +33,7 @@ export function BrandPanel() {
       </div>
 
       <p className="text-xs text-brand-200">
-        Estimaciones referenciales, basadas en un comercio de ejemplo.
+        Estimaciones referenciales que mejoran con tus propios datos.
       </p>
     </div>
   )

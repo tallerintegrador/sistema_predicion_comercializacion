@@ -21,9 +21,9 @@ ALLOW_ORIGIN = "access-control-allow-origin"
 
 
 def test_preflight_refleja_el_origen_permitido(client):
-    """El preflight (OPTIONS) de POST /sales desde el origen permitido lo autoriza."""
+    """El preflight (OPTIONS) de POST /v2/ventas desde el origen permitido lo autoriza."""
     r = client.options(
-        "/sales",
+        "/v2/ventas",
         headers={
             "Origin": ORIGEN,
             "Access-Control-Request-Method": "POST",

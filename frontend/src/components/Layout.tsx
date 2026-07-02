@@ -75,7 +75,7 @@ export function Layout() {
           <Outlet />
         </main>
         <footer className="flex flex-wrap items-center justify-center gap-1 border-t border-slate-200 px-4 py-3 text-center text-xs text-slate-400">
-          <span>Las estimaciones son referenciales y se basan en un comercio de ejemplo.</span>
+          <span>Las estimaciones son referenciales y mejoran con tus propios datos.</span>
           <Link
             to={SECTION_BY_ID.about.path}
             className="font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
