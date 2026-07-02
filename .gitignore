@@ -33,6 +33,11 @@ data/*.db
 data/corpus*.parquet
 data/corpus*.csv
 
+# Artefactos congelados del pipeline Favorita (legacy): el serving entrena en el
+# momento y no los carga. No versionar. (No afecta models/clientes/, cache por-cliente.)
+models/*.joblib
+models/*.meta.json
+
 # IDE / SO
 .vscode/
 .idea/
