@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from spc.api.main import crear_app
+from spc.db.engine import crear_engine
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +33,11 @@ def client(tmp_path) -> object:
     La carpeta de la caché de modelos agnósticos (ADR-0023) se apunta a un temporal por test,
     para que ningún test escriba en ``models/clientes`` del repo.
     """
+    # Base de datos aislada por test (ADR-0026): un SQLite temporal para el corpus/modelos,
+    # de modo que la persistencia no toque la base real del repo ni se filtre entre tests.
+    engine = crear_engine(f"sqlite:///{(tmp_path / 'spc_test.db').as_posix()}")
     app = crear_app(
+        engine=engine,
         client_models_dir=tmp_path / "clientes",
         cors_origins=["http://localhost:5173"],
     )

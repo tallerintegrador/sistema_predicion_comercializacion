@@ -49,6 +49,43 @@ def test_ventas_pronostica_horizonte(client) -> None:
     assert {"fecha", "prediccion", "sku", "id_tienda"} <= set(item)
 
 
+def test_reentrenamiento_acumula_historico_y_versiona(client) -> None:
+    """El corpus se acumula (idempotente) y `/entrenar` reentrena con TODO (ADR-0026)."""
+    rows = _rows("ventas")
+    k = len(rows) // 2
+    # Dos lotes con fechas distintas (histórico + nuevos) + un reenvío duplicado del primero.
+    assert client.post("/v2/ventas", json={"rows": rows[:k], "horizon": 5}).status_code == 200
+    assert client.post("/v2/ventas", json={"rows": rows[k:], "horizon": 5}).status_code == 200
+    assert client.post("/v2/ventas", json={"rows": rows[:k], "horizon": 5}).status_code == 200
+
+    r = client.post("/v2/ventas/entrenar", params={"horizon": 5})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # El reentrenamiento vio el histórico completo, sin duplicar el lote reenviado.
+    assert body["corpus_filas"] == len(rows)
+    tareas = {v["task"] for v in body["versiones"]}
+    assert {"regresion", "clasificacion"} <= tareas
+    assert body["training_run_id"] >= 1
+
+    # El registro lista una versión servida por tarea.
+    modelos = client.get("/v2/ventas/modelos").json()["modelos"]
+    assert any(m["is_serving"] and m["task"] == "regresion" for m in modelos)
+
+    # Reentrenar otra vez sube la versión (histórico intacto, no vuelve a crecer).
+    r2 = client.post("/v2/ventas/entrenar", params={"horizon": 5})
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["corpus_filas"] == len(rows)
+    versiones_reg = [m for m in client.get("/v2/ventas/modelos").json()["modelos"] if m["task"] == "regresion"]
+    assert max(v["version"] for v in versiones_reg) == 2
+    assert sum(1 for v in versiones_reg if v["is_serving"]) == 1  # solo la última se sirve
+
+
+def test_entrenar_sin_datos_da_error_controlado(client) -> None:
+    """Reentrenar sin corpus acumulado devuelve un 400 con mensaje claro (no revienta)."""
+    r = client.post("/v2/almacen/entrenar", params={"horizon": 5})
+    assert r.status_code == 400, r.text
+
+
 def test_demo_compras(client) -> None:
     resp = client.get("/v2/compras/demo", params={"horizon": 7})
     assert resp.status_code == 200, resp.text
