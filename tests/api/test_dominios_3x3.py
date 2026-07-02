@@ -57,6 +57,16 @@ def test_demo_compras(client) -> None:
     assert body["clustering"]["k"] >= 2
 
 
+def test_clustering_expone_caracteristicas_de_grupos(client) -> None:
+    # Cada grupo trae sus características promedio (centroides) para poder explicarlo.
+    resp = client.post("/v2/compras", json={"rows": _rows("compras"), "horizon": 7})
+    assert resp.status_code == 200, resp.text
+    grupos = resp.json()["clustering"]["grupos"]
+    assert len(grupos) >= 1
+    assert {"segmento", "etiqueta", "n", "caracteristicas"} <= set(grupos[0])
+    assert len(grupos[0]["caracteristicas"]) >= 1  # p. ej. lead_time_medio, cumplimiento_medio
+
+
 def test_almacen_predice_demanda_y_muestra_indicadores(client) -> None:
     # ADR-0025 (e): la regresión de almacén predice `demanda_dia` y los KPIs de inventario
     # (cobertura, punto de reposición, stock de seguridad) se MUESTRAN derivados.

@@ -366,19 +366,32 @@ def _etiquetas_narrativas(
         # A = el de mayor `columna_rank` (mayor demanda); C = el menor.
         nivel = {seg: f"clase {letras[i]}" for i, seg in enumerate(reversed(orden))}
     elif estilo == "servicio":
-        if k <= 2:
-            nivel = {orden[0]: "servicio rápido", orden[-1]: "servicio lento"}
-        elif k == 3:
-            nivel = {orden[0]: "servicio rápido", orden[1]: "servicio medio", orden[2]: "servicio lento"}
-        else:
-            nivel = {seg: f"servicio nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+        # orden: menor→mayor lead time (orden[0] = el más rápido).
+        escalas = {
+            2: ["servicio rápido", "servicio lento"],
+            3: ["servicio rápido", "servicio medio", "servicio lento"],
+            4: ["servicio muy rápido", "servicio rápido", "servicio lento", "servicio muy lento"],
+            5: ["servicio muy rápido", "servicio rápido", "servicio medio", "servicio lento", "servicio muy lento"],
+        }
+        terminos = escalas.get(k)
+        nivel = (
+            {orden[i]: terminos[i] for i in range(k)}
+            if terminos
+            else {seg: f"servicio nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+        )
     else:  # "volumen"
-        if k <= 2:
-            nivel = {orden[0]: "volumen bajo", orden[-1]: "volumen alto"}
-        elif k == 3:
-            nivel = {orden[0]: "volumen bajo", orden[1]: "volumen medio", orden[2]: "volumen alto"}
-        else:
-            nivel = {seg: f"volumen nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+        escalas = {
+            2: ["volumen bajo", "volumen alto"],
+            3: ["volumen bajo", "volumen medio", "volumen alto"],
+            4: ["volumen muy bajo", "volumen bajo", "volumen alto", "volumen muy alto"],
+            5: ["volumen muy bajo", "volumen bajo", "volumen medio", "volumen alto", "volumen muy alto"],
+        }
+        terminos = escalas.get(k)
+        nivel = (
+            {orden[i]: terminos[i] for i in range(k)}
+            if terminos
+            else {seg: f"volumen nivel {i + 1}/{k}" for i, seg in enumerate(orden)}
+        )
     etiquetas = {int(s): nivel[s] for s in medias.index}
     centroides = {
         int(s): {c: round(float(medias.loc[s, c]), 4) for c in columnas} for s in medias.index

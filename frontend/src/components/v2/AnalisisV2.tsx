@@ -58,6 +58,33 @@ const TITULO_ALERTA: Record<string, string> = {
   entrega_con_retraso: 'Órdenes con riesgo de llegar tarde',
   riesgo_quiebre: 'Productos con riesgo de quedarse sin stock',
 }
+// Encabezado de la columna de alerta según el dominio (Sí/No de qué).
+const ALERTA_HEADER: Record<string, string> = {
+  ventas: '¿Demanda alta?',
+  compras: '¿Riesgo de retraso?',
+  almacen: '¿Riesgo de quiebre?',
+}
+// Explicación de qué significan los grupos, según el dominio.
+const EXPLICACION_GRUPOS: Record<string, string> = {
+  ventas:
+    'Agrupamos tus productos por cuánto venden. Te sirve para priorizar: los de mayor volumen son tus estrella (no te quedes sin stock); los de menor, evalúa si conviene mantenerlos.',
+  compras:
+    'Agrupamos tus proveedores por su servicio (rapidez de entrega y cumplimiento). Te sirve para elegir a quién comprarle lo urgente: prefiere los de mejor servicio.',
+  almacen:
+    'Clasificación ABC: la clase A son los más importantes (más demanda y rotación), la B los intermedios y la C los de baja rotación. Concentra tu control de inventario en los A.',
+}
+// Traducción de las características (promedios) de cada grupo a texto simple, por columna.
+const CARAC: Record<string, (v: number) => string> = {
+  volumen_medio: (v) => `vende ~${Math.round(v)}/día`,
+  variabilidad: (v) => `variabilidad ~${Math.round(v)}`,
+  tasa_promo: (v) => `en promo ~${Math.round(v * 100)}% del tiempo`,
+  lead_time_medio: (v) => `entrega en ~${Math.round(v)} días`,
+  cumplimiento_medio: (v) => `cumple ~${Math.round(v * 100)}%`,
+  costo_medio: (v) => `costo prom. S/ ${v.toFixed(2)}`,
+  rotacion_media: (v) => `rotación ~${Math.round(v)}`,
+  demanda_media: (v) => `demanda ~${Math.round(v)}/día`,
+  cobertura_media: (v) => `cobertura ~${Math.round(v)} días`,
+}
 
 function DetalleTecnico({ children }: { children: ReactNode }) {
   return (
@@ -394,19 +421,20 @@ function resumenPorSerie(pred: V2PrediccionItem[]): AutoRow[] {
   return [...m.values()]
     .map((e) => ({
       ...Object.fromEntries(Object.entries(e.serie).map(([k, v]) => [label(k), v])),
-      'Total previsto': Math.round(e.total),
-      'Promedio/día': Math.round((e.total / Math.max(1, e.n)) * 10) / 10,
+      'Total previsto (unid.)': Math.round(e.total),
+      'Promedio por día (unid.)': Math.round((e.total / Math.max(1, e.n)) * 10) / 10,
     }))
-    .sort((a, b) => Number(b['Total previsto']) - Number(a['Total previsto']))
+    .sort((a, b) => Number(b['Total previsto (unid.)']) - Number(a['Total previsto (unid.)']))
 }
 
-function GrupoCard({ etiqueta, ids, unidad }: { etiqueta: string; ids: string[]; unidad: string }) {
+function GrupoCard({ etiqueta, ids, unidad, caract }: { etiqueta: string; ids: string[]; unidad: string; caract?: string }) {
   const [abierto, setAbierto] = useState(false)
   const muestra = abierto ? ids : ids.slice(0, 8)
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
       <p className="text-sm font-semibold text-slate-700">{etiqueta}</p>
       <p className="text-xs text-slate-500">{ids.length} {unidad}</p>
+      {caract && <p className="mt-0.5 text-xs font-medium text-slate-600">{caract}</p>}
       <p className="mt-1 font-mono text-xs text-slate-400">{muestra.join(', ')}</p>
       {ids.length > 8 && (
         <button type="button" className="mt-1 text-xs text-slate-500 hover:text-slate-700" onClick={() => setAbierto((v) => !v)}>
@@ -479,6 +507,7 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
   const resumen = useMemo(() => resumenPorSerie(regresion.prediccion), [regresion])
   const resumenCols = resumen[0] ? Object.keys(resumen[0]) : []
 
+  const alertaHeader = ALERTA_HEADER[data.dominio] ?? '¿En alerta?'
   const alertRows = useMemo(() => {
     const ordenadas = [...clasificacion.alertas].sort(
       (x, y) => Number(y.probabilidad) - Number(x.probabilidad),
@@ -493,11 +522,11 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
         )
         return {
           ...serie,
-          '¿En alerta?': Number(a.clase) === 1 ? 'Sí' : 'No',
-          Probabilidad: `${Math.round(Number(a.probabilidad) * 100)}%`,
+          [alertaHeader]: Number(a.clase) === 1 ? 'Sí' : 'No',
+          'Probabilidad (%)': Math.round(Number(a.probabilidad) * 100),
         }
       })
-  }, [clasificacion, soloAlerta])
+  }, [clasificacion, soloAlerta, alertaHeader])
   const alertCols = alertRows[0] ? Object.keys(alertRows[0]) : []
   const enAlerta = clasificacion.alertas.filter((a) => Number(a.clase) === 1).length
 
@@ -514,6 +543,18 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
   }, [clustering])
   const unidadGrupo = clustering.entidad === 'id_proveedor' ? 'proveedores' : 'productos'
 
+  // Texto de características (promedios) por etiqueta de grupo, para explicar cada uno.
+  const caractPorEtiqueta = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const g of clustering.grupos ?? []) {
+      const txt = Object.entries(g.caracteristicas)
+        .map(([k, v]) => (CARAC[k] ? CARAC[k](Number(v)) : `${k}: ${v}`))
+        .join(' · ')
+      m.set(g.etiqueta, txt)
+    }
+    return m
+  }, [clustering])
+
   const indRows = useMemo(() => {
     const base = (data.indicadores_inventario ?? [])
       .filter((r) => (soloReponer ? r.alerta_reposicion : true))
@@ -521,12 +562,12 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
     return base.map((r) => ({
       Producto: r.sku,
       Tienda: r.id_tienda,
-      'Demanda prevista/día': r.demanda_diaria_prevista,
-      'Stock actual': r.stock_actual,
-      'Stock de seguridad': r.stock_seguridad,
-      'Punto de reposición': r.punto_reposicion,
-      'Días de cobertura': r.dias_cobertura_proyectada,
-      '¿Reponer ya?': r.alerta_reposicion ? 'Sí' : 'No',
+      'Demanda prevista/día (unid.)': r.demanda_diaria_prevista,
+      'Stock actual (unid.)': r.stock_actual,
+      'Stock de seguridad (unid.)': r.stock_seguridad,
+      'Punto de reposición (unid.)': r.punto_reposicion,
+      'Días de cobertura (días)': r.dias_cobertura_proyectada,
+      '¿Reponer ya? (Sí/No)': r.alerta_reposicion ? 'Sí' : 'No',
     }))
   }, [data, soloReponer])
   const totalReponer = (data.indicadores_inventario ?? []).filter((r) => r.alerta_reposicion).length
@@ -595,6 +636,9 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
           <h3 className="text-base font-semibold text-slate-800">🔔 {tituloAlerta}</h3>
           <span className={`badge ${accent.badge}`}>{enAlerta} de {clasificacion.alertas.length} en alerta</span>
         </div>
+        <p className="text-sm text-slate-500">
+          «Sí» = el sistema estima que ese {data.dominio === 'compras' ? 'pedido' : 'producto'} cumple la condición de riesgo. La columna «Probabilidad (%)» indica qué tan seguro está.
+        </p>
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="checkbox" checked={soloAlerta} onChange={(e) => setSoloAlerta(e.target.checked)} />
           Mostrar solo los que están en alerta
@@ -614,9 +658,10 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
       {/* GRUPOS */}
       <section className="card space-y-3">
         <h3 className="text-base font-semibold text-slate-800">🧩 Grupos parecidos ({unidadGrupo})</h3>
+        <p className="text-sm text-slate-500">{EXPLICACION_GRUPOS[data.dominio] ?? ''}</p>
         <div className="flex flex-wrap gap-2">
           {grupos.map(([etiqueta, ids]) => (
-            <GrupoCard key={etiqueta} etiqueta={etiqueta} ids={ids} unidad={unidadGrupo} />
+            <GrupoCard key={etiqueta} etiqueta={etiqueta} ids={ids} unidad={unidadGrupo} caract={caractPorEtiqueta.get(etiqueta)} />
           ))}
         </div>
         <DetalleTecnico>

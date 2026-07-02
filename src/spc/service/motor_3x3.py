@@ -193,9 +193,11 @@ def _segmentos_terciles(perfil: pd.DataFrame, clave: str, columna_volumen: str) 
     ]
     return {
         "algoritmo": "terciles_de_volumen (fallback: pocas entidades)",
+        "entidad": clave,
         "k": int(seg.nunique()),
         "silueta": None,
         "segmentos": segmentos,
+        "grupos": [],
     }
 
 
@@ -213,6 +215,17 @@ def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int)
         {cfg.clave_entidad: str(r[cfg.clave_entidad]), "segmento": int(r["segmento"]), "etiqueta": str(r["etiqueta"])}
         for _, r in res.asignacion.iterrows()
     ]
+    # Características promedio (centroides) de cada grupo: qué lo define, para explicarlo.
+    cz = res.clusterizador
+    grupos = [
+        {
+            "segmento": s,
+            "etiqueta": cz.etiquetas[s],
+            "n": cz.n_por_segmento.get(s, 0),
+            "caracteristicas": cz.centroides.get(s, {}),
+        }
+        for s in sorted(cz.etiquetas)
+    ]
     return {
         "algoritmo": "KMeans (escalado + silueta)",
         "entidad": cfg.clave_entidad,
@@ -220,6 +233,7 @@ def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int)
         "silueta": round(res.silueta, 4),
         "curva_silueta": res.curva_silueta,
         "segmentos": segmentos,
+        "grupos": grupos,
     }
 
 

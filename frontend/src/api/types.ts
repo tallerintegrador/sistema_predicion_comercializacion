@@ -299,6 +299,14 @@ export interface V2Clasificacion {
 /** Segmento de una entidad: su clave + número de segmento + etiqueta narrativa. */
 export type V2Segmento = Record<string, string | number>
 
+/** Un grupo del clustering con sus características promedio (centroides). */
+export interface V2Grupo {
+  segmento: number
+  etiqueta: string
+  n: number
+  caracteristicas: Record<string, number>
+}
+
 export interface V2Clustering {
   algoritmo: string
   entidad?: string
@@ -306,6 +314,7 @@ export interface V2Clustering {
   silueta: number | null
   curva_silueta?: Record<string, number>
   segmentos: V2Segmento[]
+  grupos?: V2Grupo[]
 }
 
 /** KPIs de inventario derivados del pronóstico de demanda (solo ALMACÉN). */
