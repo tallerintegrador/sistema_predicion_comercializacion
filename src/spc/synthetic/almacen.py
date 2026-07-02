@@ -97,7 +97,7 @@ def generar(
                     "stock_actual": round(float(stock_serie[i]), 2),
                     "stock_minimo": round(float(stock_min), 2),
                     "stock_maximo": round(float(stock_max), 2),
-                    "demanda_dia": round(float(consumo[i]), 2),  # objetivo de regresión (demanda futura)
+                    "demanda_dia": int(round(float(consumo[i]))),  # objetivo: unidades enteras consumidas ese día
                     "demanda_diaria_promedio": round(float(demanda_prom_serie[i]), 3),
                     "dias_de_cobertura": round(float(dias_cobertura[i]), 3),  # calculada
                     "rotacion": round(rotacion + float(rng.normal(0.0, 0.05)), 3),

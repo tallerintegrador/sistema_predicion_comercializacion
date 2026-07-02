@@ -12,7 +12,7 @@ export function InventoryPage() {
       empty={{
         icon: Package,
         titulo: 'Aún no hay análisis',
-        mensaje: 'Corre la demo o sube tu inventario para ver el pronóstico de demanda, el riesgo de quiebre, los segmentos ABC y los indicadores de reposición.',
+        mensaje: 'Corre la demo o sube tu inventario para ver el pronóstico de demanda, el riesgo de quiebre y los segmentos ABC.',
       }}
     />
   )

@@ -32,6 +32,8 @@ import type { LucideIcon } from 'lucide-react'
 
 const NUM = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 })
 const HORIZONTES = [7, 14, 30]
+const HORIZON_MIN = 1
+const HORIZON_MAX = 90 // tope que soporta el motor (backend: /v2 horizon <= 90)
 
 // Nombres de columna → etiqueta amigable.
 const ETIQUETA: Record<string, string> = {
@@ -300,20 +302,24 @@ export function AnalisisV2({ view, dominio, accent, empty }: AnalisisV2Props) {
                   <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
                     <th className="px-3 py-2 font-medium">Columna</th>
                     <th className="px-3 py-2 font-medium">Qué es</th>
+                    <th className="px-3 py-2 font-medium">Para qué sirve</th>
                     <th className="px-3 py-2 font-medium">Ejemplo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {esquema.columnas.map((c) => (
-                    <tr key={c.nombre} className="border-b border-slate-100 last:border-0">
+                    <tr key={c.nombre} className="border-b border-slate-100 last:border-0 align-top">
                       <td className="px-3 py-2">
                         <span className="font-medium text-slate-700">{label(c.nombre)}</span>{' '}
                         <span className="font-mono text-xs text-slate-400">{c.nombre}</span>
-                        {c.se_calcula_sola && (
-                          <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] text-slate-500">se calcula sola</span>
+                        {c.obligatoria ? (
+                          <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] text-slate-500">obligatoria</span>
+                        ) : (
+                          <span className="ml-1 rounded bg-emerald-50 px-1 text-[10px] text-emerald-600">opcional · la calcula el sistema</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-slate-600">{c.descripcion}</td>
+                      <td className="px-3 py-2 text-slate-500">{c.uso}</td>
                       <td className="px-3 py-2 font-mono text-xs text-slate-500">{String(c.ejemplo ?? '')}</td>
                     </tr>
                   ))}
@@ -359,6 +365,21 @@ export function AnalisisV2({ view, dominio, accent, empty }: AnalisisV2Props) {
               {h} días
             </button>
           ))}
+          <span className="text-sm text-slate-400">u otro:</span>
+          <input
+            type="number"
+            min={HORIZON_MIN}
+            max={HORIZON_MAX}
+            value={horizon}
+            disabled={busy}
+            aria-label="Días a pronosticar (personalizado)"
+            onChange={(e) => {
+              const n = Number(e.target.value)
+              setHorizon(Number.isNaN(n) ? HORIZON_MIN : Math.min(HORIZON_MAX, Math.max(HORIZON_MIN, n)))
+            }}
+            className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm focus:border-slate-400 focus:outline-none"
+          />
+          <span className="text-sm text-slate-400">días (de {HORIZON_MIN} a {HORIZON_MAX})</span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className={`btn ${accent.solid} cursor-pointer`}>
@@ -379,7 +400,9 @@ export function AnalisisV2({ view, dominio, accent, empty }: AnalisisV2Props) {
             Ver ejemplo
           </button>
         </div>
-        <p className="help">Al analizar, el sistema aprende con tus datos en el momento (puede tardar unos segundos). A más días, tarda un poco más y el pronóstico es menos preciso.</p>
+        <p className="help">Al analizar, el sistema aprende con tus datos en el momento (puede tardar unos segundos).</p>
+        <p className="help">Nota: cuantos más datos históricos subas, mejor será el pronóstico.</p>
+        <p className="help">Nota: cuantos más días pidas, más tarda el cálculo y menos preciso es el pronóstico; para el día a día, 7 a 14 días suele ser lo más confiable.</p>
         {aviso && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" role="alert">{aviso}</p>
         )}
@@ -448,7 +471,6 @@ function GrupoCard({ etiqueta, ids, unidad, caract }: { etiqueta: string; ids: s
 function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
   const { regresion, clasificacion, clustering } = data
   const [soloAlerta, setSoloAlerta] = useState(true)
-  const [soloReponer, setSoloReponer] = useState(true)
   const [ejeGrafico, setEjeGrafico] = useState<'total' | 'producto' | 'tienda'>('total')
   const [seleccion, setSeleccion] = useState('')
 
@@ -555,23 +577,6 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
     return m
   }, [clustering])
 
-  const indRows = useMemo(() => {
-    const base = (data.indicadores_inventario ?? [])
-      .filter((r) => (soloReponer ? r.alerta_reposicion : true))
-      .sort((a, b) => (a.dias_cobertura_proyectada ?? 1e9) - (b.dias_cobertura_proyectada ?? 1e9))
-    return base.map((r) => ({
-      Producto: r.sku,
-      Tienda: r.id_tienda,
-      'Demanda prevista/día (unid.)': r.demanda_diaria_prevista,
-      'Stock actual (unid.)': r.stock_actual,
-      'Stock de seguridad (unid.)': r.stock_seguridad,
-      'Punto de reposición (unid.)': r.punto_reposicion,
-      'Días de cobertura (días)': r.dias_cobertura_proyectada,
-      '¿Reponer ya? (Sí/No)': r.alerta_reposicion ? 'Sí' : 'No',
-    }))
-  }, [data, soloReponer])
-  const totalReponer = (data.indicadores_inventario ?? []).filter((r) => r.alerta_reposicion).length
-
   const tituloPron = TITULO_PRONOSTICO[regresion.objetivo] ?? `Pronóstico de ${label(regresion.objetivo)}`
   const tituloAlerta = TITULO_ALERTA[clasificacion.etiqueta] ?? `Alertas de ${label(clasificacion.etiqueta)}`
 
@@ -668,26 +673,6 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
           <p>Algoritmo: {clustering.algoritmo} · grupos (k): {clustering.k}{clustering.silueta != null ? ` · silueta ${NUM.format(clustering.silueta)}` : ''}</p>
         </DetalleTecnico>
       </section>
-
-      {/* ALMACÉN — reposición */}
-      {(data.indicadores_inventario?.length ?? 0) > 0 && (
-        <section className="card space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-base font-semibold text-slate-800">📦 Qué y cuándo reponer</h3>
-            <span className={`badge ${accent.badge}`}>{totalReponer} por reponer</span>
-          </div>
-          <p className="text-sm text-slate-500">Calculado a partir del pronóstico de demanda: cuánto colchón dejar, cuándo pedir y si ya toca reponer.</p>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={soloReponer} onChange={(e) => setSoloReponer(e.target.checked)} />
-            Mostrar solo los que hay que reponer ya
-          </label>
-          {indRows.length > 0 ? (
-            <TablaInteractiva rows={indRows} columns={Object.keys(indRows[0])} buscarPlaceholder="Buscar producto/tienda…" />
-          ) : (
-            <p className="text-sm text-slate-500">Nada urgente por reponer. 🎉</p>
-          )}
-        </section>
-      )}
 
       <DetalleTecnico>{data.nota}</DetalleTecnico>
     </div>

@@ -53,7 +53,12 @@ def _hoja_datos(wb: Workbook, dominio: str, filas: list[dict[str, Any]]) -> None
 
 
 def _hoja_instrucciones(wb: Workbook, dominio: str) -> None:
-    """Hoja 'instrucciones': diccionario de variables + qué predice cada modelo."""
+    """Hoja 'instrucciones': diccionario de variables + qué predice cada modelo.
+
+    Por cada columna explica **qué es**, **para qué le sirve al sistema** (objetivo /
+    factor / identificador / la calcula el sistema), si es **obligatoria u opcional** y —si
+    se calcula sola— **su fórmula**. Todo se deriva del diccionario (fuente única).
+    """
     dicc = onboarding.diccionario_de(dominio)
     ws = wb.create_sheet(HOJA_INSTRUCCIONES)
     ws.cell(row=1, column=1, value=f"Formato de {dominio.upper()} — {dicc['formato']}").font = _FONT_TITULO
@@ -68,20 +73,32 @@ def _hoja_instrucciones(wb: Workbook, dominio: str) -> None:
     for k, texto in enumerate(lineas, start=4):
         ws.cell(row=k, column=1, value=texto)
 
-    encabezados = ["Columna", "Tipo", "Qué es", "Descripción", "Ejemplo"]
-    fila0 = 8
-    ws.cell(row=fila0 - 1, column=1, value="Columnas que debes traer:").font = _FONT_SUB
+    ws.cell(
+        row=8, column=1,
+        value=(
+            "Nota: las columnas marcadas «Opcional» las calcula el sistema con su fórmula "
+            "si no las traes; puedes dejarlas en blanco o no incluirlas."
+        ),
+    ).alignment = _WRAP
+
+    encabezados = ["Columna", "Tipo", "¿Obligatoria?", "Qué es", "Para qué le sirve al sistema", "Ejemplo"]
+    fila0 = 10
+    ws.cell(row=fila0 - 1, column=1, value="Columnas del formato:").font = _FONT_SUB
     for j, h in enumerate(encabezados, start=1):
         c = ws.cell(row=fila0, column=j, value=h)
         c.font = _FONT_CABECERA
         c.fill = _FILL_CABECERA
     for i, col in enumerate(dicc["columnas"], start=fila0 + 1):
+        para_que = col["uso"]
+        if col.get("formula"):
+            para_que = f"{para_que}  ·  Fórmula: {col['formula']}"
         ws.cell(row=i, column=1, value=col["nombre"])
         ws.cell(row=i, column=2, value=col["tipo"])
-        ws.cell(row=i, column=3, value=col["rol"])
+        ws.cell(row=i, column=3, value="Sí" if col["obligatoria"] else "Opcional")
         ws.cell(row=i, column=4, value=col["descripcion"]).alignment = _WRAP
-        ws.cell(row=i, column=5, value=str(col["ejemplo"]))
-    anchos = [24, 16, 22, 60, 16]
+        ws.cell(row=i, column=5, value=para_que).alignment = _WRAP
+        ws.cell(row=i, column=6, value=str(col["ejemplo"]))
+    anchos = [26, 16, 14, 46, 62, 16]
     for j, w in enumerate(anchos, start=1):
         ws.column_dimensions[get_column_letter(j)].width = w
 
@@ -112,12 +129,15 @@ def leer_excel(contenido: bytes, dominio: str) -> list[dict[str, Any]]:
     except StopIteration:
         raise SolicitudInvalida("El Excel está vacío: falta la cabecera con las columnas.") from None
 
-    faltan = [c for c in esq.orden if c not in cabecera]
+    # Solo se exigen las columnas OBLIGATORIAS; las calculadas ausentes las rellena el motor
+    # con su fórmula (spc.service.motor_3x3.construir_dataframe).
+    faltan = [c for c in esq.columnas_obligatorias() if c not in cabecera]
     if faltan:
         raise SolicitudInvalida(
-            f"Al Excel de '{dominio}' le faltan columnas: {', '.join(faltan)}."
+            f"Al Excel de '{dominio}' le faltan columnas obligatorias: {', '.join(faltan)}."
         )
-    indice = {nombre: cabecera.index(nombre) for nombre in esq.orden}
+    presentes = [c for c in esq.orden if c in cabecera]
+    indice = {nombre: cabecera.index(nombre) for nombre in presentes}
     fechas = {c.nombre for c in esq.columnas if c.tipo == "date"}
 
     filas: list[dict[str, Any]] = []
@@ -125,7 +145,7 @@ def leer_excel(contenido: bytes, dominio: str) -> list[dict[str, Any]]:
         if cruda is None or all(v is None for v in cruda):
             continue  # salta filas vacías
         fila: dict[str, Any] = {}
-        for nombre in esq.orden:
+        for nombre in presentes:
             valor = cruda[indice[nombre]] if indice[nombre] < len(cruda) else None
             if nombre in fechas and isinstance(valor, (date, datetime)):
                 valor = valor.date().isoformat() if isinstance(valor, datetime) else valor.isoformat()

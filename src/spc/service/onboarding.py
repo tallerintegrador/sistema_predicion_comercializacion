@@ -27,7 +27,7 @@ _ROL_HUMANO = {
     "bandera": "bandera (0 o 1)",
     "numerica": "número",
     "categorica": "categoría (texto)",
-    "calculada": "se calcula sola (te la damos hecha en la plantilla)",
+    "calculada": "la calcula el sistema (opcional)",
 }
 
 # Qué hace, en lenguaje simple, cada uno de los tres modelos por dominio.
@@ -87,7 +87,11 @@ def diccionario_de(dominio: str) -> dict[str, Any]:
             "tipo": _TIPO_HUMANO.get(c.tipo, c.tipo),
             "rol": _ROL_HUMANO.get(c.rol, c.rol),
             "descripcion": c.descripcion,
-            "obligatoria": True,  # el formato 3×3 es estricto: se piden todas las columnas
+            "uso": c.uso,  # para qué le sirve al sistema (objetivo/factor/identificador/calculada)
+            "formula": c.formula,  # solo columnas calculadas: cómo se obtiene (para instrucciones)
+            # Las columnas calculadas son OPCIONALES al subir: el sistema las rellena con su
+            # fórmula si no vienen (ver spc.service.motor_3x3.construir_dataframe).
+            "obligatoria": c.rol != "calculada",
             "se_calcula_sola": c.rol == "calculada",
             "ejemplo": muestra.get(c.nombre),
         }

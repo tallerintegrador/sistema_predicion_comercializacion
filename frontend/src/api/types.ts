@@ -346,6 +346,8 @@ export interface V2Columna {
   tipo: string
   rol: string
   descripcion: string
+  uso: string
+  formula: string
   obligatoria: boolean
   se_calcula_sola: boolean
   ejemplo: string | number | boolean | null

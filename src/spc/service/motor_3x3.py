@@ -39,17 +39,49 @@ MIN_ENTIDADES_CLUSTER = 3
 # ===========================================================================
 # Construcción del DataFrame desde las filas del cliente
 # ===========================================================================
+# Fórmulas de las columnas CALCULADAS: son opcionales al enviar datos, así que si no vienen
+# el motor las rellena aquí (misma fórmula que se muestra en la hoja de instrucciones, ver
+# spc.synthetic.esquemas). Operandos coaccionados a número para tolerar strings de Excel/JSON.
+def _num(s: pd.Series) -> pd.Series:
+    return pd.to_numeric(s, errors="coerce")
+
+
+_FORMULAS_CALCULADAS: dict[str, dict[str, Any]] = {
+    "ventas": {
+        "ingreso": lambda d: _num(d["unidades_vendidas"]) * _num(d["precio_unitario"]),
+    },
+    "compras": {
+        "costo_total": lambda d: _num(d["cantidad_pedida"]) * _num(d["precio_unitario_compra"]),
+        "cumplimiento": lambda d: _num(d["cantidad_recibida"]) / _num(d["cantidad_pedida"]).replace(0, pd.NA),
+    },
+    "almacen": {
+        "dias_de_cobertura": lambda d: _num(d["stock_actual"]) / _num(d["demanda_diaria_promedio"]).replace(0, pd.NA),
+    },
+}
+
+
 def construir_dataframe(rows: list[dict[str, Any]], dominio: str) -> pd.DataFrame:
-    """Valida y tipa las filas recibidas según el esquema del dominio."""
+    """Valida y tipa las filas recibidas según el esquema del dominio.
+
+    Las columnas **calculadas** son opcionales: si no vienen, se rellenan con su fórmula
+    (o quedan vacías si faltara alguna sin fórmula definida).
+    """
     esquema = esquema_de(dominio)
     if not rows:
         raise SolicitudInvalida("No se recibieron filas de datos.")
     df = pd.DataFrame(rows)
-    faltan = [c for c in esquema.orden if c not in df.columns]
+    faltan = [c for c in esquema.columnas_obligatorias() if c not in df.columns]
     if faltan:
         raise SolicitudInvalida(
-            f"Faltan columnas del formato de '{dominio}': {', '.join(faltan)}."
+            f"Faltan columnas obligatorias del formato de '{dominio}': {', '.join(faltan)}."
         )
+    # Completa las columnas calculadas ausentes con su fórmula (opcionales al subir).
+    for nombre, fn in _FORMULAS_CALCULADAS.get(dominio, {}).items():
+        if nombre not in df.columns:
+            df[nombre] = fn(df)
+    for nombre in esquema.columnas_calculadas():
+        if nombre not in df.columns:  # calculada sin fórmula definida → vacía (no rompe el orden)
+            df[nombre] = pd.NA
     df = df[esquema.orden].copy()  # orden canónico, descarta extras
     for col in esquema.columnas:
         if col.tipo == "date":
