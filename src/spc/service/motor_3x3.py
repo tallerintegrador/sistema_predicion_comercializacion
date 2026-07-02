@@ -138,7 +138,9 @@ def _futuro_calendario(
     return futuro
 
 
-def _bloque_regresion(df: pd.DataFrame, cfg: dominios.ConfigDominio, horizon: int, seed: int) -> dict[str, Any]:
+def _bloque_regresion(
+    df: pd.DataFrame, cfg: dominios.ConfigDominio, horizon: int, seed: int
+) -> tuple[dict[str, Any], Any]:
     spec = cfg.spec_regresion
     try:
         res = automl.entrenar_regresion(df, spec, seed=seed, usar_zoo_liviano=True)
@@ -159,7 +161,7 @@ def _bloque_regresion(df: pd.DataFrame, cfg: dominios.ConfigDominio, horizon: in
             item["prediccion"] = round(float(row["prediccion"]), 2)
             pronostico.append(item)
 
-    return {
+    bloque = {
         "objetivo": spec.objetivo,
         "modelo_ganador": res.ganador,
         "n_filas_entrenamiento": res.n_filas,
@@ -168,12 +170,15 @@ def _bloque_regresion(df: pd.DataFrame, cfg: dominios.ConfigDominio, horizon: in
         "horizonte": horizon if pronostico else 0,
         "prediccion": pronostico,
     }
+    return bloque, res.predictor
 
 
 # ===========================================================================
 # Bloque CLASIFICACIÓN
 # ===========================================================================
-def _bloque_clasificacion(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int) -> dict[str, Any]:
+def _bloque_clasificacion(
+    df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int
+) -> tuple[dict[str, Any], Any]:
     df_lab = cfg.derivar_etiqueta(df)
     spec = cfg.spec_clasificacion
     serie_cols = list(spec.cols_serie)
@@ -196,7 +201,7 @@ def _bloque_clasificacion(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: i
         item["probabilidad"] = round(float(r["_prob"]), 4)
         alertas.append(item)
 
-    return {
+    bloque = {
         "etiqueta": cfg.etiqueta,
         "definicion": esquema_de(cfg.dominio).derivacion_etiqueta,
         "modelo_ganador": res.ganador,
@@ -205,6 +210,7 @@ def _bloque_clasificacion(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: i
         "metricas_honestas": {k: round(float(v), 4) for k, v in res.metricas_test.items()},
         "alertas": alertas,
     }
+    return bloque, res.predictor
 
 
 # ===========================================================================
@@ -233,11 +239,13 @@ def _segmentos_terciles(perfil: pd.DataFrame, clave: str, columna_volumen: str) 
     }
 
 
-def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int) -> dict[str, Any]:
+def _bloque_clustering(
+    df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int
+) -> tuple[dict[str, Any], Any]:
     perfil = cfg.perfil_entidades(df)
     cols = list(cfg.columnas_clustering)
     if len(perfil) < MIN_ENTIDADES_CLUSTER:
-        return _segmentos_terciles(perfil, cfg.clave_entidad, cfg.columna_volumen)
+        return _segmentos_terciles(perfil, cfg.clave_entidad, cfg.columna_volumen), None
 
     res = zoo_liviano.entrenar_clustering(
         perfil, cfg.clave_entidad, cols, cfg.columna_volumen, seed=seed, k_fijo=cfg.k_fijo,
@@ -258,7 +266,7 @@ def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int)
         }
         for s in sorted(cz.etiquetas)
     ]
-    return {
+    bloque = {
         "algoritmo": "KMeans (escalado + silueta)",
         "entidad": cfg.clave_entidad,
         "k": res.k,
@@ -267,6 +275,7 @@ def _bloque_clustering(df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int)
         "segmentos": segmentos,
         "grupos": grupos,
     }
+    return bloque, res.clusterizador
 
 
 # ===========================================================================
@@ -322,17 +331,22 @@ def _indicadores_inventario(
 # ===========================================================================
 # Orquestación: los tres modelos en una respuesta
 # ===========================================================================
-def analizar(
+def analizar_y_modelos(
     dominio: str, rows: list[dict[str, Any]], *, horizon: int = HORIZON_DEFAULT, seed: int = 42
-) -> dict[str, Any]:
-    """Entrena y ejecuta los **tres modelos** del dominio sobre ``rows`` (en el momento)."""
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Como :func:`analizar`, pero devuelve también los **objetos entrenados** por tarea.
+
+    Los artefactos (predictores de regresión/clasificación y clusterizador) permiten
+    **persistir** el modelo reentrenado (ADR-0026). El clustering puede ser ``None`` si se
+    usó el fallback de terciles (muy pocas entidades).
+    """
     cfg = dominios.config_de(dominio)
     horizon = max(1, min(int(horizon), HORIZON_MAX))
     df = construir_dataframe(rows, dominio)
 
-    regresion = _bloque_regresion(df, cfg, horizon, seed)
-    clasificacion = _bloque_clasificacion(df, cfg, seed)
-    clustering = _bloque_clustering(df, cfg, seed)
+    regresion, obj_reg = _bloque_regresion(df, cfg, horizon, seed)
+    clasificacion, obj_cls = _bloque_clasificacion(df, cfg, seed)
+    clustering, obj_clu = _bloque_clustering(df, cfg, seed)
 
     resultado: dict[str, Any] = {
         "dominio": dominio,
@@ -347,7 +361,16 @@ def analizar(
     # MUESTRAN derivados del pronóstico de demanda, aunque ya no sean el objetivo (ADR-0025 e).
     if dominio == "almacen":
         resultado["indicadores_inventario"] = _indicadores_inventario(df, regresion["prediccion"])
-    return resultado
+
+    artefactos = {"regresion": obj_reg, "clasificacion": obj_cls, "clustering": obj_clu}
+    return resultado, artefactos
+
+
+def analizar(
+    dominio: str, rows: list[dict[str, Any]], *, horizon: int = HORIZON_DEFAULT, seed: int = 42
+) -> dict[str, Any]:
+    """Entrena y ejecuta los **tres modelos** del dominio sobre ``rows`` (en el momento)."""
+    return analizar_y_modelos(dominio, rows, horizon=horizon, seed=seed)[0]
 
 
 def analizar_demo(dominio: str, *, horizon: int = HORIZON_DEFAULT, seed: int = 42) -> dict[str, Any]:

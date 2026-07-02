@@ -20,6 +20,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import Engine
 
 from spc.api.errors import registrar_manejadores
 from spc.api.routers import (
@@ -30,11 +31,13 @@ from spc.api.routers import (
 from spc.config import (
     auth_enabled,
     auth_secret_es_default,
-    db_path,
 )
 from spc.config import client_models_dir as cfg_client_models_dir
+from spc.db.engine import crear_todo, obtener_engine
 from spc.service.cache_agnostico import CacheModelosAgnosticos
 from spc.service.repositorio_auth import RepositorioAuth
+from spc.service.repositorio_corpus import RepositorioCorpus
+from spc.service.repositorio_modelos import RepositorioModelos
 from spc.utils.logging import get_logger
 
 log = get_logger("api.main")
@@ -72,9 +75,21 @@ def _origenes_cors() -> list[str]:
     return [o.strip() for o in valor.split(",") if o.strip()]
 
 
+def _montar_persistencia(app: FastAPI, engine: Engine) -> None:
+    """Cuelga los repositorios de corpus y modelos (ADR-0026) en ``app.state`` (idempotente)."""
+    crear_todo(engine)  # asegura el esquema aunque la auth (que también lo crea) esté inactiva
+    if getattr(app.state, "corpus", None) is None:
+        app.state.corpus = RepositorioCorpus(engine)
+    if getattr(app.state, "modelos", None) is None:
+        # El fallback a disco de los artefactos usa la MISMA carpeta que la caché agnóstica
+        # (inyectada por tests a un temporal) para no escribir en ``models/clientes`` del repo.
+        app.state.modelos = RepositorioModelos(engine, getattr(app.state, "client_models_dir", None))
+
+
 def crear_app(
     *,
     auth_repo: RepositorioAuth | None = None,
+    engine: Engine | None = None,
     client_models_dir: Path | None = None,
     cors_origins: list[str] | None = None,
 ) -> FastAPI:
@@ -82,6 +97,8 @@ def crear_app(
 
     - ``auth_repo``: repositorio de auth ya abierto a inyectar (tests). Si es ``None`` y
       el control de acceso está activo (``SPC_AUTH_ENABLED``), se abre en el lifespan.
+    - ``engine``: engine SQLAlchemy a compartir por auth/corpus/modelos (tests que quieran
+      una sola base). Si es ``None`` se usa el global (``SPC_DATABASE_URL`` o SQLite).
     - ``client_models_dir``: carpeta de la caché de modelos agnósticos auto-entrenados
       (ADR-0023). Si es ``None`` se usa ``SPC_CLIENT_MODELS_DIR``. Los tests inyectan una
       carpeta temporal para no tocar el repo.
@@ -90,20 +107,23 @@ def crear_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Control de acceso por roles (ADR-0014): abre la base de auth y siembra los admins.
+        # Base de datos (ADR-0026): un solo engine para auth, corpus y modelos.
+        eng = engine or getattr(app.state, "db_engine", None) or obtener_engine()
+        app.state.db_engine = eng
+        # Control de acceso por roles (ADR-0014): abre auth sobre ese engine y siembra admins.
         if getattr(app.state, "auth", None) is None and auth_enabled():
-            ruta = db_path()
-            log.info("Abriendo control de acceso en %s ...", ruta)
-            app.state.auth = RepositorioAuth.crear(ruta)
+            log.info("Abriendo control de acceso sobre la base de datos configurada ...")
+            app.state.auth = RepositorioAuth.desde_engine(eng)
             if auth_secret_es_default():
                 log.warning(
                     "SPC_AUTH_SECRET no está configurado: se usa el secreto de DESARROLLO "
                     "(los tokens son falsificables). Fíjelo en producción."
                 )
+        _montar_persistencia(app, eng)
         try:
             yield
         finally:
-            # Cierra la base de auth (si se abrió).
+            # Cierra la base de auth (si se abrió y es dueña del engine).
             if getattr(app.state, "auth", None) is not None:
                 app.state.auth.cerrar()
 
@@ -115,14 +135,22 @@ def crear_app(
         lifespan=lifespan,
     )
 
-    # Inyección directa (tests): disponible aunque no se ejecute el lifespan.
-    if auth_repo is not None:
-        app.state.auth = auth_repo
-
-    # Caché de modelos agnósticos auto-entrenados (ADR-0023): siempre disponible.
+    # Caché de modelos agnósticos auto-entrenados (ADR-0023): siempre disponible. Su carpeta
+    # también es el fallback de artefactos del registro (ADR-0026), por eso se fija ANTES de
+    # montar la persistencia.
     cmd = client_models_dir or cfg_client_models_dir()
     app.state.client_models_dir = cmd
     app.state.cache_agnostico = CacheModelosAgnosticos(cmd)
+
+    # Inyección directa (tests): disponible aunque no se ejecute el lifespan. Corpus y
+    # modelos comparten el engine de la auth inyectada para que todo viva en UNA base.
+    if auth_repo is not None:
+        app.state.auth = auth_repo
+        app.state.db_engine = auth_repo.engine
+        _montar_persistencia(app, auth_repo.engine)
+    elif engine is not None:
+        app.state.db_engine = engine
+        _montar_persistencia(app, engine)
 
     app.add_middleware(
         CORSMiddleware,

@@ -16,6 +16,8 @@ from spc.api.errors import ServicioNoDisponible
 from spc.api.schemas.auth import SessionUser
 from spc.api.seguridad import usuario_opcional
 from spc.service.cache_agnostico import CacheModelosAgnosticos
+from spc.service.repositorio_corpus import RepositorioCorpus
+from spc.service.repositorio_modelos import RepositorioModelos
 
 
 def obtener_cache_agnostico(request: Request) -> CacheModelosAgnosticos:
@@ -28,6 +30,27 @@ def obtener_cache_agnostico(request: Request) -> CacheModelosAgnosticos:
     if cache is None:
         raise ServicioNoDisponible("La predicción agnóstica no está disponible.")
     return cache
+
+
+def obtener_corpus(request: Request) -> RepositorioCorpus:
+    """Repositorio del corpus acumulativo (ADR-0026), creado al arranque. 503 si falta."""
+    corpus = getattr(request.app.state, "corpus", None)
+    if corpus is None:
+        raise ServicioNoDisponible("La persistencia del corpus no está disponible.")
+    return corpus
+
+
+def obtener_corpus_opcional(request: Request) -> RepositorioCorpus | None:
+    """Corpus si está disponible, o ``None`` (para el enganche best-effort que nunca rompe)."""
+    return getattr(request.app.state, "corpus", None)
+
+
+def obtener_modelos(request: Request) -> RepositorioModelos:
+    """Registro de modelos entrenados (ADR-0026), creado al arranque. 503 si falta."""
+    modelos = getattr(request.app.state, "modelos", None)
+    if modelos is None:
+        raise ServicioNoDisponible("El registro de modelos no está disponible.")
+    return modelos
 
 
 def obtener_client_id(

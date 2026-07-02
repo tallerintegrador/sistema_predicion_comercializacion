@@ -14,6 +14,12 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 
+from spc.api.dependencies import (
+    obtener_client_id,
+    obtener_corpus,
+    obtener_corpus_opcional,
+    obtener_modelos,
+)
 from spc.api.errors import AccesoDenegado
 from spc.api.ingest import dominios_excel
 from spc.api.schemas.auth import SessionUser
@@ -21,10 +27,17 @@ from spc.api.schemas.comunes import ErrorResponse
 from spc.api.schemas.dominios_3x3 import Analisis3x3Request
 from spc.api.seguridad import requiere, usuario_requerido
 from spc.config import auth_enabled, excel_max_bytes
-from spc.service import motor_3x3, onboarding
+from spc.service import motor_3x3, onboarding, reentrenamiento
 from spc.service.errores import SolicitudInvalida
+from spc.service.repositorio_corpus import RepositorioCorpus
+from spc.service.repositorio_modelos import RepositorioModelos
 
 router = APIRouter(prefix="/v2", tags=["3X3"])
+
+ClientIdDep = Annotated[str, Depends(obtener_client_id)]
+CorpusOpcDep = Annotated[RepositorioCorpus | None, Depends(obtener_corpus_opcional)]
+CorpusDep = Annotated[RepositorioCorpus, Depends(obtener_corpus)]
+ModelosDep = Annotated[RepositorioModelos, Depends(obtener_modelos)]
 
 _RESPUESTAS_ERR: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse, "description": "Datos inválidos o insuficientes para entrenar"},
@@ -69,9 +82,12 @@ def _acceso_dominio(
 def analizar_ventas(
     peticion: Analisis3x3Request,
     _auth: Annotated[SessionUser | None, Depends(requiere(*_PERMISO["ventas"]))],
+    client_id: ClientIdDep,
+    corpus: CorpusOpcDep,
 ) -> dict[str, Any]:
     """Entrena al vuelo y devuelve: pronóstico de ``unidades_vendidas``, alerta de
     ``demanda_alta`` por serie y segmento (clustering) por SKU."""
+    reentrenamiento.acumular(corpus, tenant_id=client_id, dominio="ventas", rows=peticion.rows, channel="json")
     return motor_3x3.analizar("ventas", peticion.rows, horizon=peticion.horizon)
 
 
@@ -91,9 +107,12 @@ def demo_ventas(
 def analizar_compras(
     peticion: Analisis3x3Request,
     _auth: Annotated[SessionUser | None, Depends(requiere(*_PERMISO["compras"]))],
+    client_id: ClientIdDep,
+    corpus: CorpusOpcDep,
 ) -> dict[str, Any]:
     """Entrena al vuelo y devuelve: pronóstico de ``cantidad_pedida``, alerta de
     ``entrega_con_retraso`` por serie y segmento de proveedor (clustering)."""
+    reentrenamiento.acumular(corpus, tenant_id=client_id, dominio="compras", rows=peticion.rows, channel="json")
     return motor_3x3.analizar("compras", peticion.rows, horizon=peticion.horizon)
 
 
@@ -113,10 +132,13 @@ def demo_compras(
 def analizar_almacen(
     peticion: Analisis3x3Request,
     _auth: Annotated[SessionUser | None, Depends(requiere(*_PERMISO["almacen"]))],
+    client_id: ClientIdDep,
+    corpus: CorpusOpcDep,
 ) -> dict[str, Any]:
     """Entrena al vuelo y devuelve: pronóstico de ``demanda_dia`` (demanda futura) con
     ``indicadores_inventario`` derivados (cobertura, punto de reposición, stock de
     seguridad), alerta de ``riesgo_quiebre`` por serie y segmento ABC (clustering) por SKU."""
+    reentrenamiento.acumular(corpus, tenant_id=client_id, dominio="almacen", rows=peticion.rows, channel="json")
     return motor_3x3.analizar("almacen", peticion.rows, horizon=peticion.horizon)
 
 
@@ -188,6 +210,8 @@ async def analizar_excel(
     dominio: str,
     _auth: Annotated[SessionUser | None, Depends(_acceso_dominio)],
     archivo: Annotated[UploadFile, File(description="Archivo .xlsx en el formato del dominio")],
+    client_id: ClientIdDep,
+    corpus: CorpusOpcDep,
     horizon: Annotated[int, Query(gt=0, le=90)] = 14,
 ) -> dict[str, Any]:
     """Lee las filas del ``.xlsx`` (misma cabecera que la plantilla) y devuelve los tres
@@ -200,4 +224,66 @@ async def analizar_excel(
             f"El archivo supera el tamaño máximo permitido ({tope / (1024 * 1024):.0f} MB)."
         )
     filas = dominios_excel.leer_excel(datos, dominio)
+    reentrenamiento.acumular(corpus, tenant_id=client_id, dominio=dominio, rows=filas, channel="excel")
     return motor_3x3.analizar(dominio, filas, horizon=horizon)
+
+
+# ---------------------------------------------------------------------------
+# REENTRENAMIENTO y REGISTRO DE MODELOS (ADR-0026)
+# ---------------------------------------------------------------------------
+@router.post(
+    "/{dominio}/entrenar",
+    summary="Reentrenar el modelo del dominio con TODO el histórico acumulado + lo nuevo",
+    responses=_RESPUESTAS_ERR,
+)
+def entrenar_dominio(
+    dominio: str,
+    _auth: Annotated[SessionUser | None, Depends(_acceso_dominio)],
+    client_id: ClientIdDep,
+    corpus: CorpusDep,
+    modelos: ModelosDep,
+    horizon: Annotated[int, Query(gt=0, le=90)] = 14,
+) -> dict[str, Any]:
+    """Carga **todo** el corpus acumulado del cliente para el dominio (históricos + datos
+    recién subidos), reentrena los tres modelos sobre ese conjunto completo, versiona cada
+    uno en el registro (con sus métricas y el artefacto en Storage) y lo marca como el que
+    se sirve. Devuelve el resumen del reentrenamiento (filas, versiones, métricas)."""
+    try:
+        return reentrenamiento.reentrenar(
+            corpus, modelos, tenant_id=client_id, dominio=dominio, horizon=horizon
+        )
+    except ValueError as exc:
+        raise SolicitudInvalida(str(exc)) from exc
+
+
+@router.get(
+    "/{dominio}/modelos",
+    summary="Listar las versiones de modelos entrenadas del cliente para el dominio",
+    responses=_RESPUESTAS_ERR,
+)
+def listar_modelos_dominio(
+    dominio: str,
+    _auth: Annotated[SessionUser | None, Depends(_acceso_dominio)],
+    client_id: ClientIdDep,
+    modelos: ModelosDep,
+) -> dict[str, Any]:
+    """Registro de modelos del cliente para el dominio: versión, tarea, algoritmo, métricas
+    y cuál se está sirviendo. Es la fuente para mostrar el historial en la interfaz."""
+    versiones = modelos.listar(client_id, dominio)
+    return {
+        "dominio": dominio,
+        "modelos": [
+            {
+                "id": v.id,
+                "task": v.task,
+                "version": v.version,
+                "algorithm": v.algorithm,
+                "metrics": v.metrics,
+                "status": v.status,
+                "is_serving": v.is_serving,
+                "trained_rows": v.trained_rows,
+                "trained_at": v.trained_at,
+            }
+            for v in versiones
+        ],
+    }

@@ -1,30 +1,35 @@
-"""Persistencia del control de acceso por roles (ADR-0014), sobre el **SQLite existente**.
+"""Persistencia del control de acceso por roles (ADR-0014) sobre **SQLAlchemy** (ADR-0026).
 
-Misma tecnología y patrón que ``RepositorioPredicciones`` (``sqlite3`` de la biblioteca
-estándar + ``threading.Lock``, sin dependencias nuevas): conviven en el **mismo archivo
-``spc.db``** pero en tablas distintas. Aquí viven cuatro tablas:
+Antes usaba ``sqlite3`` directo; ahora se apoya en el ORM compartido de :mod:`spc.db`, de
+modo que auth, corpus y modelos viven en **una sola base de datos** (SQLite en dev/tests,
+Postgres/Supabase en producción). La **interfaz pública no cambia**: mismos métodos,
+mismas dataclasses de salida (``Rol``, ``Usuario``, ``PerfilCliente``) y misma siembra
+idempotente del rol administrador y las dos cuentas de DEMOSTRACIÓN (id 256317 y 256370,
+contraseña = id, **hasheada**).
 
-- ``roles`` + ``role_permissions``: roles y el conjunto de permisos de cada uno
-  (vocabulario controlado en :mod:`spc.service.permisos`).
-- ``users``: las cuentas (id de login, contraseña **hasheada**, rol, ``client_id`` y
-  estado de onboarding).
-- ``client_profiles``: el perfil de negocio del onboarding, ligado al ``client_id``.
+Dos formas de construir el repositorio:
 
-Al abrirse, **siembra de forma idempotente** el rol administrador (con todos los permisos)
-y las dos cuentas administrador de DEMOSTRACIÓN (id 256317 y 256370, contraseña = id,
-**hasheada**). La siembra usa ``INSERT OR IGNORE``: repetir el arranque no la duplica ni
-pisa cambios posteriores.
+- :meth:`RepositorioAuth.crear` (compatibilidad): abre una base propia en una ruta
+  (SQLite) — la usan los tests con un archivo temporal.
+- :meth:`RepositorioAuth.desde_engine`: reutiliza el engine global de la app para que todo
+  comparta la misma base (lo usa el arranque en :mod:`spc.api.main`).
 """
 
 from __future__ import annotations
 
-import sqlite3
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import Engine, delete, func, select
+from sqlalchemy.orm import Session, sessionmaker
+
 from spc.config import ADMIN_SEED_IDS
+from spc.db.engine import crear_engine, crear_todo
+from spc.db.orm import Role, RolePermission, Tenant, User
 from spc.service import permisos
 from spc.service.seguridad import hash_password
 from spc.training.almacen import slug_cliente
@@ -33,42 +38,6 @@ from spc.utils.logging import get_logger
 log = get_logger("service.repositorio_auth")
 
 NOMBRE_ROL_ADMIN = "administrator"
-
-_DDL = """
-CREATE TABLE IF NOT EXISTS roles (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT UNIQUE NOT NULL,
-    description TEXT,
-    created_at  TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS role_permissions (
-    role_id    INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    permission TEXT NOT NULL,
-    PRIMARY KEY (role_id, permission)
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    user_id         TEXT PRIMARY KEY,
-    password_hash   TEXT NOT NULL,
-    role_id         INTEGER NOT NULL REFERENCES roles(id),
-    client_id       TEXT NOT NULL,
-    is_active       INTEGER NOT NULL DEFAULT 1,
-    onboarding_done INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS client_profiles (
-    client_id     TEXT PRIMARY KEY,
-    business_name TEXT NOT NULL,
-    sector        TEXT NOT NULL,
-    size          TEXT NOT NULL,
-    region        TEXT NOT NULL,
-    currency      TEXT NOT NULL,
-    owner_user_id TEXT,
-    created_at    TEXT NOT NULL
-);
-"""
 
 
 def _ahora_iso() -> str:
@@ -115,27 +84,48 @@ class PerfilCliente:
 
 
 class RepositorioAuth:
-    """Almacén SQLite de usuarios, roles, permisos y perfiles de cliente (ADR-0014)."""
+    """Almacén (SQLAlchemy) de usuarios, roles, permisos y perfiles de cliente (ADR-0014)."""
 
-    def __init__(self, conexion: sqlite3.Connection) -> None:
-        self._con = conexion
-        self._con.row_factory = sqlite3.Row
+    def __init__(self, engine: Engine, *, poseido: bool) -> None:
+        self._engine = engine
+        self._poseido = poseido  # ¿este repo es dueño del engine (debe cerrarlo)?
+        self._Session: sessionmaker[Session] = sessionmaker(
+            bind=engine, expire_on_commit=False, future=True
+        )
         self._lock = threading.Lock()
-        with self._lock:
-            self._con.executescript(_DDL)
-            self._con.commit()
+        crear_todo(engine)
         self._sembrar_admins()
 
     # -- Construcción ------------------------------------------------------
     @classmethod
     def crear(cls, db_path: str | Path) -> RepositorioAuth:
-        """Abre (o crea) la base en ``db_path`` y garantiza el esquema + la siembra."""
+        """Abre (o crea) una base SQLite propia en ``db_path`` (compat; usada por tests)."""
         ruta = str(db_path)
-        if ruta != ":memory:":
-            Path(ruta).parent.mkdir(parents=True, exist_ok=True)
-        con = sqlite3.connect(ruta, check_same_thread=False)
-        con.execute("PRAGMA foreign_keys = ON")
-        return cls(con)
+        url = "sqlite://" if ruta == ":memory:" else f"sqlite:///{Path(ruta).as_posix()}"
+        return cls(crear_engine(url), poseido=True)
+
+    @classmethod
+    def desde_engine(cls, engine: Engine) -> RepositorioAuth:
+        """Reutiliza un engine ya abierto (el global de la app); no lo cierra al terminar."""
+        return cls(engine, poseido=False)
+
+    @property
+    def engine(self) -> Engine:
+        """El engine subyacente (para que corpus/modelos compartan la misma base)."""
+        return self._engine
+
+    @contextmanager
+    def _sesion(self) -> Iterator[Session]:
+        """Abre una sesión, hace commit al salir sin error y siempre la cierra."""
+        sesion = self._Session()
+        try:
+            yield sesion
+            sesion.commit()
+        except Exception:
+            sesion.rollback()
+            raise
+        finally:
+            sesion.close()
 
     # -- Siembra idempotente ----------------------------------------------
     def _sembrar_admins(self) -> None:
@@ -145,83 +135,82 @@ class RepositorioAuth:
             self._asegurar_usuario_admin(user_id, rol_id)
 
     def _asegurar_rol_admin(self) -> int:
-        with self._lock:
-            cur = self._con.execute(
-                "INSERT OR IGNORE INTO roles (name, description, created_at) VALUES (?, ?, ?)",
-                (NOMBRE_ROL_ADMIN, "Acceso total a la plataforma.", _ahora_iso()),
-            )
-            fila = self._con.execute(
-                "SELECT id FROM roles WHERE name = ?", (NOMBRE_ROL_ADMIN,)
-            ).fetchone()
-            rol_id = int(fila["id"])
-            # Asegura que el rol administrador tenga SIEMPRE todos los permisos vigentes
-            # (si el catálogo de permisos creció, el admin los recibe).
-            for clave in permisos.permisos_administrador():
-                self._con.execute(
-                    "INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)",
-                    (rol_id, clave),
+        with self._lock, self._sesion() as s:
+            rol = s.scalar(select(Role).where(Role.name == NOMBRE_ROL_ADMIN))
+            nuevo = rol is None
+            if rol is None:
+                rol = Role(
+                    name=NOMBRE_ROL_ADMIN,
+                    description="Acceso total a la plataforma.",
+                    created_at=_ahora_iso(),
                 )
-            self._con.commit()
-            if cur.rowcount:
+                s.add(rol)
+                s.flush()  # asigna rol.id
+            # El administrador SIEMPRE tiene todos los permisos vigentes (si el catálogo creció).
+            existentes = {
+                p.permission
+                for p in s.scalars(
+                    select(RolePermission).where(RolePermission.role_id == rol.id)
+                )
+            }
+            for clave in permisos.permisos_administrador():
+                if clave not in existentes:
+                    s.add(RolePermission(role_id=rol.id, permission=clave))
+            rol_id = int(rol.id)
+            if nuevo:
                 log.info("Rol administrador sembrado (id=%s).", rol_id)
         return rol_id
 
     def _asegurar_usuario_admin(self, user_id: str, rol_id: int) -> None:
-        with self._lock:
-            existe = self._con.execute(
-                "SELECT 1 FROM users WHERE user_id = ?", (user_id,)
-            ).fetchone()
-            if existe:
+        with self._lock, self._sesion() as s:
+            if s.get(User, user_id) is not None:
                 return
             # Credencial de DEMO: contraseña inicial = id, almacenada HASHEADA (ADR-0014).
-            self._con.execute(
-                """
-                INSERT INTO users
-                    (user_id, password_hash, role_id, client_id, is_active, onboarding_done, created_at)
-                VALUES (?, ?, ?, ?, 1, 1, ?)
-                """,
-                (user_id, hash_password(user_id), rol_id, slug_cliente(user_id), _ahora_iso()),
+            s.add(
+                User(
+                    user_id=user_id,
+                    password_hash=hash_password(user_id),
+                    role_id=rol_id,
+                    client_id=slug_cliente(user_id),
+                    is_active=True,
+                    onboarding_done=True,
+                    created_at=_ahora_iso(),
+                )
             )
-            self._con.commit()
             log.info("Cuenta administrador de DEMO sembrada (id=%s).", user_id)
 
     # -- Roles -------------------------------------------------------------
     def listar_roles(self) -> list[Rol]:
-        with self._lock:
-            filas = self._con.execute("SELECT * FROM roles ORDER BY id").fetchall()
-            return [self._rol_desde_fila(f) for f in filas]
+        with self._sesion() as s:
+            filas = s.scalars(select(Role).order_by(Role.id)).all()
+            return [self._rol_desde_orm(s, r) for r in filas]
 
     def obtener_rol(self, role_id: int) -> Rol | None:
-        with self._lock:
-            fila = self._con.execute("SELECT * FROM roles WHERE id = ?", (role_id,)).fetchone()
-            return self._rol_desde_fila(fila) if fila else None
+        with self._sesion() as s:
+            r = s.get(Role, role_id)
+            return self._rol_desde_orm(s, r) if r else None
 
     def obtener_rol_por_nombre(self, name: str) -> Rol | None:
-        with self._lock:
-            fila = self._con.execute("SELECT * FROM roles WHERE name = ?", (name,)).fetchone()
-            return self._rol_desde_fila(fila) if fila else None
+        with self._sesion() as s:
+            r = s.scalar(select(Role).where(Role.name == name))
+            return self._rol_desde_orm(s, r) if r else None
 
-    def _rol_desde_fila(self, fila: sqlite3.Row) -> Rol:
-        perms = self._con.execute(
-            "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission",
-            (fila["id"],),
-        ).fetchall()
-        return Rol(
-            id=int(fila["id"]),
-            name=fila["name"],
-            description=fila["description"],
-            permissions=[p["permission"] for p in perms],
-        )
+    @staticmethod
+    def _rol_desde_orm(s: Session, r: Role) -> Rol:
+        perms = s.scalars(
+            select(RolePermission.permission)
+            .where(RolePermission.role_id == r.id)
+            .order_by(RolePermission.permission)
+        ).all()
+        return Rol(id=int(r.id), name=r.name, description=r.description, permissions=list(perms))
 
     def crear_rol(self, *, name: str, description: str | None, permissions: list[str]) -> Rol:
-        with self._lock:
-            cur = self._con.execute(
-                "INSERT INTO roles (name, description, created_at) VALUES (?, ?, ?)",
-                (name, description, _ahora_iso()),
-            )
-            rol_id = int(cur.lastrowid or 0)
-            self._reemplazar_permisos(rol_id, permissions)
-            self._con.commit()
+        with self._lock, self._sesion() as s:
+            rol = Role(name=name, description=description, created_at=_ahora_iso())
+            s.add(rol)
+            s.flush()
+            self._reemplazar_permisos(s, int(rol.id), permissions)
+            rol_id = int(rol.id)
         return self.obtener_rol(rol_id)  # type: ignore[return-value]
 
     def actualizar_rol(
@@ -231,67 +220,56 @@ class RepositorioAuth:
         description: str | None = None,
         permissions: list[str] | None = None,
     ) -> Rol | None:
-        with self._lock:
-            if self._con.execute("SELECT 1 FROM roles WHERE id = ?", (role_id,)).fetchone() is None:
+        with self._lock, self._sesion() as s:
+            rol = s.get(Role, role_id)
+            if rol is None:
                 return None
             if description is not None:
-                self._con.execute(
-                    "UPDATE roles SET description = ? WHERE id = ?", (description, role_id)
-                )
+                rol.description = description
             if permissions is not None:
-                self._reemplazar_permisos(role_id, permissions)
-            self._con.commit()
+                self._reemplazar_permisos(s, role_id, permissions)
         return self.obtener_rol(role_id)
 
-    def _reemplazar_permisos(self, role_id: int, permissions: list[str]) -> None:
-        self._con.execute("DELETE FROM role_permissions WHERE role_id = ?", (role_id,))
-        self._con.executemany(
-            "INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)",
-            [(role_id, clave) for clave in dict.fromkeys(permissions)],
-        )
+    @staticmethod
+    def _reemplazar_permisos(s: Session, role_id: int, permissions: list[str]) -> None:
+        s.execute(delete(RolePermission).where(RolePermission.role_id == role_id))
+        for clave in dict.fromkeys(permissions):
+            s.add(RolePermission(role_id=role_id, permission=clave))
 
     def eliminar_rol(self, role_id: int) -> None:
-        with self._lock:
-            self._con.execute("DELETE FROM role_permissions WHERE role_id = ?", (role_id,))
-            self._con.execute("DELETE FROM roles WHERE id = ?", (role_id,))
-            self._con.commit()
+        with self._lock, self._sesion() as s:
+            s.execute(delete(RolePermission).where(RolePermission.role_id == role_id))
+            s.execute(delete(Role).where(Role.id == role_id))
 
     def contar_usuarios_de_rol(self, role_id: int) -> int:
-        with self._lock:
-            fila = self._con.execute(
-                "SELECT COUNT(*) AS n FROM users WHERE role_id = ?", (role_id,)
-            ).fetchone()
-            return int(fila["n"])
+        with self._sesion() as s:
+            n = s.scalar(select(func.count()).select_from(User).where(User.role_id == role_id))
+            return int(n or 0)
 
     # -- Usuarios ----------------------------------------------------------
     def listar_usuarios(self) -> list[Usuario]:
-        with self._lock:
-            filas = self._con.execute("SELECT * FROM users ORDER BY user_id").fetchall()
-            return [self._usuario_desde_fila(f) for f in filas]
+        with self._sesion() as s:
+            filas = s.scalars(select(User).order_by(User.user_id)).all()
+            return [self._usuario_desde_orm(u) for u in filas]
 
     def obtener_usuario(self, user_id: str) -> Usuario | None:
-        with self._lock:
-            fila = self._con.execute(
-                "SELECT * FROM users WHERE user_id = ?", (user_id,)
-            ).fetchone()
-            return self._usuario_desde_fila(fila) if fila else None
+        with self._sesion() as s:
+            u = s.get(User, user_id)
+            return self._usuario_desde_orm(u) if u else None
 
     def obtener_password_hash(self, user_id: str) -> str | None:
-        with self._lock:
-            fila = self._con.execute(
-                "SELECT password_hash FROM users WHERE user_id = ?", (user_id,)
-            ).fetchone()
-            return fila["password_hash"] if fila else None
+        with self._sesion() as s:
+            return s.scalar(select(User.password_hash).where(User.user_id == user_id))
 
     @staticmethod
-    def _usuario_desde_fila(fila: sqlite3.Row) -> Usuario:
+    def _usuario_desde_orm(u: User) -> Usuario:
         return Usuario(
-            user_id=fila["user_id"],
-            role_id=int(fila["role_id"]),
-            client_id=fila["client_id"],
-            is_active=bool(fila["is_active"]),
-            onboarding_done=bool(fila["onboarding_done"]),
-            created_at=fila["created_at"],
+            user_id=u.user_id,
+            role_id=int(u.role_id),
+            client_id=u.client_id,
+            is_active=bool(u.is_active),
+            onboarding_done=bool(u.onboarding_done),
+            created_at=u.created_at,
         )
 
     def crear_usuario(
@@ -299,16 +277,18 @@ class RepositorioAuth:
     ) -> Usuario:
         """Crea una cuenta con la contraseña HASHEADA. ``client_id`` deriva del id si falta."""
         cid = client_id or slug_cliente(user_id)
-        with self._lock:
-            self._con.execute(
-                """
-                INSERT INTO users
-                    (user_id, password_hash, role_id, client_id, is_active, onboarding_done, created_at)
-                VALUES (?, ?, ?, ?, 1, 0, ?)
-                """,
-                (user_id, hash_password(password), role_id, cid, _ahora_iso()),
+        with self._lock, self._sesion() as s:
+            s.add(
+                User(
+                    user_id=user_id,
+                    password_hash=hash_password(password),
+                    role_id=role_id,
+                    client_id=cid,
+                    is_active=True,
+                    onboarding_done=False,
+                    created_at=_ahora_iso(),
+                )
             )
-            self._con.commit()
         return self.obtener_usuario(user_id)  # type: ignore[return-value]
 
     def actualizar_usuario(
@@ -320,51 +300,36 @@ class RepositorioAuth:
         is_active: bool | None = None,
         onboarding_done: bool | None = None,
     ) -> Usuario | None:
-        sets: list[str] = []
-        valores: list[object] = []
-        if role_id is not None:
-            sets.append("role_id = ?")
-            valores.append(role_id)
-        if password is not None:
-            sets.append("password_hash = ?")
-            valores.append(hash_password(password))
-        if is_active is not None:
-            sets.append("is_active = ?")
-            valores.append(int(is_active))
-        if onboarding_done is not None:
-            sets.append("onboarding_done = ?")
-            valores.append(int(onboarding_done))
-        with self._lock:
-            if self._con.execute(
-                "SELECT 1 FROM users WHERE user_id = ?", (user_id,)
-            ).fetchone() is None:
+        with self._lock, self._sesion() as s:
+            u = s.get(User, user_id)
+            if u is None:
                 return None
-            if sets:
-                valores.append(user_id)
-                self._con.execute(
-                    f"UPDATE users SET {', '.join(sets)} WHERE user_id = ?", valores
-                )
-                self._con.commit()
+            if role_id is not None:
+                u.role_id = role_id
+            if password is not None:
+                u.password_hash = hash_password(password)
+            if is_active is not None:
+                u.is_active = bool(is_active)
+            if onboarding_done is not None:
+                u.onboarding_done = bool(onboarding_done)
         return self.obtener_usuario(user_id)
 
     # -- Perfil de cliente (onboarding) -----------------------------------
     def obtener_perfil(self, client_id: str) -> PerfilCliente | None:
-        with self._lock:
-            fila = self._con.execute(
-                "SELECT * FROM client_profiles WHERE client_id = ?", (client_id,)
-            ).fetchone()
-        if fila is None:
-            return None
-        return PerfilCliente(
-            client_id=fila["client_id"],
-            business_name=fila["business_name"],
-            sector=fila["sector"],
-            size=fila["size"],
-            region=fila["region"],
-            currency=fila["currency"],
-            owner_user_id=fila["owner_user_id"],
-            created_at=fila["created_at"],
-        )
+        with self._sesion() as s:
+            t = s.get(Tenant, client_id)
+            if t is None:
+                return None
+            return PerfilCliente(
+                client_id=t.client_id,
+                business_name=t.business_name,
+                sector=t.sector,
+                size=t.size,
+                region=t.region,
+                currency=t.currency,
+                owner_user_id=t.owner_user_id,
+                created_at=t.created_at,
+            )
 
     def guardar_perfil(
         self,
@@ -378,26 +343,24 @@ class RepositorioAuth:
         owner_user_id: str | None,
     ) -> PerfilCliente:
         """Inserta o reemplaza el perfil del cliente (onboarding idempotente)."""
-        with self._lock:
-            existente = self._con.execute(
-                "SELECT created_at FROM client_profiles WHERE client_id = ?", (client_id,)
-            ).fetchone()
-            creado = existente["created_at"] if existente else _ahora_iso()
-            self._con.execute(
-                """
-                INSERT OR REPLACE INTO client_profiles
-                    (client_id, business_name, sector, size, region, currency, owner_user_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (client_id, business_name, sector, size, region, currency, owner_user_id, creado),
-            )
-            self._con.commit()
+        with self._lock, self._sesion() as s:
+            t = s.get(Tenant, client_id)
+            if t is None:
+                t = Tenant(client_id=client_id, created_at=_ahora_iso())
+                s.add(t)
+            t.business_name = business_name
+            t.sector = sector
+            t.size = size
+            t.region = region
+            t.currency = currency
+            t.owner_user_id = owner_user_id
         return self.obtener_perfil(client_id)  # type: ignore[return-value]
 
     # -- Ciclo de vida -----------------------------------------------------
     def cerrar(self) -> None:
-        with self._lock:
-            try:
-                self._con.close()
-            except Exception as exc:  # noqa: BLE001 - cierre best-effort
-                log.warning("No se pudo cerrar la base de auth: %s", exc)
+        if not self._poseido:
+            return  # el engine es compartido: no lo cerramos aquí
+        try:
+            self._engine.dispose()
+        except Exception as exc:  # noqa: BLE001 - cierre best-effort
+            log.warning("No se pudo cerrar la base de auth: %s", exc)

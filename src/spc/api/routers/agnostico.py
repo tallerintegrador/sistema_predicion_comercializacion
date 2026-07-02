@@ -19,7 +19,11 @@ from fastapi import APIRouter, Depends, Form, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from spc.api.dependencies import obtener_cache_agnostico, obtener_client_id
+from spc.api.dependencies import (
+    obtener_cache_agnostico,
+    obtener_client_id,
+    obtener_corpus_opcional,
+)
 from spc.api.ingest import agnostico_excel
 from spc.api.ingest.errores_excel import ArchivoDemasiadoGrande
 from spc.api.schemas.agnostico import (
@@ -37,10 +41,29 @@ from spc.api.schemas.comunes import ErrorResponse
 from spc.api.seguridad import requiere
 from spc.config import excel_max_bytes
 from spc.service import agnostico as servicio
+from spc.service import reentrenamiento
 from spc.service.cache_agnostico import CacheModelosAgnosticos
 from spc.service.errores import SolicitudInvalida
+from spc.service.repositorio_corpus import RepositorioCorpus
 
 router = APIRouter(prefix="/auto", tags=["AUTO"])
+
+CorpusOpcDep = Annotated[RepositorioCorpus | None, Depends(obtener_corpus_opcional)]
+
+
+def _acumular_auto(corpus: RepositorioCorpus | None, peticion: Any, campo: str, client_id: str) -> None:
+    """Enganche best-effort del corpus para ``/auto/*`` (serie/fecha declaradas por el cliente)."""
+    spec = peticion.schema_spec
+    reentrenamiento.acumular_declarado(
+        corpus,
+        tenant_id=client_id,
+        dominio=f"auto_{campo}",
+        rows=peticion.rows,
+        series_keys=list(spec.series_keys),
+        date_col=spec.date,
+        channel="json",
+        schema_spec=spec.model_dump(mode="json"),
+    )
 
 _RESPUESTAS_ERR = {
     400: {"model": ErrorResponse, "description": "Esquema/datos inválidos o serie sin histórico"},
@@ -102,6 +125,7 @@ def auto_sales(
     peticion: AutoSalesRequest,
     cache: Annotated[CacheModelosAgnosticos, Depends(obtener_cache_agnostico)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    corpus: CorpusOpcDep,
     _auth: Annotated[SessionUser | None, Depends(requiere("module:sales", "action:forecast"))],
 ) -> dict:
     """Entrena el ganador sobre ``rows`` (según ``schema``) y pronostica ``horizon`` períodos.
@@ -111,6 +135,7 @@ def auto_sales(
     **Sale:** ``forecast`` por (período, serie) + ``training`` (algoritmo ganador, métricas
     honestas de la ventana de prueba, candidatos).
     """
+    _acumular_auto(corpus, peticion, "sales", client_id)
     return servicio.pronosticar_ventas(peticion, client_id=client_id, cache=cache)
 
 
@@ -125,6 +150,7 @@ def auto_inventory(
     peticion: AutoInventoryRequest,
     cache: Annotated[CacheModelosAgnosticos, Depends(obtener_cache_agnostico)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    corpus: CorpusOpcDep,
     _auth: Annotated[SessionUser | None, Depends(requiere("module:inventory", "action:forecast"))],
 ) -> dict:
     """Deriva 'demanda alta' (target > P{q} de su serie), entrena el clasificador y evalúa stock.
@@ -134,6 +160,7 @@ def auto_inventory(
     **Sale:** ``alerts`` por serie (clase de demanda, probabilidad, riesgo de quiebre,
     stock recomendado/seguridad, segmento de volumen) + ``training``.
     """
+    _acumular_auto(corpus, peticion, "inventory", client_id)
     return servicio.alertas_inventario(peticion, client_id=client_id, cache=cache)
 
 
@@ -148,6 +175,7 @@ def auto_purchases(
     peticion: AutoPurchasesRequest,
     cache: Annotated[CacheModelosAgnosticos, Depends(obtener_cache_agnostico)],
     client_id: Annotated[str, Depends(obtener_client_id)],
+    corpus: CorpusOpcDep,
     _auth: Annotated[SessionUser | None, Depends(requiere("module:purchases", "action:forecast"))],
 ) -> dict:
     """Entrena el ganador, pronostica y deriva la reposición por serie.
@@ -157,6 +185,7 @@ def auto_purchases(
     **Sale:** ``recommendation`` por serie (demanda esperada, punto de reorden, cantidad
     a reponer) + ``training``.
     """
+    _acumular_auto(corpus, peticion, "purchases", client_id)
     return servicio.reponer_compras(peticion, client_id=client_id, cache=cache)
 
 
