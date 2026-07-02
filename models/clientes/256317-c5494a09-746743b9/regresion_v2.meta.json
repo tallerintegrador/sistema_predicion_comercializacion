@@ -1,0 +1,76 @@
+{
+  "fecha_entrenamiento": null,
+  "modelo": "LightGBM_Tweedie",
+  "transformacion_objetivo": "identidad",
+  "espacio_objetivo": "unidades",
+  "escala_metricas": "unidades",
+  "ventana_validacion_dias": 16,
+  "cortes_temporales": {
+    "train": "<= 2024-04-08",
+    "valid": "2024-04-09 .. 2024-04-24",
+    "test": "2024-04-25 .. 2024-05-10"
+  },
+  "metricas_test_recursivo": {
+    "MAE": 3.8801037224275294,
+    "RMSE": 5.347800167096835,
+    "RMSLE": 0.6835306451599586,
+    "MAPE": 69.84201661958687,
+    "WAPE": 36.80730803883822,
+    "R2": 0.7253354768275492
+  },
+  "metricas_test_recursivo_congelado": {
+    "MAE": 5134.252030542113,
+    "RMSE": 9447.03018122754,
+    "RMSLE": 5.513017765585172,
+    "MAPE": 258574.69893799166,
+    "WAPE": 48704.36708814653,
+    "R2": -857121.3750751786
+  },
+  "criterio_adopcion": {
+    "domain": "sales",
+    "outcome": "not_adopted",
+    "message": "",
+    "metric": "WAPE_recursivo",
+    "window_days": 16,
+    "cuts": {
+      "train": "<= 2024-04-08",
+      "valid": "2024-04-09 .. 2024-04-24",
+      "test": "2024-04-25 .. 2024-05-10"
+    },
+    "samples": {
+      "n_obs": 59392,
+      "n_dias": 2345,
+      "n_series": 133
+    },
+    "candidate": {
+      "WAPE": 36.807,
+      "MAE": 3.88,
+      "RMSE": 5.348
+    },
+    "frozen": {
+      "WAPE": 48704.367,
+      "MAE": 5134.252,
+      "RMSE": 9447.03
+    },
+    "baseline": {
+      "name": "BASELINE media_movil_7",
+      "WAPE": 31.282,
+      "MAE": 3.298,
+      "RMSE": 5.337
+    },
+    "candidate_model": "LightGBM_Tweedie",
+    "min_improvement_points": 0.0,
+    "improvement_wape_points": 48667.56,
+    "beats_frozen": true,
+    "beats_baseline": false
+  },
+  "n_filas_artefacto_final": 55668,
+  "semilla": 42,
+  "origen": "entrenamiento_por_cliente",
+  "version": "regresion_cliente_256317-c5494a09-746743b9_v2",
+  "client_id": "256317-c5494a09",
+  "slug": "256317-c5494a09-746743b9",
+  "version_cliente": 2,
+  "guardado_utc": "2026-06-23T03:53:33.930488+00:00",
+  "artefacto": "regresion_v2.joblib"
+}
