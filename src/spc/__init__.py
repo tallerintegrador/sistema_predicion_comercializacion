@@ -2,9 +2,8 @@
 
 Arquitectura por capas (las dependencias apuntan hacia adentro):
 - `config`  : configuracion y constantes.
-- `data`    : carga de fuentes, validacion de esquema, integracion (dataset 30 col).
 - `features`: feature engineering del motor de ML (calendario, rezagos, log1p).
-- `models`  : regresion (VENTAS), clasificacion (ALMACEN), zoo liviano/automl.
+- `models`  : nucleo de regresion/clasificacion, zoo liviano y automl (entrenar-en-el-momento).
 - `synthetic`: generacion sintetica (datos 3x3 por dominio).
 - `service` : logica de negocio (agnostico, motor 3x3, persistencia) — agnostica al algoritmo.
 - `utils`   : logging, metricas, formateadores, serializacion.
