@@ -174,3 +174,48 @@ def reentrenar(
         tenant_id, dominio, corpus_rows, len(versiones), run_id,
     )
     return resumen
+
+
+# Tareas que SÍ se sirven con artefacto congelado (el clustering se recalcula fresco).
+_TAREAS_SERVIBLES = ("regresion", "clasificacion")
+
+
+def predecir_con_guardado(
+    corpus: RepositorioCorpus,
+    modelos: RepositorioModelos,
+    *,
+    tenant_id: str,
+    dominio: str,
+    rows_nuevas: list[dict[str, Any]] | None = None,
+    horizon: int = motor_3x3.HORIZON_DEFAULT,
+) -> tuple[dict[str, Any], int | None]:
+    """Predice usando el **modelo guardado** (adoptado) del cliente, sin reentrenar.
+
+    Junta el histórico acumulado del corpus con ``rows_nuevas`` (para reconstruir features y
+    calendario del forecast), carga los predictores adoptados y delega en
+    :func:`motor_3x3.servir`. Devuelve ``(respuesta, model_id_regresion)`` — el id sirve para
+    auditar la predicción. Lanza ``ValueError`` si no hay datos o no hay modelo entrenado.
+    """
+    df_hist = corpus.leer_corpus(tenant_id, dominio)
+    rows: list[dict[str, Any]] = df_hist.to_dict(orient="records") if not df_hist.empty else []
+    if rows_nuevas:
+        rows.extend(rows_nuevas)
+    if not rows:
+        raise ValueError(
+            f"No hay datos para predecir en '{dominio}'. Sube datos o entrena primero."
+        )
+
+    predictores: dict[str, tuple[Any, Any]] = {}
+    for tarea in _TAREAS_SERVIBLES:
+        cargado = modelos.cargar_adoptado(tenant_id, dominio, tarea)
+        if cargado is not None:
+            predictores[tarea] = cargado
+
+    if "regresion" not in predictores:
+        raise ValueError(
+            f"No hay un modelo entrenado para '{dominio}'. Usa /entrenar antes de predecir."
+        )
+
+    respuesta = motor_3x3.servir(dominio, rows, predictores, horizon=horizon)
+    model_id = predictores["regresion"][1].id
+    return respuesta, model_id

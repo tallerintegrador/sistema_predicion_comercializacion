@@ -31,6 +31,9 @@ from spc.service import motor_3x3, onboarding, reentrenamiento
 from spc.service.errores import SolicitudInvalida
 from spc.service.repositorio_corpus import RepositorioCorpus
 from spc.service.repositorio_modelos import RepositorioModelos
+from spc.utils.logging import get_logger
+
+log = get_logger("api.dominios_3x3")
 
 router = APIRouter(prefix="/v2", tags=["3X3"])
 
@@ -254,6 +257,96 @@ def entrenar_dominio(
         )
     except ValueError as exc:
         raise SolicitudInvalida(str(exc)) from exc
+
+
+@router.post(
+    "/{dominio}/predecir",
+    summary="Predecir con el modelo GUARDADO del cliente (sin reentrenar)",
+    responses=_RESPUESTAS_ERR,
+)
+def predecir_dominio(
+    dominio: str,
+    peticion: Analisis3x3Request,
+    _auth: Annotated[SessionUser | None, Depends(_acceso_dominio)],
+    client_id: ClientIdDep,
+    corpus: CorpusDep,
+    modelos: ModelosDep,
+) -> dict[str, Any]:
+    """Sirve el modelo **ya entrenado y adoptado** del cliente: junta el histórico acumulado
+    con las filas enviadas, carga el artefacto congelado y predice **sin reentrenar**. Si el
+    cliente aún no entrenó un modelo para el dominio, responde 400 pidiendo usar ``/entrenar``.
+    La predicción servida se audita (tabla ``predictions``) *best-effort*."""
+    reentrenamiento.acumular(
+        corpus, tenant_id=client_id, dominio=dominio, rows=peticion.rows, channel="json"
+    )
+    try:
+        respuesta, model_id = reentrenamiento.predecir_con_guardado(
+            corpus, modelos, tenant_id=client_id, dominio=dominio,
+            rows_nuevas=peticion.rows, horizon=peticion.horizon,
+        )
+    except ValueError as exc:
+        raise SolicitudInvalida(str(exc)) from exc
+
+    _auditar_prediccion(modelos, client_id, dominio, model_id, peticion.horizon, respuesta)
+    return respuesta
+
+
+def _auditar_prediccion(
+    modelos: RepositorioModelos,
+    client_id: str,
+    dominio: str,
+    model_id: int | None,
+    horizon: int,
+    respuesta: dict[str, Any],
+) -> None:
+    """Guarda un resumen de la predicción servida (best-effort: nunca rompe la respuesta)."""
+    try:
+        reg = respuesta.get("regresion") or {}
+        resumen_resp = {
+            "n_filas": respuesta.get("n_filas"),
+            "version_modelo": reg.get("version_modelo"),
+            "horizonte": reg.get("horizonte"),
+            "n_predicciones": len(reg.get("prediccion") or []),
+        }
+        modelos.registrar_prediccion(
+            tenant_id=client_id, domain=dominio, model_id=model_id,
+            horizon=horizon, request={"horizon": horizon}, response=resumen_resp,
+        )
+    except Exception as exc:  # noqa: BLE001 - auditoría best-effort: nunca rompe la API
+        log.warning("No se pudo auditar la predicción de %s/%s: %s", client_id, dominio, exc)
+
+
+@router.post(
+    "/{dominio}/modelos/{model_id}/servir",
+    summary="Elegir qué versión de modelo se sirve para el dominio",
+    responses=_RESPUESTAS_ERR,
+)
+def elegir_version_servida(
+    dominio: str,
+    model_id: int,
+    _auth: Annotated[SessionUser | None, Depends(_acceso_dominio)],
+    client_id: ClientIdDep,
+    modelos: ModelosDep,
+) -> dict[str, Any]:
+    """Marca la versión ``model_id`` como la que se sirve (y desmarca a sus hermanas de la
+    misma tarea). Valida que el modelo pertenezca al cliente y al dominio de la URL."""
+    info = modelos.obtener(model_id)
+    if info is None or info.tenant_id != client_id or info.domain != dominio:
+        raise SolicitudInvalida(
+            f"No existe un modelo {model_id} para '{dominio}' de este cliente."
+        )
+    actualizado = modelos.marcar_adopcion(model_id, servir=True)
+    assert actualizado is not None  # ya validamos que existe
+    return {
+        "dominio": dominio,
+        "servido": {
+            "id": actualizado.id,
+            "task": actualizado.task,
+            "version": actualizado.version,
+            "algorithm": actualizado.algorithm,
+            "is_serving": actualizado.is_serving,
+        },
+    }
 
 
 @router.get(

@@ -138,6 +138,31 @@ def _futuro_calendario(
     return futuro
 
 
+def _pronostico_regresion(
+    df: pd.DataFrame, cfg: dominios.ConfigDominio, predictor: Any, horizon: int
+) -> list[dict[str, Any]]:
+    """Pronóstico del horizonte con un predictor de regresión **ya entrenado**.
+
+    Extraído para que lo compartan el camino de entrenamiento (:func:`_bloque_regresion`) y
+    el de servir un modelo guardado (:func:`servir`): ambos arman el mismo forecast recursivo.
+    """
+    spec = cfg.spec_regresion
+    serie_cols = list(spec.cols_serie)
+    col_fecha = spec.col_fecha
+    pronostico: list[dict[str, Any]] = []
+    futuro = _futuro_calendario(df, cfg, horizon)
+    if spec.es_temporal and futuro and col_fecha is not None:
+        completo, inicio, fin = _esqueleto_futuro(df, spec, horizon, futuro)
+        pred = predictor.pronosticar_horizonte(completo, inicio, fin)
+        pred = pred.sort_values([*serie_cols, col_fecha]).reset_index(drop=True)
+        for _, row in pred.iterrows():
+            item: dict[str, Any] = {k: str(row[k]) for k in serie_cols}
+            item["fecha"] = pd.Timestamp(row[col_fecha]).date().isoformat()
+            item["prediccion"] = round(float(row["prediccion"]), 2)
+            pronostico.append(item)
+    return pronostico
+
+
 def _bloque_regresion(
     df: pd.DataFrame, cfg: dominios.ConfigDominio, horizon: int, seed: int
 ) -> tuple[dict[str, Any], Any]:
@@ -147,19 +172,7 @@ def _bloque_regresion(
     except ValueError as exc:
         raise SolicitudInvalida(f"No se pudo entrenar la regresión: {exc}") from exc
 
-    serie_cols = list(spec.cols_serie)
-    pronostico: list[dict[str, Any]] = []
-    futuro = _futuro_calendario(df, cfg, horizon)
-    col_fecha = spec.col_fecha
-    if spec.es_temporal and futuro and col_fecha is not None:
-        completo, inicio, fin = _esqueleto_futuro(df, spec, horizon, futuro)
-        pred = res.predictor.pronosticar_horizonte(completo, inicio, fin)
-        pred = pred.sort_values([*serie_cols, col_fecha]).reset_index(drop=True)
-        for _, row in pred.iterrows():
-            item: dict[str, Any] = {k: str(row[k]) for k in serie_cols}
-            item["fecha"] = pd.Timestamp(row[col_fecha]).date().isoformat()
-            item["prediccion"] = round(float(row["prediccion"]), 2)
-            pronostico.append(item)
+    pronostico = _pronostico_regresion(df, cfg, res.predictor, horizon)
 
     bloque = {
         "objetivo": spec.objetivo,
@@ -176,19 +189,16 @@ def _bloque_regresion(
 # ===========================================================================
 # Bloque CLASIFICACIÓN
 # ===========================================================================
-def _bloque_clasificacion(
-    df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int
-) -> tuple[dict[str, Any], Any]:
-    df_lab = cfg.derivar_etiqueta(df)
-    spec = cfg.spec_clasificacion
-    serie_cols = list(spec.cols_serie)
-    try:
-        res = zoo_liviano.entrenar_clasificacion_liviana(df_lab, spec, seed=seed)
-    except ValueError as exc:
-        raise SolicitudInvalida(f"No se pudo entrenar la clasificación: {exc}") from exc
+def _alertas_clasificacion(
+    df_lab: pd.DataFrame, spec: Any, predictor: Any
+) -> list[dict[str, Any]]:
+    """Clase/probabilidad de la última fila de cada serie con un clasificador **ya entrenado**.
 
-    # Estado actual por serie: clase/probabilidad de la última fila de cada serie.
-    pred = res.predictor.predecir(df_lab)
+    Compartido por el camino de entrenamiento (:func:`_bloque_clasificacion`) y el de servir
+    un modelo guardado (:func:`servir`).
+    """
+    serie_cols = list(spec.cols_serie)
+    pred = predictor.predecir(df_lab)
     base = df_lab[serie_cols].copy()
     base["_clase"] = pred["clase"].to_numpy()
     base["_prob"] = pred["probabilidad"].to_numpy()
@@ -200,6 +210,21 @@ def _bloque_clasificacion(
         item["clase"] = int(r["_clase"])
         item["probabilidad"] = round(float(r["_prob"]), 4)
         alertas.append(item)
+    return alertas
+
+
+def _bloque_clasificacion(
+    df: pd.DataFrame, cfg: dominios.ConfigDominio, seed: int
+) -> tuple[dict[str, Any], Any]:
+    df_lab = cfg.derivar_etiqueta(df)
+    spec = cfg.spec_clasificacion
+    try:
+        res = zoo_liviano.entrenar_clasificacion_liviana(df_lab, spec, seed=seed)
+    except ValueError as exc:
+        raise SolicitudInvalida(f"No se pudo entrenar la clasificación: {exc}") from exc
+
+    # Estado actual por serie: clase/probabilidad de la última fila de cada serie.
+    alertas = _alertas_clasificacion(df_lab, spec, res.predictor)
 
     bloque = {
         "etiqueta": cfg.etiqueta,
@@ -382,3 +407,78 @@ def analizar_demo(dominio: str, *, horizon: int = HORIZON_DEFAULT, seed: int = 4
         for fila in generar_dominio(dominio, seed=seed).to_dict(orient="records")
     ]
     return analizar(dominio, rows, horizon=horizon, seed=seed)
+
+
+# ===========================================================================
+# Servir: predecir con los modelos YA entrenados y guardados (sin reentrenar)
+# ===========================================================================
+def servir(
+    dominio: str,
+    rows: list[dict[str, Any]],
+    predictores: dict[str, tuple[Any, Any]],
+    *,
+    horizon: int = HORIZON_DEFAULT,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """Arma la respuesta 3×3 usando los predictores **guardados** del cliente (ADR-0026).
+
+    A diferencia de :func:`analizar` (que entrena al vuelo), aquí la regresión y la
+    clasificación usan artefactos **ya entrenados** que vienen en ``predictores`` como
+    ``{"tarea": (objeto, info)}`` (``info`` = ``ModeloInfo`` del registro). ``rows`` es el
+    histórico acumulado (corpus) + las filas recién enviadas, necesario para reconstruir las
+    features y el calendario del forecast recursivo sin fuga. El **clustering** se recalcula
+    fresco (es descriptivo/no supervisado, barato) con :func:`_bloque_clustering`.
+
+    Requiere al menos el predictor de ``regresion``; el de ``clasificacion`` es opcional.
+    """
+    cfg = dominios.config_de(dominio)
+    horizon = max(1, min(int(horizon), HORIZON_MAX))
+    df = construir_dataframe(rows, dominio)
+
+    if "regresion" not in predictores or predictores["regresion"][0] is None:
+        raise SolicitudInvalida("No hay un modelo de regresión guardado para servir.")
+
+    pred_reg, info_reg = predictores["regresion"]
+    pronostico = _pronostico_regresion(df, cfg, pred_reg, horizon)
+    regresion: dict[str, Any] = {
+        "objetivo": cfg.spec_regresion.objetivo,
+        "modelo_ganador": info_reg.algorithm,
+        "version_modelo": info_reg.version,
+        "metricas_honestas": info_reg.metrics or {},
+        "entrenado_en": info_reg.trained_at,
+        "horizonte": horizon if pronostico else 0,
+        "prediccion": pronostico,
+    }
+
+    clasificacion: dict[str, Any] | None = None
+    par_cls = predictores.get("clasificacion")
+    if par_cls is not None and par_cls[0] is not None:
+        pred_cls, info_cls = par_cls
+        df_lab = cfg.derivar_etiqueta(df)
+        alertas = _alertas_clasificacion(df_lab, cfg.spec_clasificacion, pred_cls)
+        clasificacion = {
+            "etiqueta": cfg.etiqueta,
+            "definicion": esquema_de(dominio).derivacion_etiqueta,
+            "modelo_ganador": info_cls.algorithm,
+            "version_modelo": info_cls.version,
+            "metricas_honestas": info_cls.metrics or {},
+            "entrenado_en": info_cls.trained_at,
+            "alertas": alertas,
+        }
+
+    # Clustering fresco (segmentación descriptiva; no hay artefacto que congelar).
+    clustering, _ = _bloque_clustering(df, cfg, seed)
+
+    resultado: dict[str, Any] = {
+        "dominio": dominio,
+        "formato": esquema_de(dominio).grano,
+        "n_filas": int(len(df)),
+        "regresion": regresion,
+        "clasificacion": clasificacion,
+        "clustering": clustering,
+        "servido_desde": "modelo_guardado",
+        "nota": "Predicción con el modelo entrenado y guardado del cliente (sin reentrenar).",
+    }
+    if dominio == "almacen":
+        resultado["indicadores_inventario"] = _indicadores_inventario(df, regresion["prediccion"])
+    return resultado

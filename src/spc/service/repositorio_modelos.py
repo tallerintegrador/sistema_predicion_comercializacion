@@ -34,7 +34,7 @@ from spc.config import (
     supabase_key,
     supabase_url,
 )
-from spc.db.orm import ModeloEntrenado, TrainingRun
+from spc.db.orm import ModeloEntrenado, Prediction, TrainingRun
 from spc.training.almacen import slug_cliente
 from spc.utils.logging import get_logger
 
@@ -205,6 +205,41 @@ class RepositorioModelos:
                 ModeloEntrenado.domain, ModeloEntrenado.task, ModeloEntrenado.version.desc()
             )
             return [self._info(m) for m in s.scalars(q).all()]
+
+    def obtener(self, model_id: int) -> ModeloInfo | None:
+        """Devuelve la versión por id (para validar propiedad antes de conmutar), o ``None``."""
+        with self._Session() as s:
+            modelo = s.get(ModeloEntrenado, model_id)
+            return self._info(modelo) if modelo is not None else None
+
+    def registrar_prediccion(
+        self,
+        *,
+        tenant_id: str,
+        domain: str,
+        model_id: int | None,
+        horizon: int | None,
+        request: dict | None,
+        response: dict | None,
+    ) -> int:
+        """Guarda una fila de auditoría de una predicción servida (tabla ``predictions``).
+
+        ``request``/``response`` deben ser **resúmenes** (no el payload completo) para no
+        inflar la base. Devuelve el id de la fila creada.
+        """
+        with self._Session() as s, s.begin():
+            fila = Prediction(
+                tenant_id=tenant_id,
+                domain=domain,
+                model_id=model_id,
+                horizon=horizon,
+                request=request,
+                response=response,
+                created_at=_ahora_iso(),
+            )
+            s.add(fila)
+            s.flush()
+            return int(fila.id)
 
     # -- Internos ----------------------------------------------------------
     @staticmethod

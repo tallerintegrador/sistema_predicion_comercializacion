@@ -86,6 +86,81 @@ def test_entrenar_sin_datos_da_error_controlado(client) -> None:
     assert r.status_code == 400, r.text
 
 
+def _entrenar_ventas(client) -> list[dict]:
+    """Acumula corpus de ventas y entrena un modelo (v1). Devuelve las filas usadas."""
+    rows = _rows("ventas")
+    assert client.post("/v2/ventas", json={"rows": rows, "horizon": 5}).status_code == 200
+    r = client.post("/v2/ventas/entrenar", params={"horizon": 5})
+    assert r.status_code == 200, r.text
+    return rows
+
+
+def test_predecir_sin_modelo_da_error(client) -> None:
+    """`/predecir` sin un modelo entrenado responde 400 pidiendo entrenar primero."""
+    r = client.post("/v2/ventas/predecir", json={"rows": _rows("ventas"), "horizon": 5})
+    assert r.status_code == 400, r.text
+    assert "entrena" in r.json()["error"]["message"].lower()
+
+
+def test_predecir_usa_modelo_guardado(client) -> None:
+    """`/predecir` sirve el modelo adoptado (sin reentrenar) y reporta su versión."""
+    rows = _entrenar_ventas(client)
+    r = client.post("/v2/ventas/predecir", json={"rows": rows, "horizon": 5})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["servido_desde"] == "modelo_guardado"
+    assert body["regresion"]["version_modelo"] == 1
+    assert body["regresion"]["prediccion"], "el pronóstico servido no debe estar vacío"
+    # Los tres bloques presentes (clustering se recalcula fresco).
+    assert {"regresion", "clasificacion", "clustering"} <= set(body)
+
+
+def test_elegir_version_servida_cambia_el_modelo(client) -> None:
+    """El usuario puede escoger qué versión se sirve; `/predecir` la respeta."""
+    _entrenar_ventas(client)  # v1
+    assert client.post("/v2/ventas/entrenar", params={"horizon": 5}).status_code == 200  # v2
+
+    modelos = client.get("/v2/ventas/modelos").json()["modelos"]
+    reg_v1 = next(m for m in modelos if m["task"] == "regresion" and m["version"] == 1)
+    assert reg_v1["is_serving"] is False  # por defecto se sirve la última (v2)
+
+    # Elegir explícitamente la v1.
+    r = client.post(f"/v2/ventas/modelos/{reg_v1['id']}/servir")
+    assert r.status_code == 200, r.text
+    assert r.json()["servido"]["version"] == 1
+
+    # El registro refleja que ahora se sirve la v1 (y solo una).
+    regs = [m for m in client.get("/v2/ventas/modelos").json()["modelos"] if m["task"] == "regresion"]
+    servidas = [m for m in regs if m["is_serving"]]
+    assert len(servidas) == 1 and servidas[0]["version"] == 1
+
+    # `/predecir` usa la versión elegida.
+    pred = client.post("/v2/ventas/predecir", json={"rows": _rows("ventas"), "horizon": 5})
+    assert pred.json()["regresion"]["version_modelo"] == 1
+
+
+def test_servir_version_ajena_da_error(client) -> None:
+    """Elegir un modelo inexistente para el dominio responde 400 (no 500)."""
+    _entrenar_ventas(client)
+    r = client.post("/v2/ventas/modelos/9999/servir")
+    assert r.status_code == 400, r.text
+
+
+def test_predecir_audita_en_tabla_predictions(client) -> None:
+    """Cada predicción servida deja una fila de auditoría en `predictions`."""
+    from sqlalchemy import func, select
+
+    from spc.db.orm import Prediction
+
+    rows = _entrenar_ventas(client)
+    assert client.post("/v2/ventas/predecir", json={"rows": rows, "horizon": 5}).status_code == 200
+
+    engine = client.app.state.db_engine
+    with engine.connect() as conn:
+        total = conn.execute(select(func.count()).select_from(Prediction)).scalar_one()
+    assert total >= 1
+
+
 def test_demo_compras(client) -> None:
     resp = client.get("/v2/compras/demo", params={"horizon": 7})
     assert resp.status_code == 200, resp.text

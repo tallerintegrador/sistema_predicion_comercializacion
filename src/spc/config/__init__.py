@@ -12,6 +12,17 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Carga variables desde el archivo `.env` de la raíz del repo (Postgres/Supabase, auth) si
+# existe, para que la app y Alembic las lean sin exportarlas a mano. Las variables ya
+# presentes en el entorno NO se sobrescriben (override=False), así los tests y CI mandan.
+# `python-dotenv` es una dependencia; el try/except deja el import a prueba de balas.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
+except Exception:  # noqa: BLE001 - sin .env o sin la lib, se usan las variables del entorno
+    pass
+
 # Tope de tamaño (bytes) para un archivo .xlsx subido por el canal Excel.
 # Es un límite plano de protección anti-abuso (DoS), NO el ruteo por volumen
 # (en línea/lote): esa frontera se mide por NÚMERO DE FILAS (ver online_max_rows()).

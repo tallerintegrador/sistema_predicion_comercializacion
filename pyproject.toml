@@ -27,6 +27,7 @@ dependencies = [
     "pydantic==2.13.4",
     "python-multipart==0.0.29",
     "openpyxl==3.1.5",
+    "python-dotenv>=1.0",  # carga el `.env` de la raíz (Postgres/Supabase, auth) al arrancar
     # Persistencia en base de datos real (ADR-0026): SQLAlchemy como capa agnóstica al
     # motor (SQLite en tests, Postgres/Supabase en producción) + Alembic para migraciones
     # versionadas + psycopg como driver de Postgres. `supabase` opcional para el bucket de
