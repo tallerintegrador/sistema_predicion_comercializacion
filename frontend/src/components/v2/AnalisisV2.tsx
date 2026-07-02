@@ -22,6 +22,7 @@ import {
 } from '../../api/endpoints'
 import type { AutoRow, V2Domain, V2Esquema, V2PrediccionItem, V2Response } from '../../api/types'
 import { SerieChart } from '../charts/SerieChart'
+import { BarrasTop } from '../charts/BarrasTop'
 import { ModuleHeader } from '../ui/ModuleHeader'
 import { StepSection } from '../ui/StepSection'
 import { EmptyState } from '../ui/EmptyState'
@@ -333,11 +334,8 @@ export function AnalisisV2({ view, dominio, accent, empty }: AnalisisV2Props) {
           ))}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" className={`btn ${accent.solid}`} onClick={() => void correr(() => getV2Demo(dominio, horizon))} disabled={busy}>
-            {busy ? 'Entrenando y prediciendo…' : 'Ver ejemplo'}
-          </button>
-          <label className="btn-ghost cursor-pointer">
-            Subir mi archivo (Excel o JSON)
+          <label className={`btn ${accent.solid} cursor-pointer`}>
+            {busy ? 'Entrenando y prediciendo…' : 'Subir mi archivo (Excel o JSON)'}
             <input
               type="file"
               accept=".xlsx,.json,application/json"
@@ -350,6 +348,9 @@ export function AnalisisV2({ view, dominio, accent, empty }: AnalisisV2Props) {
               }}
             />
           </label>
+          <button type="button" className="btn-ghost" onClick={() => void correr(() => getV2Demo(dominio, horizon))} disabled={busy}>
+            Ver ejemplo
+          </button>
         </div>
         <p className="help">Al analizar, el sistema aprende con tus datos en el momento (puede tardar unos segundos). A más días, tarda un poco más y el pronóstico es menos preciso.</p>
         {aviso && (
@@ -420,14 +421,59 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
   const { regresion, clasificacion, clustering } = data
   const [soloAlerta, setSoloAlerta] = useState(true)
   const [soloReponer, setSoloReponer] = useState(true)
+  const [ejeGrafico, setEjeGrafico] = useState<'total' | 'producto' | 'tienda'>('total')
+  const [seleccion, setSeleccion] = useState('')
+
+  // Clave de "tienda" según el dominio (ventas/almacén: id_tienda; compras: id_proveedor).
+  const claveTienda =
+    regresion.prediccion[0] && 'id_tienda' in regresion.prediccion[0]
+      ? 'id_tienda'
+      : regresion.prediccion[0] && 'id_proveedor' in regresion.prediccion[0]
+        ? 'id_proveedor'
+        : null
+  const etiquetaTienda = claveTienda === 'id_proveedor' ? 'proveedor' : 'tienda'
+  const modos: ('total' | 'producto' | 'tienda')[] = claveTienda
+    ? ['total', 'producto', 'tienda']
+    : ['total', 'producto']
+
+  const productos = useMemo(
+    () => [...new Set(regresion.prediccion.map((r) => String(r.sku)))].sort(),
+    [regresion],
+  )
+  const tiendas = useMemo(
+    () => (claveTienda ? [...new Set(regresion.prediccion.map((r) => String(r[claveTienda])))].sort() : []),
+    [regresion, claveTienda],
+  )
+
+  const cambiarEje = (modo: 'total' | 'producto' | 'tienda') => {
+    setEjeGrafico(modo)
+    if (modo === 'producto') setSeleccion(productos[0] ?? '')
+    else if (modo === 'tienda') setSeleccion(tiendas[0] ?? '')
+    else setSeleccion('')
+  }
 
   const forePoints = useMemo(() => {
+    let items = regresion.prediccion
+    if (ejeGrafico === 'producto' && seleccion) items = items.filter((r) => String(r.sku) === seleccion)
+    else if (ejeGrafico === 'tienda' && seleccion && claveTienda) items = items.filter((r) => String(r[claveTienda]) === seleccion)
     const byDate = new Map<string, number>()
-    for (const r of regresion.prediccion) {
+    for (const r of items) {
       const d = String(r.fecha)
       byDate.set(d, (byDate.get(d) ?? 0) + Number(r.prediccion || 0))
     }
     return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }))
+  }, [regresion, ejeGrafico, seleccion, claveTienda])
+
+  const topProductos = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of regresion.prediccion) {
+      const k = String(r.sku)
+      m.set(k, (m.get(k) ?? 0) + Number(r.prediccion || 0))
+    }
+    return [...m.entries()]
+      .map(([nombre, valor]) => ({ nombre, valor: Math.round(valor) }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 10)
   }, [regresion])
 
   const resumen = useMemo(() => resumenPorSerie(regresion.prediccion), [regresion])
@@ -493,11 +539,44 @@ function Resultado({ data, accent }: { data: V2Response; accent: Accent }) {
       {/* PRONÓSTICO */}
       <section className="card space-y-3">
         <h3 className="text-base font-semibold text-slate-800">📈 {tituloPron} · próximos {regresion.horizonte} días</h3>
-        {forePoints.length > 0 && (
-          <SerieChart history={[]} forecast={forePoints} histLabel="" foreLabel={`Total por día (${regresion.horizonte} días)`} hex={accent.hex} />
-        )}
         {resumen.length > 0 ? (
           <>
+            {/* Controles del gráfico de línea: total / por producto / por tienda */}
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-slate-500">Ver:</span>
+              {modos.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => cambiarEje(m)}
+                  className={`rounded-full px-3 py-1 ${ejeGrafico === m ? `${accent.solid} text-white` : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {m === 'total' ? 'Total' : m === 'producto' ? 'Por producto' : `Por ${etiquetaTienda}`}
+                </button>
+              ))}
+              {ejeGrafico === 'producto' && (
+                <select value={seleccion} onChange={(e) => setSeleccion(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm">
+                  {productos.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              )}
+              {ejeGrafico === 'tienda' && (
+                <select value={seleccion} onChange={(e) => setSeleccion(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm">
+                  {tiendas.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              )}
+            </div>
+            {forePoints.length > 0 && (
+              <SerieChart history={[]} forecast={forePoints} histLabel="" foreLabel={`${ejeGrafico === 'total' ? 'Total' : seleccion} por día`} hex={accent.hex} />
+            )}
+
+            {/* Top productos (barras) */}
+            {topProductos.length > 1 && (
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-slate-600">Top {topProductos.length} productos por total previsto</p>
+                <BarrasTop data={topProductos} hex={accent.hex} valorLabel="Total previsto" />
+              </div>
+            )}
+
             <p className="text-sm text-slate-500">Total previsto por {unidadGrupo === 'proveedores' ? 'proveedor y producto' : 'producto'} en los próximos {regresion.horizonte} días:</p>
             <TablaInteractiva rows={resumen} columns={resumenCols} buscarPlaceholder="Buscar producto/tienda…" />
           </>
