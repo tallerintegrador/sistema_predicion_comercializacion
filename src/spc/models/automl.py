@@ -1,7 +1,7 @@
 """AutoML **agnóstico al rubro**: entrena el algoritmo ganador sobre un esquema declarado.
 
-Reutiliza el **mismo zoo de modelos** y la **misma selección honesta** del motor retail
-(`spc.models.regresion` / `spc.models.clasificacion`) pero alimentado por el feature
+Reutiliza el **mismo zoo de modelos** y la **misma selección honesta** del núcleo
+(`spc.models.nucleo` / `spc.models.desbalance`) pero alimentado por el feature
 engineering genérico (`spc.features.generico`), de modo que el cliente puede traer
 **columnas arbitrarias** (otro rubro) y el sistema:
 
@@ -29,7 +29,7 @@ from spc.features.generico import (
     columnas_lag_objetivo,
     construir_features,
 )
-from spc.models.regresion import (
+from spc.models.nucleo import (
     CortesTemporales,
     ModeloEnsemble,
     _a_unidades,
@@ -506,10 +506,10 @@ def entrenar_clasificacion(
     """Entrena el clasificador ganador (LightGBM, estrategia de desbalance elegida en VALID).
 
     ``spec.objetivo`` debe ser una etiqueta binaria (0/1) ya presente en ``df``. Reutiliza
-    las estrategias de desbalance y la selección de umbral del motor retail
-    (`spc.models.clasificacion`), pero sobre features genéricas.
+    las estrategias de desbalance y la selección de umbral del núcleo
+    (`spc.models.desbalance`), pero sobre features genéricas.
     """
-    from spc.models.clasificacion import (
+    from spc.models.desbalance import (
         ESTRATEGIAS,
         _elegir_estrategia,
         _proba,

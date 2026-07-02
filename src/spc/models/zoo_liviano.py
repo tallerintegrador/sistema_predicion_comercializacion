@@ -30,7 +30,7 @@ from sklearn.preprocessing import StandardScaler
 
 from spc.features.generico import EspecEsquema, columnas_lag_objetivo, construir_features
 from spc.models.automl import cortes_adaptativos
-from spc.models.regresion import (
+from spc.models.nucleo import (
     EspecModelo,
     _construir_pipeline_lineal,
     _fijar_categorias,
@@ -50,7 +50,7 @@ def construir_zoo_liviano(
 ) -> dict[str, EspecModelo]:
     """Candidatos de regresión **solo sklearn**, rápidos con pocos datos.
 
-    Misma forma que ``spc.models.regresion.construir_zoo`` (para enchufar sin tocar el
+    Misma forma que ``spc.models.nucleo.construir_zoo`` (para enchufar sin tocar el
     flujo de selección honesta), pero **sin** LightGBM/XGBoost/Tweedie ni GPU:
 
     - ``Ridge`` (lineal, escala log): baseline robusto e interpretable.
@@ -149,8 +149,8 @@ RECALL_MIN_OPERATIVO = 0.75
 def _umbral_operativo(y: np.ndarray, p: np.ndarray, *, recall_min: float = RECALL_MIN_OPERATIVO) -> float:
     """Umbral de operación del **camino 3×3** (ADR-0025 c).
 
-    Reemplaza —SOLO aquí, sin tocar ``spc.models.clasificacion.seleccionar_umbral`` del motor
-    viejo/compartido— la elección del punto de corte. Sobre la partición de **VALIDACIÓN**
+    Reemplaza —SOLO aquí, sin tocar ``spc.models.desbalance.seleccionar_umbral`` del núcleo
+    compartido— la elección del punto de corte. Sobre la partición de **VALIDACIÓN**
     (sin mirar TEST → sin fuga), recorre una grilla de umbrales y, como **no detectar el
     evento** (p. ej. un retraso) es costoso, **prioriza el recall**: entre los umbrales con
     ``recall ≥ recall_min`` elige el de **mayor F1**; si ninguno alcanza ese recall, cae al de
