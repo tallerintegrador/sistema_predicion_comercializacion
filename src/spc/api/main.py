@@ -29,6 +29,7 @@ from spc.api.errors import registrar_manejadores
 from spc.api.routers import (
     auth,
     dominios_3x3,
+    catalogo_v3,
 )
 from spc.config import (
     auth_enabled,
@@ -161,6 +162,7 @@ def crear_app(
     registrar_manejadores(app)
     app.include_router(auth.router)
     app.include_router(dominios_3x3.router)
+    app.include_router(catalogo_v3.router)
 
     @app.get("/health", tags=["status"], summary="Salud del servicio")
     def salud() -> dict[str, str]:

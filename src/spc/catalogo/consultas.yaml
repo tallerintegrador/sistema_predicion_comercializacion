@@ -1,0 +1,942 @@
+# Catálogo de 30 Consultas Predefinidas — SPC Sistema Predictivo de Comercialización
+#
+# Fuente única de verdad para las consultas automáticas del sistema.
+# Formato: YAML con validación de anti-fuga y auditoría de exclusiones.
+#
+# Convención de idioma: nombres de campos/modelos en inglés; explicación en español.
+# Fecha: 2026-07-02 | ADR-0028
+
+# ==============================================================================
+# VENTAS — 10 Consultas (4 Regresión + 3 Clasificación + 3 Clustering)
+# ==============================================================================
+modulo_ventas:
+  dominio: "ventas"
+  columnas_todas:
+    - fecha
+    - id_tienda
+    - sku
+    - categoria
+    - unidades_vendidas
+    - precio_unitario
+    - ingreso
+    - en_promocion
+    - descuento_pct
+    - metodo_pago
+    - canal_venta
+    - es_fin_de_semana
+    - dias_a_proximo_feriado
+
+  # Columnas CALCULADAS (nunca usar como features; derivan del objetivo u otros campos)
+  columnas_excluir_features:
+    ingreso: "= unidades_vendidas × precio_unitario (fuga si se incluye)"
+
+  consultas:
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REGRESIÓN (4)
+    # ─────────────────────────────────────────────────────────────────────────
+    ven_r1:
+      id: "ven-r1"
+      tipo: "regresion"
+      pregunta: "Unidades según precio y promoción"
+      descripcion: "Predice demanda unitaria en función del precio, estado de promoción y descuento."
+      objetivo: "unidades_vendidas"
+      columnas_entrada:
+        - precio_unitario
+        - en_promocion
+        - descuento_pct
+        - categoria
+      columnas_conocidas_futuro:
+        - precio_unitario
+        - en_promocion
+        - descuento_pct
+        - categoria
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Excluir: ingreso (= unidades × precio, revelaría objetivo).
+        Features OK: precio, promo, descuento, categoría no derivan de unidades.
+        Validación temporal: train/valid/test por fecha.
+
+    ven_r2:
+      id: "ven-r2"
+      tipo: "regresion"
+      pregunta: "Ingreso según canal, fin de semana y feriado"
+      descripcion: "Predice ingresos en función del canal de venta, calendario y promociones."
+      objetivo: "ingreso"
+      columnas_entrada:
+        - canal_venta
+        - es_fin_de_semana
+        - dias_a_proximo_feriado
+        - en_promocion
+      columnas_conocidas_futuro:
+        - canal_venta
+        - es_fin_de_semana
+        - dias_a_proximo_feriado
+        - en_promocion
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Objetivo: ingreso (no unidades).
+        Excluir: unidades_vendidas, precio_unitario (si no están, no hay fuga).
+        Features OK: canal, finde, feriado, promo son independientes de ingreso.
+        Validación temporal: train/valid/test por fecha.
+
+    ven_r3:
+      id: "ven-r3"
+      tipo: "regresion"
+      pregunta: "Venta por efecto calendario"
+      descripcion: "Predice demanda según días feriados y fines de semana, por categoría."
+      objetivo: "unidades_vendidas"
+      columnas_entrada:
+        - es_fin_de_semana
+        - dias_a_proximo_feriado
+        - categoria
+      columnas_conocidas_futuro:
+        - es_fin_de_semana
+        - dias_a_proximo_feriado
+        - categoria
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Excluir: ingreso, precio, promo, descuento (pueden correlacionar artificialmente).
+        Features OK: calendario (finde, feriado) y categoría son causales.
+        Validación temporal: train/valid/test por fecha.
+
+    ven_r4:
+      id: "ven-r4"
+      tipo: "regresion"
+      pregunta: "Venta esperada por categoría según precio y método pago"
+      descripcion: "Predice demanda según precio, categoría y método de pago usado."
+      objetivo: "unidades_vendidas"
+      columnas_entrada:
+        - categoria
+        - precio_unitario
+        - metodo_pago
+      columnas_conocidas_futuro:
+        - categoria
+        - precio_unitario
+        - metodo_pago
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Excluir: ingreso, en_promocion, descuento (correlación indirecta con unidades).
+        Features OK: categoría, precio, método_pago son causales.
+        Validación temporal: train/valid/test por fecha.
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # CLASIFICACIÓN (3)
+    # ─────────────────────────────────────────────────────────────────────────
+    ven_c1:
+      id: "ven-c1"
+      tipo: "clasificacion"
+      pregunta: "¿Demanda alta (sí/no)?"
+      descripcion: "Clasifica si la demanda será alta respecto al promedio de su categoría."
+      objetivo: "demanda_alta"
+      columnas_entrada:
+        - precio_unitario
+        - en_promocion
+        - descuento_pct
+        - categoria
+      columnas_conocidas_futuro:
+        - precio_unitario
+        - en_promocion
+        - descuento_pct
+        - categoria
+      columnas_solo_pasado: []
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      derivacion_etiqueta:
+        tipo: "percentil"
+        columna_objetivo: "unidades_vendidas"
+        percentil: 75
+        agrupar_por: "categoria"
+        calcular_en: "train_only"
+        descripcion: "demanda_alta = (unidades_vendidas > P75 por categoría en TRAIN)"
+      anti_fuga: |
+        Derivación: P75 de unidades por categoría, fijado solo en TRAIN.
+        Etiqueta: demanda_alta (0/1).
+        Excluir: ingreso (contiene unidades).
+        Features OK: precio, promo, descuento, categoría no derivan de unidades.
+        Desbalance: usar class_weight='balanced' en LogisticRegression y RandomForest.
+        Validación temporal: train/valid/test por fecha.
+
+    ven_c2:
+      id: "ven-c2"
+      tipo: "clasificacion"
+      pregunta: "¿Por qué canal se venderá?"
+      descripcion: "Predice el canal de venta más probable (multiclase) según categoría, precio y contexto."
+      objetivo: "canal_venta"
+      columnas_entrada:
+        - categoria
+        - precio_unitario
+        - en_promocion
+        - es_fin_de_semana
+      columnas_conocidas_futuro:
+        - categoria
+        - precio_unitario
+        - en_promocion
+        - es_fin_de_semana
+      columnas_solo_pasado: []
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "f1_macro"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      # Sin derivacion_etiqueta: es CLASIFICACIÓN MULTICLASE directa sobre canal_venta.
+      anti_fuga: |
+        Objetivo: canal_venta (multiclase, columna real; sin derivación de percentil).
+        Excluir: ingreso, unidades_vendidas (post-venta) y el propio canal_venta.
+        Features OK: categoría, precio, promo, finde se conocen antes de la venta.
+        Métrica: F1 macro (multiclase), selección en VALID, reporte en TEST.
+        Validación temporal: train/valid/test por fecha.
+
+    ven_c3:
+      id: "ven-c3"
+      tipo: "clasificacion"
+      pregunta: "¿Día pico de ventas (sí/no)?"
+      descripcion: "Detecta si el día será pico de ventas (sí/no) según calendario y promociones."
+      objetivo: "dia_pico"
+      columnas_entrada:
+        - es_fin_de_semana
+        - dias_a_proximo_feriado
+        - en_promocion
+      columnas_conocidas_futuro:
+        - es_fin_de_semana
+        - dias_a_proximo_feriado
+        - en_promocion
+      columnas_solo_pasado: []
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda"]
+      derivacion_etiqueta:
+        tipo: "percentil"
+        columna_objetivo: "unidades_vendidas"
+        percentil: 75
+        agrupar_por: null
+        calcular_en: "train_only"
+        descripcion: "dia_pico = (unidades_vendidas > P75 global en TRAIN)"
+      anti_fuga: |
+        Derivación: P75 global de unidades, fijado solo en TRAIN.
+        Etiqueta: dia_pico (0/1).
+        Excluir: ingreso, precio, descuento (correlación indirecta).
+        Features OK: finde, feriado, promo son causales del volumen.
+        Desbalance: usar class_weight='balanced'.
+        Validación temporal: train/valid/test por fecha.
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # CLUSTERING (3)
+    # ─────────────────────────────────────────────────────────────────────────
+    ven_k1:
+      id: "ven-k1"
+      tipo: "clustering"
+      pregunta: "Agrupar productos por volumen"
+      descripcion: "Segmenta SKUs según volumen de ventas e ingresos generados."
+      entidad_cluster: "sku"
+      columnas_entrada:
+        - unidades_vendidas
+        - ingreso
+      agregacion: "by_sku"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "volumen"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal (agregar todo).
+        Agregación: media de unidades_vendidas e ingreso por SKU.
+        Nota: ingreso aquí es input al cluster (no feature de predicción), OK.
+        No hay riesgo de fuga en clustering.
+
+    ven_k2:
+      id: "ven-k2"
+      tipo: "clustering"
+      pregunta: "Agrupar productos por sensibilidad a promoción"
+      descripcion: "Segmenta SKUs según respuesta a promociones (volatilidad con/sin promo)."
+      entidad_cluster: "sku"
+      columnas_entrada:
+        - en_promocion
+        - descuento_pct
+        - unidades_vendidas
+      agregacion: "by_sku"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "volumen"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal.
+        Agregación: para cada SKU calcular tasa_promo y volatilidad_con_promo.
+        No hay riesgo de fuga.
+
+    ven_k3:
+      id: "ven-k3"
+      tipo: "clustering"
+      pregunta: "Agrupar tiendas por perfil de ventas"
+      descripcion: "Segmenta puntos de venta según volumen, precio medio y método de pago."
+      entidad_cluster: "id_tienda"
+      columnas_entrada:
+        - unidades_vendidas
+        - ingreso
+        - precio_unitario
+      agregacion: "by_tienda"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "volumen"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal.
+        Agregación: media de unidades, ingreso, precio por tienda.
+        No hay riesgo de fuga.
+
+# ==============================================================================
+# COMPRAS — 10 Consultas (4 Regresión + 3 Clasificación + 3 Clustering)
+# ==============================================================================
+modulo_compras:
+  dominio: "compras"
+  columnas_todas:
+    - fecha_orden
+    - id_proveedor
+    - sku
+    - categoria
+    - cantidad_pedida
+    - precio_unitario_compra
+    - costo_total
+    - lead_time_dias
+    - cantidad_recibida
+    - cumplimiento
+    - metodo_pago
+    - descuento_volumen
+
+  columnas_excluir_features:
+    costo_total: "= cantidad_pedida × precio_unitario_compra (fuga si se incluye)"
+
+  consultas:
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REGRESIÓN (4)
+    # ─────────────────────────────────────────────────────────────────────────
+    com_r1:
+      id: "com-r1"
+      tipo: "regresion"
+      pregunta: "Unidades a pedir"
+      descripcion: "Predice cantidad óptima a pedir según categoría, lead time y descuentos."
+      objetivo: "cantidad_pedida"
+      columnas_entrada:
+        - categoria
+        - lead_time_dias
+        - descuento_volumen
+        - precio_unitario_compra
+      columnas_conocidas_futuro:
+        - categoria
+        - lead_time_dias
+        - descuento_volumen
+        - precio_unitario_compra
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha_orden"
+      cols_serie: ["id_proveedor", "sku"]
+      lags_objetivo: [1, 2, 3, 6]
+      ventanas_media: [3, 6]
+      anti_fuga: |
+        Excluir: costo_total (= cantidad × precio), cantidad_recibida, cumplimiento (post-entrega).
+        Features OK: categoría, lead_time, descuento, precio no derivan de cantidad_pedida.
+        Grano: ÓRDENES (no diarias); rezagos cortos (1,2,3,6) para no vaciar con históricos cortos.
+        Validación temporal: train/valid/test por fecha_orden.
+
+    com_r2:
+      id: "com-r2"
+      tipo: "regresion"
+      pregunta: "Días de entrega esperados"
+      descripcion: "Predice lead time del proveedor según categoría y método de pago."
+      objetivo: "lead_time_dias"
+      columnas_entrada:
+        - id_proveedor
+        - categoria
+        - metodo_pago
+      columnas_conocidas_futuro:
+        - id_proveedor
+        - categoria
+        - metodo_pago
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha_orden"
+      cols_serie: ["id_proveedor"]
+      lags_objetivo: [1, 2, 3, 6]
+      ventanas_media: [3, 6]
+      anti_fuga: |
+        Objetivo: lead_time_dias (característica del proveedor).
+        Excluir: cantidad_recibida, cumplimiento, costo_total (post-entrega).
+        Features OK: id_proveedor, categoría, metodo_pago son causales.
+        Validación temporal: train/valid/test por fecha_orden.
+
+    com_r3:
+      id: "com-r3"
+      tipo: "regresion"
+      pregunta: "Costo total de la orden"
+      descripcion: "Predice el costo esperado de la orden a partir de factores (proveedor, categoría, lead time)."
+      objetivo: "costo_total"
+      columnas_entrada:
+        - id_proveedor
+        - categoria
+        - lead_time_dias
+      columnas_conocidas_futuro:
+        - id_proveedor
+        - categoria
+        - lead_time_dias
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha_orden"
+      cols_serie: ["id_proveedor", "sku"]
+      anti_fuga: |
+        Objetivo: costo_total.
+        ANTI-FUGA: NO usar cantidad_pedida ni precio_unitario_compra ni descuento_volumen
+        como features, porque costo_total = cantidad × precio × (1-descuento) es una IDENTIDAD
+        aritmética (igual que ingreso en VEN-R2). Se predice desde factores del negocio.
+        Excluir: cumplimiento, cantidad_recibida (post-entrega).
+        Validación temporal: train/valid/test por fecha_orden.
+
+    com_r4:
+      id: "com-r4"
+      tipo: "regresion"
+      pregunta: "Cumplimiento esperado del proveedor"
+      descripcion: "Predice porcentaje de entrega completa según proveedor y lead time."
+      objetivo: "cumplimiento"
+      columnas_entrada:
+        - id_proveedor
+        - lead_time_dias
+        - metodo_pago
+      columnas_conocidas_futuro:
+        - id_proveedor
+        - lead_time_dias
+        - metodo_pago
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha_orden"
+      cols_serie: ["id_proveedor"]
+      lags_objetivo: [1, 2, 3, 6]
+      ventanas_media: [3, 6]
+      anti_fuga: |
+        Objetivo: cumplimiento (cantidad_recibida / cantidad_pedida).
+        Excluir: cantidad_pedida, cantidad_recibida, costo_total (post-entrega).
+        Features OK: id_proveedor, lead_time, metodo_pago son causales.
+        Validación temporal: train/valid/test por fecha_orden.
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # CLASIFICACIÓN (3)
+    # ─────────────────────────────────────────────────────────────────────────
+    com_c1:
+      id: "com-c1"
+      tipo: "clasificacion"
+      pregunta: "¿Orden con retraso (sí/no)?"
+      descripcion: "Clasifica si la entrega llegará con retraso respecto al lead time esperado."
+      objetivo: "entrega_con_retraso"
+      columnas_entrada:
+        - id_proveedor
+        - categoria
+        - descuento_volumen
+        - metodo_pago
+      columnas_conocidas_futuro:
+        - id_proveedor
+        - categoria
+        - descuento_volumen
+        - metodo_pago
+      columnas_solo_pasado: []
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha_orden"
+      cols_serie: ["id_proveedor"]
+      derivacion_etiqueta:
+        tipo: "percentil"
+        columna_objetivo: "lead_time_dias"
+        percentil: 75
+        agrupar_por: null
+        calcular_en: "train_only"
+        descripcion: "entrega_con_retraso = (lead_time_dias > P75 global en TRAIN)"
+      anti_fuga: |
+        Derivación: P75 global de lead_time_dias en TRAIN.
+        Etiqueta: entrega_con_retraso (0/1).
+        ANTI-FUGA: NO usar lead_time_dias como feature (define la etiqueta → fuga trivial).
+        Se predice el retraso ANTES de conocer el lead time real, desde el perfil del proveedor.
+        Excluir: lead_time_dias, cantidad_recibida, cumplimiento, costo_total.
+        Features OK: id_proveedor, categoría, descuento, metodo_pago.
+        Desbalance: usar class_weight='balanced'.
+        Validación temporal: train/valid/test por fecha_orden.
+
+    com_c2:
+      id: "com-c2"
+      tipo: "clasificacion"
+      pregunta: "¿Cumplimiento alto (sí/no)?"
+      descripcion: "Predice si el cumplimiento del proveedor será alto según lead time."
+      objetivo: "entrega_completa"
+      columnas_entrada:
+        - id_proveedor
+        - lead_time_dias
+        - metodo_pago
+      columnas_conocidas_futuro:
+        - id_proveedor
+        - lead_time_dias
+        - metodo_pago
+      columnas_solo_pasado: []
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha_orden"
+      cols_serie: ["id_proveedor"]
+      derivacion_etiqueta:
+        tipo: "umbral"
+        columna_objetivo: "cumplimiento"
+        umbral: 0.98
+        agrupar_por: null
+        calcular_en: "train_only"
+        descripcion: "entrega_completa = (cumplimiento >= 0.98)"
+      anti_fuga: |
+        Derivación: UMBRAL FIJO de negocio (cumplimiento >= 0.98 = entrega completa).
+        Etiqueta: entrega_completa (0/1). No es percentil: es una regla clara y estable.
+        Excluir: cantidad_recibida, cantidad_pedida, costo_total (post-entrega).
+        Features OK: id_proveedor, lead_time, metodo_pago son causales.
+        Desbalance: usar class_weight='balanced'.
+        Validación temporal: train/valid/test por fecha_orden.
+
+    com_c3:
+      id: "com-c3"
+      tipo: "clasificacion"
+      pregunta: "¿Orden grande o pequeña?"
+      descripcion: "Clasifica el tamaño de la orden (grande/pequeña) según cantidad y costo."
+      objetivo: "tamano_orden"
+      columnas_entrada:
+        - descuento_volumen
+        - categoria
+        - id_proveedor
+        - precio_unitario_compra
+      columnas_conocidas_futuro:
+        - descuento_volumen
+        - categoria
+        - id_proveedor
+        - precio_unitario_compra
+      columnas_solo_pasado: []
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha_orden"
+      cols_serie: ["id_proveedor"]
+      derivacion_etiqueta:
+        tipo: "percentil"
+        columna_objetivo: "cantidad_pedida"
+        percentil: 50
+        agrupar_por: null
+        calcular_en: "train_only"
+        descripcion: "tamano_orden = (cantidad_pedida > P50 global en TRAIN)"
+      anti_fuga: |
+        Derivación: P50 de cantidad_pedida en TRAIN.
+        Etiqueta: tamano_orden (0/1: pequeño/grande).
+        ANTI-FUGA: NO usar cantidad_pedida ni costo_total como features (definen la etiqueta
+        directa o aritméticamente → fuga trivial). Se predice el tamaño desde el contexto de compra.
+        Excluir: cantidad_pedida, costo_total, cumplimiento, cantidad_recibida, lead_time.
+        Desbalance: usar class_weight='balanced'.
+        Validación temporal: train/valid/test por fecha_orden.
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # CLUSTERING (3)
+    # ─────────────────────────────────────────────────────────────────────────
+    com_k1:
+      id: "com-k1"
+      tipo: "clustering"
+      pregunta: "Agrupar proveedores por servicio"
+      descripcion: "Segmenta proveedores según lead time, cumplimiento y costo medio."
+      entidad_cluster: "id_proveedor"
+      columnas_entrada:
+        - lead_time_dias
+        - cumplimiento
+        - costo_total
+      agregacion: "by_proveedor"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "servicio"
+      columna_etiqueta: "lead_time_dias"
+      anti_fuga: |
+        Clustering: sin partición temporal.
+        Agregación: media de lead_time, cumplimiento, costo por proveedor.
+        Ranking: por lead_time (lo que separa arquetipos: premium/estándar/económico).
+        No hay riesgo de fuga.
+
+    com_k2:
+      id: "com-k2"
+      tipo: "clustering"
+      pregunta: "Agrupar productos por costo/volumen de compra"
+      descripcion: "Segmenta SKUs según precio unitario y cantidad pedida media."
+      entidad_cluster: "sku"
+      columnas_entrada:
+        - precio_unitario_compra
+        - cantidad_pedida
+      agregacion: "by_sku"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "volumen"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal.
+        Agregación: media de precio y cantidad por SKU.
+        No hay riesgo de fuga.
+
+    com_k3:
+      id: "com-k3"
+      tipo: "clustering"
+      pregunta: "Agrupar órdenes por tamaño y descuento"
+      descripcion: "Agrupa órdenes según cantidad pedida, costo y descuentos aplicados."
+      entidad_cluster: "fecha_orden"
+      columnas_entrada:
+        - cantidad_pedida
+        - descuento_volumen
+        - costo_total
+      agregacion: "by_date_proveedor"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "volumen"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal.
+        Agregación: por fecha y proveedor.
+        No hay riesgo de fuga.
+
+# ==============================================================================
+# ALMACÉN — 10 Consultas (4 Regresión + 3 Clasificación + 3 Clustering)
+# ==============================================================================
+modulo_almacen:
+  dominio: "almacen"
+  columnas_todas:
+    - fecha
+    - id_tienda
+    - sku
+    - categoria
+    - stock_actual
+    - stock_minimo
+    - stock_maximo
+    - demanda_dia
+    - demanda_diaria_promedio
+    - dias_de_cobertura
+    - rotacion
+    - tiempo_reposicion_dias
+    - zona_almacen
+
+  columnas_excluir_features:
+    dias_de_cobertura: "= stock_actual / demanda_diaria_promedio (fuga si se incluye)"
+
+  consultas:
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REGRESIÓN (4)
+    # ─────────────────────────────────────────────────────────────────────────
+    alm_r1:
+      id: "alm-r1"
+      tipo: "regresion"
+      pregunta: "Demanda diaria esperada (sobre factores)"
+      descripcion: "Predice demanda del día según demanda promedio, rotación, categoría y zona."
+      objetivo: "demanda_dia"
+      columnas_entrada:
+        - demanda_diaria_promedio
+        - rotacion
+        - categoria
+        - zona_almacen
+      columnas_conocidas_futuro:
+        - categoria
+        - zona_almacen
+      columnas_solo_pasado:
+        - demanda_diaria_promedio
+        - rotacion
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Objetivo: demanda_dia (demanda futura).
+        Excluir: dias_de_cobertura (= stock / demanda, revelaría objetivo).
+        Columnas solo-pasado: demanda_diaria_promedio, rotacion (valor del día contiene consumo).
+        Features OK: categoría, zona son causales de demanda.
+        Validación temporal: train/valid/test por fecha.
+
+    alm_r2:
+      id: "alm-r2"
+      tipo: "regresion"
+      pregunta: "Días de cobertura"
+      descripcion: "Estima los días de cobertura esperados a partir de factores del producto (rotación, categoría, zona, reposición)."
+      objetivo: "dias_de_cobertura"
+      columnas_entrada:
+        - rotacion
+        - categoria
+        - zona_almacen
+        - tiempo_reposicion_dias
+      columnas_conocidas_futuro:
+        - categoria
+        - zona_almacen
+        - tiempo_reposicion_dias
+      columnas_solo_pasado:
+        - rotacion
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Objetivo: dias_de_cobertura.
+        ANTI-FUGA (decisión): NO usar stock_actual ni demanda_diaria_promedio como features,
+        porque dias_de_cobertura = stock_actual / demanda_diaria_promedio es una IDENTIDAD
+        aritmética (con ellas la métrica es artificialmente perfecta). Se estima desde factores.
+        Excluir: stock_actual, demanda_diaria_promedio, stock_minimo, stock_maximo.
+        Nota honesta: al quitar la identidad, la señal es más débil; se reporta el error real
+        sin inflarlo.
+        Validación temporal: train/valid/test por fecha.
+
+    alm_r3:
+      id: "alm-r3"
+      tipo: "regresion"
+      pregunta: "Rotación por categoría/zona"
+      descripcion: "Predice velocidad de rotación según categoría, zona y demanda media."
+      objetivo: "rotacion"
+      columnas_entrada:
+        - categoria
+        - zona_almacen
+        - demanda_diaria_promedio
+      columnas_conocidas_futuro:
+        - categoria
+        - zona_almacen
+      columnas_solo_pasado:
+        - demanda_diaria_promedio
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Objetivo: rotacion.
+        Excluir: dias_de_cobertura (derivada de stock/demanda).
+        Columnas solo-pasado: demanda_diaria_promedio (su valor del día ya contiene consumo).
+        Features OK: categoría, zona son causales.
+        Validación temporal: train/valid/test por fecha.
+
+    alm_r4:
+      id: "alm-r4"
+      tipo: "regresion"
+      pregunta: "Stock máximo recomendado"
+      descripcion: "Predice el stock máximo óptimo según demanda y rotación."
+      objetivo: "stock_maximo"
+      columnas_entrada:
+        - demanda_diaria_promedio
+        - rotacion
+        - categoria
+        - tiempo_reposicion_dias
+      columnas_conocidas_futuro:
+        - categoria
+        - tiempo_reposicion_dias
+      columnas_solo_pasado:
+        - demanda_diaria_promedio
+        - rotacion
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      metrica_seleccion: "wape"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      anti_fuga: |
+        Objetivo: stock_maximo (política del cliente, predecible de demanda/rotación).
+        Excluir: dias_de_cobertura, stock_actual (derivadas o solo-pasado).
+        Features OK: demanda, rotación, categoría, reposición son causales.
+        Validación temporal: train/valid/test por fecha.
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # CLASIFICACIÓN (3)
+    # ─────────────────────────────────────────────────────────────────────────
+    alm_c1:
+      id: "alm-c1"
+      tipo: "clasificacion"
+      pregunta: "¿Riesgo de quiebre (sí/no)?"
+      descripcion: "Detecta si hay riesgo de ruptura de stock durante el período de reposición."
+      objetivo: "riesgo_quiebre"
+      columnas_entrada:
+        - stock_actual
+        - demanda_diaria_promedio
+        - rotacion
+        - tiempo_reposicion_dias
+      columnas_conocidas_futuro:
+        - tiempo_reposicion_dias
+      columnas_solo_pasado:
+        - stock_actual
+        - demanda_diaria_promedio
+        - rotacion
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      derivacion_etiqueta:
+        tipo: "regla"
+        formula: "stock_actual < demanda_diaria_promedio * tiempo_reposicion_dias"
+        descripcion: "riesgo_quiebre = (stock_actual < demanda × reposición)"
+      anti_fuga: |
+        Derivación: REGLA DETERMINÍSTICA (no percentil).
+        Etiqueta: riesgo_quiebre = 1 si stock < demanda_día × reposición, 0 en caso contrario.
+        Excluir: dias_de_cobertura (derivada de stock/demanda).
+        Columnas solo-pasado: stock, demanda, rotacion (su valor del día).
+        Features OK: todas no derivan del riesgo.
+        Desbalance: usar class_weight='balanced'.
+        Validación temporal: train/valid/test por fecha.
+
+    alm_c2:
+      id: "alm-c2"
+      tipo: "clasificacion"
+      pregunta: "¿Reposición urgente (sí/no)?"
+      descripcion: "Determina si la cobertura es insuficiente para el tiempo de reposición."
+      objetivo: "reposicion_urgente"
+      columnas_entrada:
+        - stock_actual
+        - demanda_diaria_promedio
+        - tiempo_reposicion_dias
+      columnas_conocidas_futuro:
+        - tiempo_reposicion_dias
+      columnas_solo_pasado:
+        - stock_actual
+        - demanda_diaria_promedio
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      derivacion_etiqueta:
+        tipo: "regla"
+        formula: "dias_de_cobertura < tiempo_reposicion_dias"
+        descripcion: "reposicion_urgente = (cobertura < tiempo_reposición)"
+      anti_fuga: |
+        Derivación: REGLA DETERMINÍSTICA basada en cobertura.
+        Etiqueta: reposicion_urgente = 1 si días_cobertura < tiempo_reposición, 0 en caso contrario.
+        Excluir: dias_de_cobertura (es parte de la regla, no feature).
+        Columnas solo-pasado: stock, demanda (valor del día).
+        Features OK: tiempo_reposicion es causal.
+        Desbalance: usar class_weight='balanced'.
+        Validación temporal: train/valid/test por fecha.
+
+    alm_c3:
+      id: "alm-c3"
+      tipo: "clasificacion"
+      pregunta: "¿Sobrestock (sí/no)?"
+      descripcion: "Identifica si hay exceso de inventario respecto al máximo permitido."
+      objetivo: "sobrestock"
+      columnas_entrada:
+        - stock_actual
+        - stock_maximo
+        - rotacion
+      columnas_conocidas_futuro:
+        - stock_maximo
+      columnas_solo_pasado:
+        - stock_actual
+        - rotacion
+      modelos_candidatos: ["logistic_regression", "random_forest"]
+      metrica_seleccion: "pr_auc"
+      col_fecha: "fecha"
+      cols_serie: ["id_tienda", "sku"]
+      derivacion_etiqueta:
+        tipo: "regla"
+        formula: "stock_actual > stock_maximo"
+        descripcion: "sobrestock = (stock_actual > stock_maximo)"
+      anti_fuga: |
+        Derivación: REGLA DETERMINÍSTICA (simple comparación).
+        Etiqueta: sobrestock = 1 si stock_actual > stock_máximo, 0 en caso contrario.
+        Excluir: dias_de_cobertura (derivada de stock/demanda).
+        Columnas solo-pasado: stock (valor del día), rotación.
+        Features OK: stock_máximo es política (conocida a futuro).
+        Desbalance: usar class_weight='balanced'.
+        Validación temporal: train/valid/test por fecha.
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # CLUSTERING (3)
+    # ─────────────────────────────────────────────────────────────────────────
+    alm_k1:
+      id: "alm-k1"
+      tipo: "clustering"
+      pregunta: "Clasificación ABC de productos"
+      descripcion: "Segmenta SKUs en categorías A, B, C según rotación y demanda (análisis ABC)."
+      entidad_cluster: "sku"
+      columnas_entrada:
+        - rotacion
+        - demanda_diaria_promedio
+        - dias_de_cobertura
+      agregacion: "by_sku"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: 3
+      estilo_etiqueta: "abc"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal; k fijo = 3 (A/B/C por ADR-0025).
+        Agregación: media de rotación, demanda, cobertura por SKU.
+        Ranking: por rotación (lo que caracteriza A/B/C).
+        No hay riesgo de fuga.
+
+    alm_k2:
+      id: "alm-k2"
+      tipo: "clustering"
+      pregunta: "Agrupar productos por rotación y cobertura"
+      descripcion: "Segmenta SKUs según velocidad de salida y días de cobertura disponibles."
+      entidad_cluster: "sku"
+      columnas_entrada:
+        - rotacion
+        - dias_de_cobertura
+      agregacion: "by_sku"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "volumen"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal; k automático.
+        Agregación: media de rotación y cobertura por SKU.
+        No hay riesgo de fuga.
+
+    alm_k3:
+      id: "alm-k3"
+      tipo: "clustering"
+      pregunta: "Agrupar zonas por presión de inventario"
+      descripcion: "Segmenta áreas del almacén según volumen, rotación y cobertura media."
+      entidad_cluster: "zona_almacen"
+      columnas_entrada:
+        - stock_actual
+        - demanda_diaria_promedio
+        - rotacion
+      agregacion: "by_zona"
+      modelos_candidatos: ["kmeans"]
+      metrica_seleccion: "silhouette"
+      k_fijo: null
+      estilo_etiqueta: "volumen"
+      columna_etiqueta: null
+      anti_fuga: |
+        Clustering: sin partición temporal.
+        Agregación: media de stock, demanda, rotación por zona.
+        No hay riesgo de fuga.
+
+# ==============================================================================
+# Fin del Catálogo
+# ==============================================================================
+version: "1.0.0"
+fecha_creacion: "2026-07-02"
+adr: "ADR-0028"
+notas_globales: |
+  - Todas las métricas de selección (WAPE, PR-AUC, silueta) son honestas; sin umbrales bloqueantes.
+  - Validación temporal por defecto (train/valid/test por fecha); clustering sin partición.
+  - Desbalance de clases: class_weight='balanced' en LogReg y RF para clasificación.
+  - Clustering: KMeans con escalado StandardScaler; k automático excepto ALM-K1 (k=3 ABC).
+  - Derivación de etiquetas: percentil en TRAIN, fórmula determinística para almacén.
+  - Sin columnas calculadas como features: ingreso, costo_total, cumplimiento, dias_de_cobertura.
+  - Reutiliza orquestación leak-safe de spc.models.automl y spc.service.motor_3x3.

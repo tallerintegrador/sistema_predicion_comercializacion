@@ -302,3 +302,69 @@ export interface ErrorBody {
 export interface ErrorEnvelope {
   error: ErrorBody
 }
+
+// --- Catálogo v3 (ADR-0028: 30 consultas predefinidas) ---
+export type V3Domain = 'ventas' | 'compras' | 'almacen'
+
+export interface FilaComparacion {
+  modelo: string
+  metrica: string
+  valor: number
+  ganador: boolean
+}
+
+export interface DetalleTecnico {
+  modelo_ganador: string
+  metrica: string
+  valor_metrica: number
+  tabla_comparacion: FilaComparacion[]
+  fecha_entrenamiento: string
+  nota_tecnica?: string | null
+}
+
+export interface ReporteConsulta {
+  consulta_id: string
+  modulo: string
+  tipo: 'regresion' | 'clasificacion' | 'clustering'
+  pregunta: string
+  descripcion: string
+  unidad?: string
+  resultado: Record<string, unknown>
+  advertencia: string | null
+  detalle_tecnico: DetalleTecnico
+}
+
+export interface PuntoSerie {
+  fecha: string
+  valor: number
+}
+
+export interface BloqueAnalisisTendencia {
+  campo: string
+  titulo: string
+  descripcion: string
+  unidad: string
+  metodo: string
+  historico: PuntoSerie[]
+  pronostico: PuntoSerie[]
+}
+
+export interface RespuestaModulo {
+  modulo: string
+  reportes: ReporteConsulta[]
+  analisis_tendencia: BloqueAnalisisTendencia
+  fecha_ejecución: string
+}
+
+export interface ConsultaInfo {
+  consulta_id: string
+  modulo: string
+  tipo: 'regresion' | 'clasificacion' | 'clustering'
+  pregunta: string
+  descripcion: string
+}
+
+export interface RespuestaCatalogo {
+  total_consultas: number
+  consultas: ConsultaInfo[]
+}
