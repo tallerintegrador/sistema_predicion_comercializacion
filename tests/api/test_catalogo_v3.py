@@ -96,18 +96,18 @@ class TestCatalogo:
     """Tests de GET /v3/catalogo."""
 
     def test_listar_catalogo(self, client):
-        """GET /v3/catalogo devuelve 30 consultas."""
+        """GET /v3/catalogo devuelve 30 consultas (contrato en inglés)."""
         resp = client.get("/v3/catalogo")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_consultas"] == 30
-        assert len(data["consultas"]) == 30
-        # Verificar que hay de los 3 módulos
-        modulos = {c["modulo"] for c in data["consultas"]}
+        assert data["total_queries"] == 30
+        assert len(data["queries"]) == 30
+        # Verificar que hay de los 3 módulos (los valores de módulo se mantienen en español)
+        modulos = {c["module"] for c in data["queries"]}
         assert modulos == {"ventas", "compras", "almacen"}
-        # Verificar tipos
-        tipos = {c["tipo"] for c in data["consultas"]}
-        assert tipos == {"regresion", "clasificacion", "clustering"}
+        # Verificar tipos (enum en inglés)
+        tipos = {c["type"] for c in data["queries"]}
+        assert tipos == {"regression", "classification", "clustering"}
 
 
 class TestPlantillas:
@@ -144,12 +144,12 @@ class TestAnalisisModulos:
         resp = client.post("/v3/ventas", json=datos_ventas)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["modulo"] == "ventas"
-        assert len(data["reportes"]) == 10
-        # Verificar distribución: 4R, 3C, 3K
-        tipos = [r["tipo"] for r in data["reportes"]]
-        assert tipos.count("regresion") == 4
-        assert tipos.count("clasificacion") == 3
+        assert data["module"] == "ventas"
+        assert len(data["reports"]) == 10
+        # Verificar distribución: 4R, 3C, 3K (enum en inglés)
+        tipos = [r["type"] for r in data["reports"]]
+        assert tipos.count("regression") == 4
+        assert tipos.count("classification") == 3
         assert tipos.count("clustering") == 3
 
     def test_analizar_compras_10_reportes(self, client, datos_compras):
@@ -157,45 +157,45 @@ class TestAnalisisModulos:
         resp = client.post("/v3/compras", json=datos_compras)
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["reportes"]) == 10
+        assert len(data["reports"]) == 10
 
     def test_analizar_almacen_10_reportes(self, client, datos_almacen):
         """POST /v3/almacen devuelve 10 reportes."""
         resp = client.post("/v3/almacen", json=datos_almacen)
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["reportes"]) == 10
+        assert len(data["reports"]) == 10
 
     def test_respuesta_tiene_estructura_correcta(self, client, datos_ventas):
-        """Verifica estructura de cada reporte."""
+        """Verifica estructura de cada reporte (contrato en inglés)."""
         resp = client.post("/v3/ventas", json=datos_ventas)
         assert resp.status_code == 200
         data = resp.json()
-        assert "fecha_ejecución" in data
-        assert "analisis_tendencia" in data
-        for reporte in data["reportes"]:
-            assert "consulta_id" in reporte
-            assert "modulo" in reporte
-            assert "tipo" in reporte
-            assert "pregunta" in reporte
-            assert "resultado" in reporte
-            assert "advertencia" in reporte
-            assert "detalle_tecnico" in reporte
+        assert "executed_at" in data
+        assert "trend_analysis" in data
+        for reporte in data["reports"]:
+            assert "query_id" in reporte
+            assert "module" in reporte
+            assert "type" in reporte
+            assert "question" in reporte
+            assert "result" in reporte
+            assert "warning" in reporte
+            assert "technical_detail" in reporte
             # Detalle técnico tiene tabla de comparación
-            dt = reporte["detalle_tecnico"]
-            assert "modelo_ganador" in dt
-            assert "metrica" in dt
-            assert "valor_metrica" in dt
-            assert "tabla_comparacion" in dt
-            if dt["modelo_ganador"] == "—":
+            dt = reporte["technical_detail"]
+            assert "winner_model" in dt
+            assert "metric" in dt
+            assert "metric_value" in dt
+            assert "comparison_table" in dt
+            if dt["winner_model"] == "—":
                 # Consulta degradada (p. ej. pocas entidades / una sola clase):
                 # no hay competencia de modelos, pero sí un aviso claro.
-                assert reporte["advertencia"]
-                assert dt["tabla_comparacion"] == []
+                assert reporte["warning"]
+                assert dt["comparison_table"] == []
             else:
-                assert len(dt["tabla_comparacion"]) > 0
+                assert len(dt["comparison_table"]) > 0
                 # Al menos uno debe ser ganador
-                assert any(f["ganador"] for f in dt["tabla_comparacion"])
+                assert any(f["winner"] for f in dt["comparison_table"])
 
     def test_analizar_modulo_inexistente(self, client, datos_ventas):
         """POST /v3/modulo_invalido falla con 400."""
@@ -237,33 +237,33 @@ class TestSmokeTest30Consultas:
         resp = client.post("/v3/ventas", json=datos_ventas)
         assert resp.status_code == 200
         ventas_data = resp.json()
-        assert len(ventas_data["reportes"]) == 10
-        for reporte in ventas_data["reportes"]:
-            assert reporte["tipo"] in ("regresion", "clasificacion", "clustering")
-            assert reporte["detalle_tecnico"]["modelo_ganador"]
-            assert not np.isnan(reporte["detalle_tecnico"]["valor_metrica"])
+        assert len(ventas_data["reports"]) == 10
+        for reporte in ventas_data["reports"]:
+            assert reporte["type"] in ("regression", "classification", "clustering")
+            assert reporte["technical_detail"]["winner_model"]
+            assert not np.isnan(reporte["technical_detail"]["metric_value"])
 
         # COMPRAS
         resp = client.post("/v3/compras", json=datos_compras)
         assert resp.status_code == 200
         compras_data = resp.json()
-        assert len(compras_data["reportes"]) == 10
-        for reporte in compras_data["reportes"]:
-            assert reporte["tipo"] in ("regresion", "clasificacion", "clustering")
+        assert len(compras_data["reports"]) == 10
+        for reporte in compras_data["reports"]:
+            assert reporte["type"] in ("regression", "classification", "clustering")
 
         # ALMACEN
         resp = client.post("/v3/almacen", json=datos_almacen)
         assert resp.status_code == 200
         almacen_data = resp.json()
-        assert len(almacen_data["reportes"]) == 10
-        for reporte in almacen_data["reportes"]:
-            assert reporte["tipo"] in ("regresion", "clasificacion", "clustering")
+        assert len(almacen_data["reports"]) == 10
+        for reporte in almacen_data["reports"]:
+            assert reporte["type"] in ("regression", "classification", "clustering")
 
         # Total: 30 consultas ejecutadas sin error
         total_reportes = (
-            len(ventas_data["reportes"]) +
-            len(compras_data["reportes"]) +
-            len(almacen_data["reportes"])
+            len(ventas_data["reports"]) +
+            len(compras_data["reports"]) +
+            len(almacen_data["reports"])
         )
         assert total_reportes == 30
 
@@ -273,11 +273,100 @@ class TestSmokeTest30Consultas:
         assert resp.status_code == 200
         data = resp.json()
         # Encontrar reportes de clustering
-        clustering_reportes = [r for r in data["reportes"] if r["tipo"] == "clustering"]
+        clustering_reportes = [r for r in data["reports"] if r["type"] == "clustering"]
         assert len(clustering_reportes) == 3  # VEN-K1, VEN-K2, VEN-K3
         for reporte in clustering_reportes:
-            dt = reporte["detalle_tecnico"]
+            dt = reporte["technical_detail"]
             # Métrica es silueta
-            assert dt["metrica"] == "silhouette"
+            assert dt["metric"] == "silhouette"
             # Valor entre -1 y 1
-            assert -1.0 <= dt["valor_metrica"] <= 1.0
+            assert -1.0 <= dt["metric_value"] <= 1.0
+
+
+class TestCalidadReportes:
+    """Calidad honesta: predicciones no vacías en el camino feliz y degradación sin romper."""
+
+    def test_reportes_no_degradados_tienen_predicciones(self, client, datos_ventas):
+        """Todo reporte con modelo entrenado (winner != '—') debe traer predicciones no vacías."""
+        resp = client.post("/v3/ventas", json=datos_ventas)
+        assert resp.status_code == 200
+        data = resp.json()
+        no_degradados = [r for r in data["reports"] if r["technical_detail"]["winner_model"] != "—"]
+        # Con 200 filas y 2 clases de canal, la mayoría de reportes entrenan de verdad.
+        assert no_degradados, "se esperaba al menos un reporte entrenado"
+        for reporte in no_degradados:
+            preds = reporte["result"].get("predictions", [])
+            assert isinstance(preds, list)
+            assert len(preds) > 0, f"{reporte['query_id']} entrenó pero no devolvió predicciones"
+
+    def test_clasificacion_una_sola_clase_degrada_sin_romper(self, client):
+        """VEN-C2 (canal multiclase) con un solo canal: degrada con aviso, nunca 500."""
+        n = 120
+        rows = [
+            {
+                "fecha": str((pd.Timestamp("2020-01-01") + pd.Timedelta(days=i)).date()),
+                "id_tienda": f"T{(i % 2) + 1}",
+                "sku": f"SKU{(i % 4) + 1}",
+                "categoria": ["Bebidas", "Abarrotes"][i % 2],
+                "unidades_vendidas": float(50 + (i % 7)),
+                "precio_unitario": float(100 + (i % 5)),
+                "ingreso": float(5000 + i),
+                "en_promocion": i % 2,
+                "descuento_pct": float(i % 30),
+                "metodo_pago": ["MP1", "MP2"][i % 2],
+                "canal_venta": "Online",  # UNA sola clase → multiclase no entrenable
+                "es_fin_de_semana": int(i % 7 >= 5),
+                "dias_a_proximo_feriado": int(i % 50) + 1,
+            }
+            for i in range(n)
+        ]
+        resp = client.post("/v3/ventas", json={"rows": rows})
+        assert resp.status_code == 200  # nunca revienta
+        data = resp.json()
+        assert len(data["reports"]) == 10
+        canal = next(r for r in data["reports"] if r["query_id"] in ("ven-c2", "ven_c2"))
+        # Degrada con honestidad: sin modelo ganador, con aviso claro.
+        assert canal["technical_detail"]["winner_model"] == "—"
+        assert canal["warning"]
+
+    def test_resumen_intensivo_no_suma(self, client, datos_compras, datos_almacen):
+        """A2: ninguna magnitud intensiva (%/días/índice) se muestra como SUMA."""
+        for mod, datos in [("compras", datos_compras), ("almacen", datos_almacen)]:
+            data = client.post(f"/v3/{mod}", json=datos).json()
+            for r in data["reports"]:
+                s = r.get("summary")
+                if s and s["magnitude"] == "intensiva":
+                    assert s["aggregation"] != "sum", f"{r['query_id']}: intensivo no debe sumar"
+        # COM-R4 (cumplimiento) es promedio y no puede superar 100% (0..1 en escala).
+        data = client.post("/v3/compras", json=datos_compras).json()
+        com_r4 = next(r for r in data["reports"] if r["query_id"] in ("com-r4", "com_r4"))
+        assert com_r4["summary"]["aggregation"] == "mean"
+        assert com_r4["summary"]["value"] <= 1.5
+
+    def test_dataset_info_presente(self, client, datos_ventas):
+        """A8: la respuesta trae retroalimentación de validación de la carga."""
+        data = client.post("/v3/ventas", json=datos_ventas).json()
+        info = data["dataset_info"]
+        assert info is not None
+        assert set(info["recognized_columns"])  # reconoció columnas
+        assert info["missing_columns"] == []
+        assert info["rows_received"] == len(datos_ventas["rows"])
+
+    def test_baseline_en_comparacion(self, client, datos_ventas):
+        """B2: los reportes de regresión comparan contra un baseline en el detalle técnico."""
+        data = client.post("/v3/ventas", json=datos_ventas).json()
+        regresiones = [r for r in data["reports"] if r["type"] == "regression"
+                       and r["technical_detail"]["comparison_table"]]
+        assert regresiones
+        for r in regresiones:
+            modelos = {f["model"] for f in r["technical_detail"]["comparison_table"]}
+            assert "baseline" in modelos, f"{r['query_id']} sin baseline"
+
+    def test_tendencia_enriquecida(self, client, datos_ventas):
+        """A3: la tendencia trae horizonte y resumen interpretativo."""
+        data = client.post("/v3/ventas", json=datos_ventas).json()
+        t = data["trend_analysis"]
+        assert isinstance(t["horizon"], int) and t["horizon"] > 0
+        if t["summary"] is not None:
+            assert t["summary"]["direction"] in ("creciente", "estable", "decreciente")
+            assert "projection" in t["summary"]

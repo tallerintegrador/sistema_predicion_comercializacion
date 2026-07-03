@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import json
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -22,18 +22,22 @@ from fastapi.responses import FileResponse
 
 from spc.api.dependencies import obtener_client_id, obtener_corpus_opcional
 from spc.api.schemas.catalogo_v3 import (
-    RespuestaModulo,
-    ReporteConsulta,
-    DetalleTecnico,
-    FilaComparacion,
-    BloqueAnalisisTendencia,
-    PuntoSerie,
-    RespuestaCatalogo,
-    ConsultaInfo,
-    SolicitudAnalisisModulo,
+    ModuleResponse,
+    QueryReport,
+    RegressionSummary,
+    DatasetInfo,
+    TechnicalDetail,
+    ComparisonRow,
+    TrendAnalysis,
+    TrendSummary,
+    TrendBreakdown,
+    SeriesPoint,
+    CatalogResponse,
+    QueryInfo,
+    ModuleAnalysisRequest,
 )
 from spc.catalogo.config import obtener_catalogo, obtener_modulo
-from spc.catalogo.motor_catalogo import ejecutar_consulta
+from spc.catalogo.motor_catalogo import ejecutar_consulta, calcular_tendencia
 from spc.catalogo.plantillas import generar_plantilla_excel, generar_plantilla_json
 from spc.service.errores import SolicitudInvalida
 from spc.utils.logging import get_logger
@@ -44,31 +48,34 @@ router = APIRouter(prefix="/v3", tags=["Catálogo"])
 
 ClientIdDep = Annotated[str, Depends(obtener_client_id)]
 
+# El motor usa tipos internos en español; el contrato los expone en inglés (ADR-0028).
+_TIPO_EN = {"regresion": "regression", "clasificacion": "classification", "clustering": "clustering"}
+
 
 # ==============================================================================
 # GET /v3/catalogo — Lista de 30 consultas
 # ==============================================================================
 @router.get("/catalogo", summary="Catálogo completo de 30 consultas predefinidas")
-def listar_catalogo() -> RespuestaCatalogo:
+def listar_catalogo() -> CatalogResponse:
     """Lista todas las 30 consultas disponibles (informativo, no entrena)."""
     catalogo = obtener_catalogo()
-    consultas: list[ConsultaInfo] = []
+    consultas: list[QueryInfo] = []
 
     for modulo_config in catalogo.values():
         for consulta in modulo_config.consultas.values():
             consultas.append(
-                ConsultaInfo(
+                QueryInfo(
                     id=consulta.id,
-                    modulo=consulta.modulo,
-                    tipo=consulta.tipo,
-                    pregunta=consulta.pregunta,
-                    descripcion=consulta.descripcion,
+                    module=consulta.modulo,
+                    type=_TIPO_EN.get(consulta.tipo, consulta.tipo),
+                    question=consulta.pregunta,
+                    description=consulta.descripcion,
                 )
             )
 
-    return RespuestaCatalogo(
-        total_consultas=len(consultas),
-        consultas=sorted(consultas, key=lambda c: (c.modulo, c.id)),
+    return CatalogResponse(
+        total_queries=len(consultas),
+        queries=sorted(consultas, key=lambda c: (c.module, c.id)),
     )
 
 
@@ -125,7 +132,7 @@ def descargar_plantilla(modulo: str, formato: str = "excel") -> FileResponse:
 # ==============================================================================
 # Función auxiliar: ejecutar análisis completo
 # ==============================================================================
-def _reporte_degradado(consulta: Any, modulo: str, mensaje: str) -> ReporteConsulta:
+def _reporte_degradado(consulta: Any, modulo: str, mensaje: str) -> QueryReport:
     """Reporte de respaldo cuando una consulta falla de forma inesperada.
 
     Garantiza que el fallo de UNA consulta no tumbe el módulo completo (nunca un 500):
@@ -134,86 +141,54 @@ def _reporte_degradado(consulta: Any, modulo: str, mensaje: str) -> ReporteConsu
     metrica = {"regresion": "wape", "clasificacion": "pr_auc", "clustering": "silhouette"}.get(
         consulta.tipo, "wape"
     )
-    return ReporteConsulta(
-        consulta_id=consulta.id,
-        modulo=modulo,
-        tipo=consulta.tipo,
-        pregunta=consulta.pregunta,
-        descripcion=consulta.descripcion,
-        unidad="",
-        resultado={"predicciones": []},
-        advertencia=f"No se pudo completar este análisis: {mensaje}",
-        detalle_tecnico=DetalleTecnico(
-            modelo_ganador="—",
-            metrica=metrica,
-            valor_metrica=0.0,
-            tabla_comparacion=[],
-            fecha_entrenamiento=datetime.utcnow(),
+    return QueryReport(
+        query_id=consulta.id,
+        module=modulo,
+        type=_TIPO_EN.get(consulta.tipo, consulta.tipo),
+        question=consulta.pregunta,
+        description=consulta.descripcion,
+        unit="",
+        result={"predictions": []},
+        warning=f"No se pudo completar este análisis: {mensaje}",
+        technical_detail=TechnicalDetail(
+            winner_model="—",
+            metric=metrica,
+            metric_value=0.0,
+            quality="limitada",
+            comparison_table=[],
+            trained_at=datetime.now(timezone.utc),
         ),
     )
 
 
-# Magnitud principal y columna de fecha por módulo (para la línea de tendencia).
-_TENDENCIA_POR_MODULO = {
-    "ventas": ("fecha", "unidades_vendidas", "unidades"),
-    "compras": ("fecha_orden", "cantidad_pedida", "unidades"),
-    "almacen": ("fecha", "demanda_dia", "unidades"),
-}
+def _puntos(serie: list[dict[str, Any]]) -> list[SeriesPoint]:
+    return [SeriesPoint(date=p["date"], value=p["value"]) for p in serie]
 
 
-def _calcular_tendencia(modulo: str, df: pd.DataFrame) -> BloqueAnalisisTendencia:
-    """Serie temporal del total diario de la magnitud principal + pronóstico simple y honesto.
+def _tendencia_schema(modulo: str, df: pd.DataFrame) -> TrendAnalysis:
+    """Adapta la tendencia calculada por el MOTOR al esquema del contrato (inglés).
 
-    Método: tendencia lineal (mínimos cuadrados) sobre el total diario, con un factor de
-    estacionalidad SEMANAL (día de la semana). Es la ÚNICA sección con línea de tiempo, y se
-    etiqueta como referencial.
+    La lógica (tendencia, estacionalidad, resumen, desglose) vive en
+    ``spc.catalogo.motor_catalogo``; aquí solo se envuelve en el esquema Pydantic.
     """
-    import numpy as np
-
-    col_fecha, magnitud, unidad = _TENDENCIA_POR_MODULO.get(modulo, (None, None, ""))
-    base = BloqueAnalisisTendencia(unidad=unidad, metodo="Tendencia lineal + estacionalidad semanal (referencial)")
-    if not col_fecha or col_fecha not in df.columns or magnitud not in df.columns:
-        return base
-
-    try:
-        tmp = df[[col_fecha, magnitud]].copy()
-        tmp[col_fecha] = pd.to_datetime(tmp[col_fecha], errors="coerce")
-        tmp[magnitud] = pd.to_numeric(tmp[magnitud], errors="coerce")
-        tmp = tmp.dropna()
-        if tmp.empty:
-            return base
-
-        serie = tmp.groupby(col_fecha)[magnitud].sum().sort_index()
-        fechas = serie.index
-        y = serie.to_numpy(dtype="float64")
-        n = len(y)
-        base.historico = [PuntoSerie(fecha=str(f.date()), valor=round(float(v), 2)) for f, v in zip(fechas, y)]
-
-        if n < 8:  # muy corto para pronosticar con honestidad
-            return base
-
-        x = np.arange(n)
-        coef = np.polyfit(x, y, 1)  # tendencia lineal
-        dow = fechas.dayofweek.to_numpy()
-        media = y.mean() or 1.0
-        factor = {d: (y[dow == d].mean() / media if (dow == d).any() else 1.0) for d in range(7)}
-
-        horizonte = 14
-        ult = fechas[-1]
-        pron = []
-        for i in range(1, horizonte + 1):
-            f = ult + pd.Timedelta(days=i)
-            base_val = float(np.polyval(coef, n - 1 + i))
-            val = max(0.0, base_val * factor.get(int(f.dayofweek), 1.0))
-            pron.append(PuntoSerie(fecha=str(f.date()), valor=round(val, 2)))
-        base.pronostico = pron
-        return base
-    except Exception as e:
-        log.warning(f"Tendencia {modulo}: {e}")
-        return base
+    t = calcular_tendencia(modulo, df)
+    return TrendAnalysis(
+        unit=t.unidad,
+        method=t.metodo,
+        horizon=t.horizonte,
+        history=_puntos(t.historico),
+        forecast=_puntos(t.pronostico),
+        summary=TrendSummary(**t.resumen) if t.resumen else None,
+        breakdowns=[
+            TrendBreakdown(label=d["label"], history=_puntos(d["historico"]), forecast=_puntos(d["pronostico"]))
+            for d in t.desgloses
+        ],
+    )
 
 
-def _ejecutar_analisis_interno(modulo: str, df: pd.DataFrame) -> RespuestaModulo:
+def _ejecutar_analisis_interno(
+    modulo: str, df: pd.DataFrame, dataset_info: DatasetInfo | None = None
+) -> ModuleResponse:
     """Ejecuta las 10 consultas sobre un DataFrame.
 
     Auxiliar compartido por POST /v3/{modulo} y GET /v3/{modulo}/demo. Cada consulta se
@@ -222,7 +197,7 @@ def _ejecutar_analisis_interno(modulo: str, df: pd.DataFrame) -> RespuestaModulo
     modulo_config = obtener_modulo(modulo)
 
     # Ejecutar las 10 consultas en orden
-    reportes: list[ReporteConsulta] = []
+    reportes: list[QueryReport] = []
     por_tipo = modulo_config.consultas_por_tipo()
 
     # Orden: regresión, clasificación, clustering
@@ -231,35 +206,37 @@ def _ejecutar_analisis_interno(modulo: str, df: pd.DataFrame) -> RespuestaModulo
             log.info(f"  Ejecutando {consulta.id}: {consulta.pregunta}")
             resultado = ejecutar_consulta(consulta.id, df)
 
-            # Convertir a ReporteConsulta
-            reporte = ReporteConsulta(
-                consulta_id=resultado.consulta_id,
-                modulo=modulo,
-                tipo=resultado.tipo,
-                pregunta=resultado.pregunta,
-                descripcion=consulta.descripcion,
-                unidad=resultado.unidad,
-                resultado={
-                    "predicciones": resultado.predicciones,  # Filas con predicciones/alertas/segmentos
-                    "unidad": resultado.unidad,
-                    **resultado.meta,  # ejes (clustering), clases (multiclase), etc.
+            # Convertir a QueryReport (contrato en inglés)
+            reporte = QueryReport(
+                query_id=resultado.consulta_id,
+                module=modulo,
+                type=_TIPO_EN.get(resultado.tipo, resultado.tipo),
+                question=resultado.pregunta,
+                description=consulta.descripcion,
+                unit=resultado.unidad,
+                result={
+                    "predictions": resultado.predicciones,  # Filas con predicciones/alertas/segmentos
+                    "unit": resultado.unidad,
+                    **resultado.meta,  # axes (clustering), classes (multiclase), etc.
                 },
-                advertencia=resultado.advertencia,
-                detalle_tecnico=DetalleTecnico(
-                    modelo_ganador=resultado.modelo_ganador,
-                    metrica=resultado.metrica_ganador,
-                    valor_metrica=resultado.valor_metrica,
-                    tabla_comparacion=[
-                        FilaComparacion(
-                            modelo=fila.modelo,
-                            metrica=fila.metrica,
-                            valor=fila.valor,
-                            ganador=fila.ganador,
+                summary=RegressionSummary(**resultado.resumen) if resultado.resumen else None,
+                warning=resultado.advertencia,
+                technical_detail=TechnicalDetail(
+                    winner_model=resultado.modelo_ganador,
+                    metric=resultado.metrica_ganador,
+                    metric_value=resultado.valor_metrica,
+                    quality=resultado.calidad,
+                    comparison_table=[
+                        ComparisonRow(
+                            model=fila.modelo,
+                            metric=fila.metrica,
+                            value=fila.valor,
+                            winner=fila.ganador,
                         )
                         for fila in resultado.tabla_comparacion
                     ],
-                    fecha_entrenamiento=resultado.fecha_entrenamiento,
-                    nota_tecnica=resultado.nota_tecnica,
+                    trained_at=resultado.fecha_entrenamiento,
+                    technical_note=resultado.nota_tecnica,
                 ),
             )
             reportes.append(reporte)
@@ -270,13 +247,14 @@ def _ejecutar_analisis_interno(modulo: str, df: pd.DataFrame) -> RespuestaModulo
             reportes.append(_reporte_degradado(consulta, modulo, str(e)))
 
     # Bloque análisis/tendencia (serie de tiempo real: histórico + pronóstico referencial)
-    analisis_tendencia = _calcular_tendencia(modulo, df)
+    analisis_tendencia = _tendencia_schema(modulo, df)
 
-    respuesta = RespuestaModulo(
-        modulo=modulo,
-        reportes=reportes,
-        analisis_tendencia=analisis_tendencia,
-        fecha_ejecución=datetime.utcnow(),
+    respuesta = ModuleResponse(
+        module=modulo,
+        reports=reportes,
+        trend_analysis=analisis_tendencia,
+        dataset_info=dataset_info,
+        executed_at=datetime.now(timezone.utc),
     )
 
     log.info(f"Análisis de {modulo} completado: {len(reportes)} reportes")
@@ -289,9 +267,9 @@ def _ejecutar_analisis_interno(modulo: str, df: pd.DataFrame) -> RespuestaModulo
 @router.post("/{modulo}", summary="Ejecutar análisis (JSON)")
 def analizar_modulo(
     modulo: str,
-    solicitud: SolicitudAnalisisModulo,
+    solicitud: ModuleAnalysisRequest,
     client_id: ClientIdDep,
-) -> RespuestaModulo:
+) -> ModuleResponse:
     """Ejecuta automáticamente las 10 consultas del módulo.
 
     Flujo:
@@ -322,8 +300,21 @@ def analizar_modulo(
             detail=f"Faltan columnas del módulo {modulo}: {sorted(faltan)}",
         )
 
-    # Ejecutar análisis
-    return _ejecutar_analisis_interno(modulo, df)
+    # Ejecutar análisis (con retroalimentación de validación, A8)
+    info = _construir_dataset_info(modulo_config, df, len(solicitud.rows))
+    return _ejecutar_analisis_interno(modulo, df, info)
+
+
+def _construir_dataset_info(modulo_config: Any, df: pd.DataFrame, filas_recibidas: int) -> DatasetInfo:
+    """Retroalimentación de validación (A8): columnas reconocidas/faltantes y filas descartadas."""
+    esperadas = list(modulo_config.columnas_todas)
+    presentes = set(df.columns)
+    return DatasetInfo(
+        recognized_columns=[c for c in esperadas if c in presentes],
+        missing_columns=[c for c in esperadas if c not in presentes],
+        rows_received=int(filas_recibidas),
+        rows_discarded=int(max(0, filas_recibidas - len(df))),
+    )
 
 
 # ==============================================================================
@@ -357,7 +348,8 @@ def _leer_excel_datos(contenido: bytes, modulo_config: Any) -> list[dict[str, An
             f"(se esperaban p. ej. {sorted(list(esperadas))[:4]}...)"
         )
 
-    return mejor_df.dropna(how="all").to_dict("records")
+    filas_crudas = int(len(mejor_df))
+    return mejor_df.dropna(how="all").to_dict("records"), filas_crudas
 
 
 @router.post("/{modulo}/archivo", summary="Procesar Excel o JSON")
@@ -365,7 +357,7 @@ async def analizar_desde_archivo(
     modulo: str,
     file: UploadFile,
     client_id: ClientIdDep,
-) -> RespuestaModulo:
+) -> ModuleResponse:
     """Procesa un archivo Excel o JSON y ejecuta el análisis.
 
     Acepta:
@@ -382,13 +374,14 @@ async def analizar_desde_archivo(
     nombre = (file.filename or "").lower()
     contenido = await file.read()
 
-    # 1) Leer el archivo → filas
+    # 1) Leer el archivo → filas (+ filas crudas, para reportar descartes)
     try:
         if nombre.endswith(".xlsx") or nombre.endswith(".xls"):
-            rows = _leer_excel_datos(contenido, modulo_config)
+            rows, filas_crudas = _leer_excel_datos(contenido, modulo_config)
         elif nombre.endswith(".json"):
             data = json.loads(contenido.decode("utf-8"))
             rows = data if isinstance(data, list) else data.get("rows", [])
+            filas_crudas = len(rows)
         else:
             raise HTTPException(status_code=400, detail="Sube un archivo .xlsx (Excel) o .json.")
     except HTTPException:
@@ -413,14 +406,15 @@ async def analizar_desde_archivo(
             detail=f"Al archivo le faltan columnas del módulo {modulo}: {sorted(faltan)}",
         )
 
-    return _ejecutar_analisis_interno(modulo, df)
+    info = _construir_dataset_info(modulo_config, df, filas_crudas)
+    return _ejecutar_analisis_interno(modulo, df, info)
 
 
 # ==============================================================================
 # GET /v3/{modulo}/demo — Análisis con datos de demostración
 # ==============================================================================
 @router.get("/{modulo}/demo", summary="Ejecuta análisis con datos de ejemplo")
-def demo_analisis(modulo: str, client_id: ClientIdDep) -> RespuestaModulo:
+def demo_analisis(modulo: str, client_id: ClientIdDep) -> ModuleResponse:
     """Ejecuta el análisis v3 con datos sintéticos de demostración para ver cómo funciona."""
     import numpy as np
 

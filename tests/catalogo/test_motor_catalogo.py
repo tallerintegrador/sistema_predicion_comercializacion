@@ -17,10 +17,16 @@ from spc.catalogo.config import (
     obtener_modulo,
     cargar_catalogo,
 )
+from spc.catalogo.config import obtener_umbrales
+from spc.catalogo.config import obtener_consulta
 from spc.catalogo.motor_catalogo import (
     validar_dataframe,
     construir_features,
     ejecutar_consulta,
+    _aviso_degenerado,
+    _nota_objetivo_facil,
+    _resumen_regresion,
+    _niveles,
 )
 
 
@@ -182,7 +188,11 @@ class TestEjecucionConsultaSimple:
         # Verificar estructura del resultado
         assert resultado.consulta_id in ("ven-r1", "ven_r1")  # Acepta tanto guion como underscore
         assert resultado.tipo == "regresion"
-        assert resultado.modelo_ganador in ["ridge", "random_forest", "hist_gradient_boosting"]
+        # Incluye los candidatos nuevos (extra_trees) y el baseline (B2), que puede ganar si
+        # los datos no tienen señal (aleatorios) — señal honesta de que el modelo no aporta.
+        assert resultado.modelo_ganador in [
+            "ridge", "random_forest", "hist_gradient_boosting", "extra_trees", "baseline"
+        ]
         assert resultado.metrica_ganador == "wape"
         assert 0 <= resultado.valor_metrica <= 1.0
         assert len(resultado.tabla_comparacion) > 0
@@ -273,3 +283,82 @@ class TestValidacion:
 
         with pytest.raises(ValueError, match="faltan columnas"):
             validar_dataframe(df, c)
+
+
+class TestHonestidad:
+    """A2/A4/A5: recuadro por magnitud, nota de métrica fácil y aviso de degenerado."""
+
+    def test_resumen_extensiva_suma_intensiva_promedia(self):
+        """A2: unidades_vendidas (extensiva) SUMA; cumplimiento (intensiva) PROMEDIA."""
+        preds = [{"value": 10.0}, {"value": 20.0}, {"value": 30.0}]
+        r_ext = _resumen_regresion(obtener_consulta("ven_r1"), preds)   # unidades_vendidas
+        assert r_ext["aggregation"] == "sum" and r_ext["value"] == 60.0
+        r_int = _resumen_regresion(obtener_consulta("com_r4"), preds)   # cumplimiento (%)
+        assert r_int["aggregation"] == "mean" and r_int["value"] == 20.0
+
+    def test_nota_objetivo_facil_por_baja_varianza(self):
+        """A4: objetivo casi constante → nota de 'métrica fácil'; con varianza → sin nota."""
+        c = obtener_consulta("com_r4")  # objetivo = cumplimiento
+        u = obtener_umbrales()
+        casi_constante = pd.DataFrame({"cumplimiento": [0.90, 0.91, 0.90, 0.905, 0.9, 0.91] * 10})
+        assert _nota_objetivo_facil(c, casi_constante, u) is not None
+        con_varianza = pd.DataFrame({"cumplimiento": [0.55, 0.7, 0.85, 1.0, 0.6, 0.95] * 10})
+        assert _nota_objetivo_facil(c, con_varianza, u) is None
+
+    def test_aviso_degenerado(self):
+        """A5: todo-una-clase → aviso; mezcla → sin aviso."""
+        todos_uno = [{"class": 1}, {"class": 1}, {"class": 1}]
+        assert _aviso_degenerado(todos_uno) is not None
+        todos_cero = [{"class": 0}, {"class": 0}]
+        assert _aviso_degenerado(todos_cero) is not None
+        mezcla = [{"class": 0}, {"class": 1}, {"class": 0}]
+        assert _aviso_degenerado(mezcla) is None
+
+    def test_niveles_genero_neutro(self):
+        """B4: nombres de segmento en formato neutro '{Var}: alto/medio/bajo'."""
+        assert _niveles("Ingreso", 3) == ["Ingreso: alto", "Ingreso: medio", "Ingreso: bajo"]
+        assert _niveles("Descuento", 2) == ["Descuento: alto", "Descuento: bajo"]
+        for n in _niveles("Cobertura", 3):
+            assert not (n.endswith(" alta") or n.endswith(" media") or n.endswith(" baja"))
+
+    def test_alm_c1_c2_reglas_distintas(self):
+        """ALM-C1 (quiebre) y ALM-C2 (reposición) usan reglas diferentes (no duplicadas)."""
+        f1 = obtener_consulta("alm_c1").derivacion_etiqueta.formula
+        f2 = obtener_consulta("alm_c2").derivacion_etiqueta.formula
+        assert f1 != f2
+        assert "stock_minimo" in f2  # C2 = por debajo del stock mínimo de seguridad
+
+
+class TestModelosB2:
+    """B2: baseline en la comparación y clustering sin grupos de 1 elemento."""
+
+    def _ventas(self, n=240):
+        return pd.DataFrame({
+            "fecha": pd.date_range("2023-01-01", periods=n),
+            "id_tienda": ["T1"] * (n // 2) + ["T2"] * (n // 2),
+            "sku": [f"SKU{i % 12}" for i in range(n)],
+            "categoria": np.random.choice(["Bebidas", "Abarrotes", "Lacteos"], n),
+            "unidades_vendidas": np.random.poisson(80, n).astype(float),
+            "precio_unitario": np.random.uniform(5, 50, n),
+            "ingreso": np.random.uniform(200, 4000, n),
+            "en_promocion": np.random.randint(0, 2, n),
+            "descuento_pct": np.random.uniform(0, 25, n),
+            "metodo_pago": np.random.choice(["efectivo", "tarjeta"], n),
+            "canal_venta": np.random.choice(["tienda", "online"], n),
+            "es_fin_de_semana": np.random.randint(0, 2, n),
+            "dias_a_proximo_feriado": np.random.randint(1, 40, n),
+        })
+
+    def test_baseline_en_comparacion(self):
+        """Cada regresión compara contra un baseline (contexto de la métrica)."""
+        r = ejecutar_consulta("ven_r1", self._ventas())
+        modelos = {f.modelo for f in r.tabla_comparacion}
+        assert "baseline" in modelos
+
+    def test_clustering_sin_singletons(self):
+        """VEN-K1: ningún grupo queda con un solo elemento (anti-singleton)."""
+        r = ejecutar_consulta("ven_k1", self._ventas())
+        from collections import Counter
+        tam = Counter(p["label"] for p in r.predicciones)
+        assert r.predicciones, "debe haber segmentos"
+        assert min(tam.values()) >= 2, f"hay grupos de 1 elemento: {dict(tam)}"

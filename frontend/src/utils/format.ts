@@ -1,6 +1,6 @@
-/** Formateo numérico/fecha para la UI (es). */
-const num = new Intl.NumberFormat('es', { maximumFractionDigits: 1 })
-const ent = new Intl.NumberFormat('es', { maximumFractionDigits: 0 })
+/** Formateo numérico/fecha para la UI (es-PE). */
+const num = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 1 })
+const ent = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 0 })
 
 export const fmtNum = (n: number | null | undefined): string =>
   n == null ? '—' : num.format(n)

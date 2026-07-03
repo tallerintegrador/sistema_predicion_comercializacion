@@ -4,6 +4,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -29,12 +30,14 @@ export function SerieChart({
   histLabel,
   foreLabel,
   hex = '#4f46e5',
+  forecastStart,
 }: {
   history: { date: string; value: number }[]
   forecast: { date: string; value: number }[]
   histLabel: string
   foreLabel: string
   hex?: string
+  forecastStart?: string
 }) {
   const data = useMemo<Punto[]>(() => {
     const byDate = new Map<string, Punto>()
@@ -53,17 +56,24 @@ export function SerieChart({
     return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
   }, [history, forecast])
 
+  const ultima = data.length ? data[data.length - 1].date : undefined
+  const inicioPron = forecastStart ? fmtDate(forecastStart) : undefined
+
   return (
     <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+        <LineChart data={data} margin={{ top: 8, right: 40, bottom: 8, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={24} />
+          <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={24} padding={{ right: 24 }} />
           <YAxis tick={{ fontSize: 11 }} width={56} />
           <Tooltip />
           <Legend />
+          {/* Franja sombreada = zona de pronóstico (A3) */}
+          {inicioPron && ultima && (
+            <ReferenceArea x1={inicioPron} x2={ultima} fill={hex} fillOpacity={0.07} strokeOpacity={0} />
+          )}
           <Line type="monotone" dataKey="historico" name={histLabel} stroke="#64748b" dot={false} strokeWidth={2} connectNulls />
-          <Line type="monotone" dataKey="pronostico" name={foreLabel} stroke={hex} dot={false} strokeWidth={2} connectNulls />
+          <Line type="monotone" dataKey="pronostico" name={foreLabel} stroke={hex} strokeDasharray="5 4" dot={false} strokeWidth={2} connectNulls />
         </LineChart>
       </ResponsiveContainer>
     </div>

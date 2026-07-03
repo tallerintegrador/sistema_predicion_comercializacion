@@ -32,31 +32,35 @@ export function TablaInteractiva({
   }, [rows, columns, q])
 
   const visibles = filtradas.slice(0, limite)
+  // A10: el buscador solo aporta cuando hay muchas filas; con pocas (p. ej. categorías) estorba.
+  const buscable = rows.length > 6
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value)
-            setLimite(inicial)
-          }}
-          placeholder={buscarPlaceholder}
-          className="w-full max-w-xs rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
-        />
-        <span className="text-xs text-slate-400">
-          {filtradas.length === rows.length
-            ? `${rows.length} filas`
-            : `${filtradas.length} de ${rows.length}`}
-        </span>
-      </div>
+      {buscable && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value)
+              setLimite(inicial)
+            }}
+            placeholder={buscarPlaceholder}
+            className="w-full max-w-xs rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+          />
+          <span className="text-xs text-slate-400">
+            {filtradas.length === rows.length
+              ? `${rows.length} filas`
+              : `${filtradas.length} de ${rows.length}`}
+          </span>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-slate-200">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
               {columns.map((c) => (
-                <th key={c} className="px-3 py-2 font-medium">
+                <th key={c} className="whitespace-nowrap px-3 py-2 font-medium">
                   {c}
                 </th>
               ))}
@@ -66,7 +70,7 @@ export function TablaInteractiva({
             {visibles.map((r, i) => (
               <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 {columns.map((c) => (
-                  <td key={c} className="px-3 py-2 text-slate-700">
+                  <td key={c} className="whitespace-nowrap px-3 py-2 text-slate-700">
                     {typeof r[c] === 'number'
                       ? NUM.format(r[c] as number)
                       : String(r[c] ?? '')}

@@ -15,8 +15,8 @@ import type {
   V2Esquema,
   V2Response,
   V3Domain,
-  RespuestaCatalogo,
-  RespuestaModulo,
+  CatalogResponse,
+  ModuleResponse,
 } from './types'
 
 // --- 3×3 por dominio (ADR-0024/0025) ---
@@ -58,7 +58,7 @@ export const postV2Excel = (dominio: V2Domain, file: File, horizon = 14) =>
 
 /** Lista el catálogo completo de 30 consultas. */
 export const getV3Catalogo = () =>
-  getJson<RespuestaCatalogo>('/v3/catalogo').then((r) => r.data)
+  getJson<CatalogResponse>('/v3/catalogo').then((r) => r.data)
 
 /** Descarga la plantilla Excel del módulo (UNA por módulo, todas sus columnas). */
 export const getV3Plantilla = (modulo: V3Domain) =>
@@ -70,8 +70,8 @@ export const getV3PlantillaJson = (modulo: V3Domain) =>
 
 /** Analiza los datos: ejecuta las 10 consultas automáticamente (4R+3C+3K). */
 export const postV3Analisis = (modulo: V3Domain, rows: AutoRow[]) =>
-  postJson<RespuestaModulo>(`/v3/${modulo}`, { rows }).then((r) => r.data)
+  postJson<ModuleResponse>(`/v3/${modulo}`, { rows }).then((r) => r.data)
 
 /** Obtiene datos de ejemplo del módulo para demostración. */
 export const getV3Demo = (modulo: V3Domain) =>
-  getJson<RespuestaModulo>(`/v3/${modulo}/demo`).then((r) => r.data)
+  getJson<ModuleResponse>(`/v3/${modulo}/demo`).then((r) => r.data)

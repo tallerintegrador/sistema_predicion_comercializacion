@@ -18,40 +18,39 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import (
+    ExtraTreesRegressor,
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
+)
 from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.cluster import KMeans
+from sklearn.dummy import DummyClassifier, DummyRegressor
+from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import precision_recall_curve, auc, silhouette_score, f1_score
 from sklearn.preprocessing import StandardScaler
 
-from spc.catalogo.config import ConfigConsulta
+from spc.catalogo.config import (
+    ConfigConsulta,
+    UmbralesCalidad,
+    obtener_horizonte_tendencia,
+    obtener_magnitudes,
+    obtener_umbrales,
+    obtener_unidades,
+)
 from spc.utils.logging import get_logger
 
 log = get_logger("catalogo.motor_catalogo")
 
 # Máximo de filas de predicción devueltas por consulta (evita payloads enormes).
 MAX_PREDICCIONES = 500
-
-# Unidad de la magnitud predicha, por columna objetivo (para formatear en la UI).
-_UNIDAD_POR_OBJETIVO = {
-    "unidades_vendidas": "unidades",
-    "ingreso": "S/",
-    "cantidad_pedida": "unidades",
-    "lead_time_dias": "días",
-    "costo_total": "S/",
-    "cumplimiento": "%",
-    "demanda_dia": "unidades",
-    "dias_de_cobertura": "días",
-    "rotacion": "índice",
-    "stock_maximo": "unidades",
-}
 
 
 # ==============================================================================
@@ -79,6 +78,19 @@ class _Entrenamiento:
 
 
 @dataclass
+class Tendencia:
+    """Serie temporal agregada (histórico + pronóstico referencial). Datos planos JSON-safe."""
+
+    unidad: str
+    metodo: str
+    horizonte: int = 14
+    historico: list[dict[str, Any]] = field(default_factory=list)
+    pronostico: list[dict[str, Any]] = field(default_factory=list)
+    resumen: dict[str, Any] | None = None  # {projection, change_pct, direction}
+    desgloses: list[dict[str, Any]] = field(default_factory=list)  # [{label, historico, pronostico}]
+
+
+@dataclass
 class ResultadoConsulta:
     """Resultado de ejecutar una consulta del catálogo."""
 
@@ -90,10 +102,12 @@ class ResultadoConsulta:
     valor_metrica: float
     predicciones: list[dict[str, Any]]
     tabla_comparacion: list[FilaComparacion] = field(default_factory=list)
-    fecha_entrenamiento: datetime = field(default_factory=datetime.utcnow)
+    fecha_entrenamiento: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     advertencia: str | None = None
     unidad: str = ""
     nota_tecnica: str | None = None
+    calidad: str = "limitada"  # "buena" | "limitada" (según umbrales del catálogo)
+    resumen: dict[str, Any] | None = None  # A2: recuadro resumen (suma/promedio según magnitud)
     meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -134,7 +148,7 @@ def _nombre_etiqueta(config: ConfigConsulta) -> str:
 
 def _unidad(config: ConfigConsulta) -> str:
     if config.tipo == "regresion":
-        return _UNIDAD_POR_OBJETIVO.get(config.objetivo, "")
+        return obtener_unidades().get(config.objetivo, "")
     return ""
 
 
@@ -153,6 +167,106 @@ def _nota_tecnica(config: ConfigConsulta) -> str | None:
                 f"La etiqueta usa un umbral fijo de negocio "
                 f"({der.columna_objetivo} ≥ {der.umbral_valor})."
             )
+        if der.tipo == "percentil":
+            grupo = f" por {der.agrupar_por}" if der.agrupar_por else " global"
+            return (
+                f"La etiqueta se deriva de un umbral de datos (P{der.percentil} de "
+                f"{der.columna_objetivo}{grupo}, fijado solo en TRAIN). Las columnas que la "
+                "definen están excluidas de las features."
+            )
+    return None
+
+
+def _nota_metrica_casi_perfecta(
+    config: ConfigConsulta, valor_metrica: float, umbral: float
+) -> str | None:
+    """Aviso honesto cuando una clasificación derivada sale casi perfecta (no es fuga)."""
+    if (
+        config.tipo == "clasificacion"
+        and config.derivacion_etiqueta is not None
+        and valor_metrica >= umbral
+    ):
+        return (
+            f"La métrica es muy alta ({valor_metrica:.0%}) porque, con estos datos, la etiqueta "
+            "resulta casi determinística a partir de los factores. No es fuga (las columnas que "
+            "definen la etiqueta están excluidas), pero conviene leerla con cautela."
+        )
+    return None
+
+
+def _calidad(tipo: str, metrica: str, valor: float, u: UmbralesCalidad) -> str:
+    """Etiqueta de calidad honesta ('buena' | 'limitada') según los umbrales del catálogo."""
+    if tipo == "regresion":
+        return "buena" if valor <= u.wape_buena else "limitada"
+    if tipo == "clasificacion":
+        if metrica == "f1_macro":
+            return "buena" if valor >= u.f1_buena else "limitada"
+        return "buena" if valor >= u.pr_auc_buena else "limitada"
+    if tipo == "clustering":
+        return "buena" if valor >= u.silhouette_buena else "limitada"
+    return "limitada"
+
+
+def _resumen_regresion(config: ConfigConsulta, predicciones: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Recuadro resumen A2: SUMA para magnitudes extensivas, PROMEDIO para intensivas.
+
+    El tipo de magnitud se lee del catálogo (no se hard-codea). Extensiva = flujo acumulable
+    (unidades, S/); intensiva = tasa/nivel/ratio (%, días, rotación, cobertura…), que no tiene
+    sentido sumar.
+    """
+    valores = [p["value"] for p in predicciones if isinstance(p.get("value"), (int, float))]
+    if not valores:
+        return None
+    magnitud = obtener_magnitudes().get(config.objetivo, "extensiva")
+    if magnitud == "intensiva":
+        agg, valor, label = "mean", float(np.mean(valores)), "Promedio estimado"
+    else:
+        agg, valor, label = "sum", float(np.sum(valores)), "Total estimado"
+    return {
+        "aggregation": agg,
+        "value": _num2(valor),
+        "label": label,
+        "unit": _unidad(config),
+        "magnitude": magnitud,
+    }
+
+
+def _nota_objetivo_facil(config: ConfigConsulta, df: pd.DataFrame, u: UmbralesCalidad) -> str | None:
+    """A4: nota honesta cuando el objetivo de regresión es casi constante (métrica fácil)."""
+    if config.tipo != "regresion" or not config.objetivo or config.objetivo not in df.columns:
+        return None
+    y = pd.to_numeric(df[config.objetivo], errors="coerce").dropna()
+    if len(y) < 5:
+        return None
+    media = float(abs(y.mean()))
+    cv = float(y.std() / media) if media > 1e-9 else 0.0
+    if cv < u.cv_objetivo_facil:
+        return (
+            f"Métrica fácil: el objetivo es casi constante (varía muy poco, ~{cv:.0%} relativo), "
+            "así que predecir siempre su valor típico ya da poco error. La métrica luce buena sin "
+            "aportar mucho: conviene leerla con cautela."
+        )
+    return None
+
+
+def _aviso_degenerado(predicciones: list[dict[str, Any]]) -> str | None:
+    """A5: aviso cuando la clasificación predice una sola clase para TODOS los casos."""
+    if not predicciones:
+        return None
+    clave = "clase_predicha" if "predicted_class" not in predicciones[0] and "clase_predicha" in predicciones[0] else (
+        "predicted_class" if "predicted_class" in predicciones[0] else "class"
+    )
+    valores = {p.get(clave) for p in predicciones}
+    if len(valores) <= 1:
+        unico = next(iter(valores), None)
+        if clave in ("class",):
+            estado = "se enciende (todos en alerta)" if unico == 1 else "no se enciende (nadie en alerta)"
+        else:
+            estado = f"predice siempre la misma categoría ({unico})"
+        return (
+            f"Alerta poco informativa: {estado} para todos los casos de prueba; el modelo no "
+            "discrimina con estos datos."
+        )
     return None
 
 
@@ -324,6 +438,10 @@ def _construir_modelo_regresion(nombre: str, seed: int = 42) -> Any:
         return RandomForestRegressor(n_estimators=100, max_depth=10, random_state=seed)
     if nombre == "hist_gradient_boosting":
         return HistGradientBoostingRegressor(max_depth=5, random_state=seed)
+    if nombre == "extra_trees":
+        return ExtraTreesRegressor(n_estimators=100, max_depth=12, random_state=seed)
+    if nombre == "baseline":  # B2: referencia (predice siempre la mediana)
+        return DummyRegressor(strategy="median")
     raise ValueError(f"Regresor desconocido: {nombre}")
 
 
@@ -334,7 +452,19 @@ def _construir_modelo_clasificacion(nombre: str, seed: int = 42) -> Any:
         return RandomForestClassifier(
             n_estimators=100, max_depth=10, class_weight="balanced", random_state=seed
         )
+    if nombre == "hist_gradient_boosting":
+        return HistGradientBoostingClassifier(max_depth=5, random_state=seed)
+    if nombre == "baseline":  # B2: referencia (predice según la prevalencia de clases)
+        return DummyClassifier(strategy="prior")
     raise ValueError(f"Clasificador desconocido: {nombre}")
+
+
+def _candidatos_con_baseline(config: ConfigConsulta) -> list[str]:
+    """Candidatos del catálogo + un baseline al final (para contextualizar la métrica, B2)."""
+    cands = list(config.modelos_candidatos)
+    if "baseline" not in cands:
+        cands.append("baseline")
+    return cands
 
 
 def _prob_positiva(modelo: Any, X: np.ndarray) -> np.ndarray:
@@ -366,13 +496,21 @@ def entrenar_regresion(
     X_va_s = scaler.transform(X_va)
     X_te_s = scaler.transform(X_te) if len(X_te) else X_va_s
 
+    # B2/B1: objetivo sesgado → entrenar en log1p e invertir con expm1 (métrica en escala real).
+    usar_log = config.transform_objetivo == "log"
+    y_fit_tr = np.log1p(np.maximum(0.0, y_tr)) if usar_log else y_tr
+
+    def _pred_inv(m: Any, Xs: np.ndarray) -> np.ndarray:
+        p = m.predict(Xs)
+        return np.expm1(p) if usar_log else p
+
     tabla: list[FilaComparacion] = []
     mejor_nombre, mejor_wape, mejor_modelo = None, float("inf"), None
-    for nombre in config.modelos_candidatos:
+    for nombre in _candidatos_con_baseline(config):  # incluye baseline (B2)
         try:
             modelo = _construir_modelo_regresion(nombre)
-            modelo.fit(X_tr_s, y_tr)
-            wape_va = _wape(y_va, modelo.predict(X_va_s))
+            modelo.fit(X_tr_s, y_fit_tr)
+            wape_va = _wape(y_va, _pred_inv(modelo, X_va_s))
             tabla.append(FilaComparacion(nombre, "wape", wape_va))
             if wape_va < mejor_wape:
                 mejor_wape, mejor_nombre, mejor_modelo = wape_va, nombre, modelo
@@ -386,7 +524,7 @@ def entrenar_regresion(
         fila.ganador = fila.modelo == mejor_nombre
 
     df_pred = df_s.iloc[i85:] if len(X_te) else df_s.iloc[i70:i85]
-    y_pred = mejor_modelo.predict(X_te_s)
+    y_pred = _pred_inv(mejor_modelo, X_te_s)
     y_real = y_te if len(X_te) else y_va
     wape_test = _wape(y_real, y_pred)
 
@@ -395,8 +533,8 @@ def entrenar_regresion(
     for pos in range(min(len(df_pred), MAX_PREDICCIONES)):
         fila_df = df_pred.iloc[pos]
         item: dict[str, Any] = {c: _safe(fila_df[c]) for c in dims if c in df_pred.columns}
-        item["valor"] = _num2(y_pred[pos])
-        item["real"] = _num2(y_real[pos])
+        item["value"] = _num2(y_pred[pos])
+        item["actual"] = _num2(y_real[pos])
         predicciones.append(item)
 
     return _Entrenamiento(tabla, predicciones, mejor_nombre, wape_test, None)
@@ -416,8 +554,8 @@ def _pred_clasif_degradado(
         item: dict[str, Any] = {c: _safe(fila_df[c]) for c in id_cols}
         if config.col_fecha and config.col_fecha in df_pred.columns:
             item[config.col_fecha] = _safe(fila_df[config.col_fecha])
-        item["clase"] = int(clase)
-        item["probabilidad"] = 0.0
+        item["class"] = int(clase)
+        item["probability"] = 0.0
         filas.append(item)
     return filas
 
@@ -433,7 +571,7 @@ def _entrenar_multiclase(
 
     if len(clases) < 2:
         adv = "Sin casos suficientes: solo hay una categoría en el objetivo; no se puede predecir."
-        return _Entrenamiento([], [], "—", 0.0, adv, {"clases": clases})
+        return _Entrenamiento([], [], "—", 0.0, adv, {"classes": clases})
 
     idx = {c: i for i, c in enumerate(clases)}
     y = np.array([idx[v] for v in y_raw])
@@ -441,7 +579,7 @@ def _entrenar_multiclase(
     X_tr, X_va, X_te = X[:i70], X[i70:i85], X[i85:]
     if len(X_tr) == 0 or len(X_va) == 0 or len(np.unique(y_tr)) < 2:
         return _Entrenamiento([], _pred_clasif_degradado(df_pred, config, 0), "—", 0.0,
-                              "Datos insuficientes en el periodo de entrenamiento.", {"clases": clases})
+                              "Datos insuficientes en el periodo de entrenamiento.", {"classes": clases})
 
     scaler = StandardScaler()
     X_tr_s = scaler.fit_transform(X_tr)
@@ -450,7 +588,7 @@ def _entrenar_multiclase(
 
     tabla: list[FilaComparacion] = []
     mejor_nombre, mejor_f1, mejor_modelo = None, float("-inf"), None
-    for nombre in config.modelos_candidatos:
+    for nombre in _candidatos_con_baseline(config):  # incluye baseline (B2)
         try:
             modelo = _construir_modelo_clasificacion(nombre)
             modelo.fit(X_tr_s, y_tr)
@@ -464,7 +602,7 @@ def _entrenar_multiclase(
 
     if mejor_modelo is None:
         return _Entrenamiento(tabla, _pred_clasif_degradado(df_pred, config, 0), "—", 0.0,
-                              "No se pudo entrenar el modelo multiclase.", {"clases": clases})
+                              "No se pudo entrenar el modelo multiclase.", {"classes": clases})
     for fila in tabla:
         fila.ganador = fila.modelo == mejor_nombre
 
@@ -483,12 +621,12 @@ def _entrenar_multiclase(
         if config.col_fecha and config.col_fecha in df_pred.columns:
             item[config.col_fecha] = _safe(fila_df[config.col_fecha])
         cls_idx = int(y_hat[pos])
-        item["clase_predicha"] = clases[cls_idx]
+        item["predicted_class"] = clases[cls_idx]
         col_prob = clases_modelo.index(cls_idx) if cls_idx in clases_modelo else 0
-        item["probabilidad"] = round(float(proba[pos, col_prob]), 4)
+        item["probability"] = round(float(proba[pos, col_prob]), 4)
         predicciones.append(item)
 
-    return _Entrenamiento(tabla, predicciones, mejor_nombre, f1_test, None, {"clases": clases})
+    return _Entrenamiento(tabla, predicciones, mejor_nombre, f1_test, None, {"classes": clases})
 
 
 def entrenar_clasificacion(
@@ -526,7 +664,7 @@ def entrenar_clasificacion(
 
     tabla: list[FilaComparacion] = []
     mejor_nombre, mejor_pr, mejor_modelo = None, float("-inf"), None
-    for nombre in config.modelos_candidatos:
+    for nombre in _candidatos_con_baseline(config):  # incluye baseline (B2)
         try:
             if len(np.unique(y_tr)) < 2:
                 raise ValueError("el periodo de entrenamiento tiene una sola clase")
@@ -559,8 +697,8 @@ def entrenar_clasificacion(
         item: dict[str, Any] = {c: _safe(fila_df[c]) for c in id_cols}
         if config.col_fecha and config.col_fecha in df_pred.columns:
             item[config.col_fecha] = _safe(fila_df[config.col_fecha])
-        item["clase"] = int(clase_pred[pos])
-        item["probabilidad"] = round(float(prob_pred[pos]), 4)
+        item["class"] = int(clase_pred[pos])
+        item["probability"] = round(float(prob_pred[pos]), 4)
         predicciones.append(item)
 
     return _Entrenamiento(tabla, predicciones, mejor_nombre, pr_auc_test, None)
@@ -586,13 +724,56 @@ def _agregar_clustering(df: pd.DataFrame, config: ConfigConsulta) -> tuple[pd.Da
     return dfx.groupby(keys)[feats].mean().dropna(), keys
 
 
+# Nombre legible de una variable del dominio (para nombrar segmentos por su criterio real).
+_NOMBRE_VARIABLE = {
+    "unidades_vendidas": "Ventas", "ingreso": "Ingreso", "precio_unitario": "Precio",
+    "precio_unitario_compra": "Precio de compra", "cantidad_pedida": "Cantidad pedida",
+    "descuento_pct": "Descuento", "descuento_volumen": "Descuento por volumen",
+    "en_promocion": "Uso de promoción", "lead_time_dias": "Tiempo de entrega",
+    "cumplimiento": "Cumplimiento", "costo_total": "Costo", "stock_actual": "Stock",
+    "demanda_diaria_promedio": "Demanda media", "demanda_dia": "Demanda",
+    "dias_de_cobertura": "Cobertura", "rotacion": "Rotación",
+}
+
+
+def _nombre_variable(col: str) -> str:
+    return _NOMBRE_VARIABLE.get(col) or col.replace("_", " ").capitalize()
+
+
+def _variable_dominante(agg_r: pd.DataFrame, labels: np.ndarray, feats: list[str]) -> str | None:
+    """Variable que MÁS separa los grupos (mayor eta² = varianza entre-grupos / total)."""
+    mejor, mejor_eta = (feats[0] if feats else None), -1.0
+    for c in feats:
+        x = pd.to_numeric(agg_r[c], errors="coerce").to_numpy(dtype="float64")
+        tot = float(np.nanvar(x))
+        if tot <= 1e-12:
+            continue
+        gm = float(np.nanmean(x))
+        entre = sum(len(x[labels == cl]) * (float(np.nanmean(x[labels == cl])) - gm) ** 2
+                    for cl in np.unique(labels))
+        eta = (entre / len(x)) / tot
+        if eta > mejor_eta:
+            mejor_eta, mejor = eta, c
+    return mejor
+
+
+def _niveles(nombre: str, k: int) -> list[str]:
+    """Nombres de segmento por nivel de la variable dominante (formato neutro de género, B4)."""
+    if k <= 1:
+        return [f"{nombre}: nivel único"]
+    if k == 2:
+        return [f"{nombre}: alto", f"{nombre}: bajo"]
+    if k == 3:
+        return [f"{nombre}: alto", f"{nombre}: medio", f"{nombre}: bajo"]
+    return [f"{nombre}: nivel {i + 1} (de mayor a menor)" for i in range(k)]
+
+
 def _etiquetas_por_estilo(estilo: str, k: int) -> list[str]:
+    """Estilos con taxonomía de negocio fija (abc, servicio). El resto usa la variable dominante."""
     if estilo == "abc":
         base = ["Clase A (más importante)", "Clase B (intermedia)", "Clase C (menos importante)"]
-    elif estilo == "servicio":
+    else:  # servicio
         base = ["Servicio premium (entrega rápida)", "Servicio estándar", "Servicio básico (entrega lenta)"]
-    else:
-        base = ["Volumen alto", "Volumen medio", "Volumen bajo"]
     if k == 1:
         return [base[0]]
     if k == 2:
@@ -615,8 +796,14 @@ def _coordenadas_2d(agg: pd.DataFrame, X_s: np.ndarray, feats: list[str]) -> tup
     return np.column_stack([col, np.zeros_like(col)]), {"x": feats[0], "y": ""}
 
 
+def _fit_cluster(algo: str, k: int, X_s: np.ndarray) -> np.ndarray:
+    if algo == "agglomerative":
+        return AgglomerativeClustering(n_clusters=k).fit_predict(X_s)
+    return KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(X_s)  # kmeans por defecto
+
+
 def entrenar_clustering(df: pd.DataFrame, config: ConfigConsulta) -> _Entrenamiento:
-    """Agrupa entidades con KMeans; emite entidad→grupo + coordenadas 2D reales."""
+    """Agrupa entidades (KMeans/Aglomerativo compiten por silueta); anti-singleton (B2)."""
     agg, keys = _agregar_clustering(df, config)
     n = len(agg)
     if n < 2 or not keys:
@@ -633,49 +820,196 @@ def entrenar_clustering(df: pd.DataFrame, config: ConfigConsulta) -> _Entrenamie
         k_values = list(range(2, min(9, n)))
     k_values = [k for k in k_values if 2 <= k < n] or [2]
 
-    mejor_sil, mejor_k, mejor_labels = float("-inf"), None, None
-    for k in k_values:
-        try:
-            labels = KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(X_s)
-            if len(np.unique(labels)) < 2:
-                continue
-            sil = silhouette_score(X_s, labels)
-            if sil > mejor_sil:
-                mejor_sil, mejor_k, mejor_labels = sil, k, labels
-        except Exception as e:
-            log.warning(f"{config.id}: clustering k={k} falló: {e}")
+    u = obtener_umbrales()
+    min_miembros = max(1, u.min_miembros_cluster)
+    algos = [a for a in config.modelos_candidatos if a in ("kmeans", "agglomerative")] or ["kmeans"]
+
+    # Compiten los algoritmos; para cada uno el mejor k por silueta, descartando particiones
+    # con algún grupo de menos de `min_miembros` (evita clusters de 1 elemento, B2).
+    mejor_sil, mejor_algo, mejor_labels = float("-inf"), None, None
+    mejor_por_algo: dict[str, float] = {}
+    for algo in algos:
+        best_a, best_a_labels = float("-inf"), None
+        for k in k_values:
+            try:
+                labels = _fit_cluster(algo, k, X_s)
+                _, counts = np.unique(labels, return_counts=True)
+                if len(counts) < 2 or counts.min() < min_miembros:
+                    continue
+                sil = silhouette_score(X_s, labels)
+                if sil > best_a:
+                    best_a, best_a_labels = sil, labels
+            except Exception as e:
+                log.warning(f"{config.id}: clustering {algo} k={k} falló: {e}")
+        if best_a_labels is not None:
+            mejor_por_algo[algo] = best_a
+            if best_a > mejor_sil:
+                mejor_sil, mejor_algo, mejor_labels = best_a, algo, best_a_labels
+
+    # Fallback (pocas entidades: toda partición tiene singletons) → KMeans sin la restricción.
+    if mejor_labels is None:
+        for k in k_values:
+            try:
+                labels = KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(X_s)
+                if len(np.unique(labels)) < 2:
+                    continue
+                sil = silhouette_score(X_s, labels)
+                if sil > mejor_sil:
+                    mejor_sil, mejor_algo, mejor_labels = sil, "kmeans", labels
+            except Exception as e:
+                log.warning(f"{config.id}: clustering fallback k={k} falló: {e}")
+        if mejor_labels is not None:
+            mejor_por_algo = {"kmeans": mejor_sil}
 
     if mejor_labels is None:
         return _Entrenamiento([], [], "—", 0.0, "No fue posible formar grupos con estos datos.")
+    mejor_k = int(len(np.unique(mejor_labels)))
 
-    # Etiquetas legibles: ordenar clusters por columna de ranking (o primera feature).
-    rank_col = config.columna_etiqueta if config.columna_etiqueta in feats else (feats[0] if feats else None)
+    # Etiquetas legibles. Estilos con taxonomía fija (abc/servicio) usan columna_etiqueta;
+    # el resto ("auto") deriva el nombre de la VARIABLE DOMINANTE (la que más separa).
     agg_r = agg.reset_index(drop=True)
+    estilo = config.estilo_etiqueta
+    if estilo in ("abc", "servicio"):
+        rank_col = config.columna_etiqueta if config.columna_etiqueta in feats else (feats[0] if feats else None)
+        nombres = _etiquetas_por_estilo(estilo, mejor_k)
+        orden_desc = estilo != "servicio"
+    else:  # auto
+        rank_col = _variable_dominante(agg_r, mejor_labels, feats)
+        nombres = _niveles(_nombre_variable(rank_col) if rank_col else "Grupo", mejor_k)
+        orden_desc = True
+
     medias = {cl: (float(agg_r.loc[mejor_labels == cl, rank_col].mean()) if rank_col else float(cl))
               for cl in np.unique(mejor_labels)}
-    orden_desc = config.estilo_etiqueta != "servicio"
     clusters_ordenados = sorted(medias.keys(), key=lambda c: medias[c], reverse=orden_desc)
-    nombres = _etiquetas_por_estilo(config.estilo_etiqueta, mejor_k)
     etiqueta_de = {cl: nombres[min(i, len(nombres) - 1)] for i, cl in enumerate(clusters_ordenados)}
 
     coords, ejes = _coordenadas_2d(agg, X_s, feats)
 
+    # Miembros con id legible: para órdenes (fecha·proveedor) mostrar "Proveedor (fecha)".
+    por_fecha_prov = config.agregacion == "by_date_proveedor"
     entidades = agg.index.tolist()
     predicciones: list[dict[str, Any]] = []
     for pos, cl in enumerate(mejor_labels):
         clave = entidades[pos]
-        entidad_str = "·".join(str(x) for x in clave) if isinstance(clave, tuple) else str(clave)
+        if isinstance(clave, tuple):
+            if por_fecha_prov and len(clave) == 2:
+                entidad_str = f"{clave[1]} ({clave[0]})"  # (fecha, proveedor) → "Proveedor (fecha)"
+            else:
+                entidad_str = " · ".join(str(x) for x in clave)
+        else:
+            entidad_str = str(clave)
         predicciones.append({
-            "entidad": entidad_str,
-            "etiqueta": etiqueta_de[cl],
-            "grupo": int(cl),
+            "entity": entidad_str,
+            "label": etiqueta_de[cl],
+            "group": int(cl),
             "x": _num2(coords[pos, 0]),
             "y": _num2(coords[pos, 1]),
         })
 
-    tabla = [FilaComparacion("kmeans", "silhouette", mejor_sil, ganador=True)]
-    adv = "Grupos poco definidos: la separación entre segmentos es débil (referencial)." if mejor_sil < 0.25 else None
-    return _Entrenamiento(tabla, predicciones, "kmeans", mejor_sil, adv, {"ejes": ejes})
+    tabla = [
+        FilaComparacion(a, "silhouette", s, ganador=(a == mejor_algo))
+        for a, s in mejor_por_algo.items()
+    ] or [FilaComparacion(mejor_algo or "kmeans", "silhouette", mejor_sil, ganador=True)]
+    avisos: list[str] = []
+    if n < u.min_entidades_cluster:
+        avisos.append(f"Segmentación sobre pocas entidades ({n}): referencial, no concluyente.")
+    if mejor_sil < u.silhouette_aviso:
+        avisos.append("Grupos poco definidos: la separación entre segmentos es débil (referencial).")
+    adv = " ".join(avisos) or None
+    return _Entrenamiento(tabla, predicciones, mejor_algo or "kmeans", mejor_sil, adv, {"axes": ejes})
+
+
+# ==============================================================================
+# Análisis / Tendencia (la ÚNICA salida con línea temporal)
+# ==============================================================================
+
+# Magnitud principal y columna de fecha por módulo (para la línea de tendencia).
+_TENDENCIA_POR_MODULO = {
+    "ventas": ("fecha", "unidades_vendidas", "unidades"),
+    "compras": ("fecha_orden", "cantidad_pedida", "unidades"),
+    "almacen": ("fecha", "demanda_dia", "unidades"),
+}
+
+
+def _proyectar(serie: pd.Series, horizonte: int) -> tuple[list[dict], list[dict], dict | None]:
+    """Histórico + pronóstico (tendencia lineal × estacionalidad semanal) + resumen honesto."""
+    fechas = serie.index
+    y = serie.to_numpy(dtype="float64")
+    n = len(y)
+    historico = [{"date": str(f.date()), "value": round(float(v), 2)} for f, v in zip(fechas, y)]
+    if n < 8:  # muy corto para pronosticar con honestidad
+        return historico, [], None
+
+    x = np.arange(n)
+    coef = np.polyfit(x, y, 1)
+    dow = fechas.dayofweek.to_numpy()
+    media = y.mean() or 1.0
+    factor = {d: (y[dow == d].mean() / media if (dow == d).any() else 1.0) for d in range(7)}
+
+    ult = fechas[-1]
+    pron: list[dict] = []
+    for i in range(1, horizonte + 1):
+        f = ult + pd.Timedelta(days=i)
+        base_val = float(np.polyval(coef, n - 1 + i))
+        val = max(0.0, base_val * factor.get(int(f.dayofweek), 1.0))
+        pron.append({"date": str(f.date()), "value": round(val, 2)})
+
+    reciente = float(np.mean(y[-horizonte:])) if n >= horizonte else float(np.mean(y))
+    fut_media = float(np.mean([p["value"] for p in pron])) if pron else reciente
+    change_pct = round((fut_media - reciente) / reciente * 100, 1) if reciente > 1e-9 else 0.0
+    pend = coef[0] / media
+    direccion = "creciente" if pend > 0.005 else ("decreciente" if pend < -0.005 else "estable")
+    resumen = {
+        "projection": round(float(sum(p["value"] for p in pron)), 2),
+        "change_pct": change_pct,
+        "direction": direccion,
+    }
+    return historico, pron, resumen
+
+
+def calcular_tendencia(modulo: str, df: pd.DataFrame) -> Tendencia:
+    """Serie temporal del total diario de la magnitud principal + pronóstico simple y honesto.
+
+    Método: tendencia lineal (mínimos cuadrados) sobre el total diario, con estacionalidad
+    SEMANAL. Única salida con línea de tiempo (referencial). Añade horizonte, resumen
+    interpretativo y desglose por categoría (para filtrar). Devuelve datos planos.
+    """
+    col_fecha, magnitud, unidad = _TENDENCIA_POR_MODULO.get(modulo, (None, None, ""))
+    horizonte = obtener_horizonte_tendencia()
+    base = Tendencia(
+        unidad=unidad, horizonte=horizonte,
+        metodo="Tendencia lineal + estacionalidad semanal (referencial)",
+    )
+    if not col_fecha or col_fecha not in df.columns or magnitud not in df.columns:
+        return base
+
+    try:
+        cols = [col_fecha, magnitud] + (["categoria"] if "categoria" in df.columns else [])
+        tmp = df[cols].copy()
+        tmp[col_fecha] = pd.to_datetime(tmp[col_fecha], errors="coerce")
+        tmp[magnitud] = pd.to_numeric(tmp[magnitud], errors="coerce")
+        tmp = tmp.dropna(subset=[col_fecha, magnitud])
+        if tmp.empty:
+            return base
+
+        serie = tmp.groupby(col_fecha)[magnitud].sum().sort_index()
+        base.historico, base.pronostico, base.resumen = _proyectar(serie, horizonte)
+
+        # Desglose por categoría (acotado a las más grandes) para el filtro del frontend.
+        if "categoria" in tmp.columns:
+            desgloses: list[dict[str, Any]] = []
+            for cat, sub in tmp.groupby("categoria"):
+                s = sub.groupby(col_fecha)[magnitud].sum().sort_index()
+                h, p, _ = _proyectar(s, horizonte)
+                if h:
+                    desgloses.append({"label": str(cat), "historico": h, "pronostico": p})
+            base.desgloses = sorted(
+                desgloses, key=lambda d: -sum(x["value"] for x in d["historico"])
+            )[:8]
+        return base
+    except Exception as e:
+        log.warning(f"Tendencia {modulo}: {e}")
+        return base
 
 
 # ==============================================================================
@@ -704,15 +1038,37 @@ def ejecutar_consulta(consulta_id: str, df: pd.DataFrame) -> ResultadoConsulta:
     else:
         raise ValueError(f"Tipo de consulta desconocido: {config.tipo}")
 
+    u = obtener_umbrales()
     advertencia = ent.advertencia
+    # A5: clasificador degenerado (predice una sola clase para todos) — tiene prioridad.
+    if advertencia is None and config.tipo == "clasificacion" and ent.tabla:
+        degenerado = _aviso_degenerado(ent.predicciones)
+        if degenerado:
+            advertencia = degenerado
     if advertencia is None:
-        if config.tipo == "regresion" and ent.valor_metrica > 0.30:
+        if config.tipo == "regresion" and ent.valor_metrica > u.wape_aviso:
             advertencia = (
                 f"Señal débil: el modelo explica poca variación con estos factores "
                 f"(error promedio {ent.valor_metrica:.0%})."
             )
-        elif config.tipo == "clasificacion" and ent.tabla and ent.valor_metrica < 0.50:
+        elif config.tipo == "clasificacion" and ent.tabla and ent.valor_metrica < u.clasificacion_aviso:
             advertencia = "Señal débil: los factores disponibles distinguen poco esta clase."
+
+    # Nota técnica honesta: derivación de etiqueta, métrica casi perfecta (clasif) y objetivo fácil (regr).
+    nota = _nota_tecnica(config)
+    if ent.tabla:
+        caveat = _nota_metrica_casi_perfecta(config, ent.valor_metrica, u.metrica_casi_perfecta)
+        if caveat:
+            nota = f"{nota} {caveat}" if nota else caveat
+        facil = _nota_objetivo_facil(config, df, u)  # A4
+        if facil:
+            nota = f"{nota} {facil}" if nota else facil
+
+    # Calidad honesta (solo si hubo entrenamiento real; degradado = limitada).
+    calidad = _calidad(config.tipo, metrica, ent.valor_metrica, u) if ent.tabla else "limitada"
+
+    # A2: recuadro resumen (suma para extensivas, promedio para intensivas).
+    resumen = _resumen_regresion(config, ent.predicciones) if config.tipo == "regresion" else None
 
     resultado = ResultadoConsulta(
         consulta_id=consulta_id,
@@ -725,7 +1081,9 @@ def ejecutar_consulta(consulta_id: str, df: pd.DataFrame) -> ResultadoConsulta:
         tabla_comparacion=ent.tabla,
         advertencia=advertencia,
         unidad=_unidad(config),
-        nota_tecnica=_nota_tecnica(config),
+        nota_tecnica=nota,
+        calidad=calidad,
+        resumen=resumen,
         meta=ent.meta,
     )
     log.info(

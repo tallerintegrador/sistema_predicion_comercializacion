@@ -68,6 +68,7 @@ class ConfigConsulta:
     columnas_entrada: list[str]
     columnas_conocidas_futuro: list[str] = field(default_factory=list)
     columnas_solo_pasado: list[str] = field(default_factory=list)
+    transform_objetivo: str | None = None  # None | "log" (regresión con objetivo sesgado)
 
     # ML: candidatos, métrica, validación
     modelos_candidatos: list[str] = field(default_factory=list)
@@ -106,6 +107,23 @@ class ConfigConsulta:
             raise ValueError(f"Consulta {self.id}: {self.tipo} requiere col_fecha")
         if len(self.columnas_entrada) == 0:
             raise ValueError(f"Consulta {self.id}: sin columnas_entrada")
+
+
+@dataclass(frozen=True)
+class UmbralesCalidad:
+    """Umbrales de calidad (fuente única desde el catálogo; no bloqueantes)."""
+
+    wape_aviso: float = 0.30
+    wape_buena: float = 0.25
+    clasificacion_aviso: float = 0.50
+    pr_auc_buena: float = 0.60
+    f1_buena: float = 0.50
+    silhouette_aviso: float = 0.25
+    silhouette_buena: float = 0.50
+    metrica_casi_perfecta: float = 0.98
+    min_entidades_cluster: int = 5
+    cv_objetivo_facil: float = 0.08
+    min_miembros_cluster: int = 2
 
 
 @dataclass(frozen=True)
@@ -167,6 +185,7 @@ def _parse_consultas_de_dict(dominio_dict: dict[str, Any]) -> dict[str, ConfigCo
             columnas_entrada=consulta_data.get("columnas_entrada", []),
             columnas_conocidas_futuro=consulta_data.get("columnas_conocidas_futuro", []),
             columnas_solo_pasado=consulta_data.get("columnas_solo_pasado", []),
+            transform_objetivo=consulta_data.get("transform_objetivo"),
             modelos_candidatos=consulta_data.get("modelos_candidatos", []),
             metrica_seleccion=consulta_data.get("metrica_seleccion", "wape"),
             col_fecha=consulta_data.get("col_fecha"),
@@ -247,3 +266,63 @@ def obtener_modulo(dominio: str) -> ConfigModulo:
     if dominio not in cat:
         raise ValueError(f"Módulo no encontrado: {dominio}")
     return cat[dominio]
+
+
+# Singleton de umbrales de calidad (leídos del catálogo; defaults si faltan)
+_UMBRALES_SINGLETON: UmbralesCalidad | None = None
+
+
+def obtener_umbrales() -> UmbralesCalidad:
+    """Retorna los umbrales de calidad del catálogo (lazy load, con defaults)."""
+    global _UMBRALES_SINGLETON
+    if _UMBRALES_SINGLETON is None:
+        raw = _cargar_yaml_raw()
+        u = raw.get("umbrales_calidad", {}) or {}
+        base = UmbralesCalidad()
+        _UMBRALES_SINGLETON = UmbralesCalidad(
+            wape_aviso=float(u.get("wape_aviso", base.wape_aviso)),
+            wape_buena=float(u.get("wape_buena", base.wape_buena)),
+            clasificacion_aviso=float(u.get("clasificacion_aviso", base.clasificacion_aviso)),
+            pr_auc_buena=float(u.get("pr_auc_buena", base.pr_auc_buena)),
+            f1_buena=float(u.get("f1_buena", base.f1_buena)),
+            silhouette_aviso=float(u.get("silhouette_aviso", base.silhouette_aviso)),
+            silhouette_buena=float(u.get("silhouette_buena", base.silhouette_buena)),
+            metrica_casi_perfecta=float(u.get("metrica_casi_perfecta", base.metrica_casi_perfecta)),
+            min_entidades_cluster=int(u.get("min_entidades_cluster", base.min_entidades_cluster)),
+            cv_objetivo_facil=float(u.get("cv_objetivo_facil", base.cv_objetivo_facil)),
+            min_miembros_cluster=int(u.get("min_miembros_cluster", base.min_miembros_cluster)),
+        )
+    return _UMBRALES_SINGLETON
+
+
+def obtener_horizonte_tendencia() -> int:
+    """Horizonte del pronóstico de la sección Tendencia (días, desde el catálogo)."""
+    raw = _cargar_yaml_raw()
+    t = raw.get("tendencia", {}) or {}
+    return int(t.get("horizonte_dias", 14))
+
+
+# Singleton de magnitud por objetivo (extensiva=suma / intensiva=promedio)
+_MAGNITUDES_SINGLETON: dict[str, str] | None = None
+
+
+def obtener_magnitudes() -> dict[str, str]:
+    """Mapa objetivo → 'extensiva'|'intensiva' (fuente única desde el catálogo)."""
+    global _MAGNITUDES_SINGLETON
+    if _MAGNITUDES_SINGLETON is None:
+        raw = _cargar_yaml_raw()
+        _MAGNITUDES_SINGLETON = dict(raw.get("magnitud_por_objetivo", {}) or {})
+    return _MAGNITUDES_SINGLETON
+
+
+# Singleton de unidades por objetivo (leídas del catálogo)
+_UNIDADES_SINGLETON: dict[str, str] | None = None
+
+
+def obtener_unidades() -> dict[str, str]:
+    """Mapa objetivo → unidad para formatear en la UI (fuente única desde el catálogo)."""
+    global _UNIDADES_SINGLETON
+    if _UNIDADES_SINGLETON is None:
+        raw = _cargar_yaml_raw()
+        _UNIDADES_SINGLETON = dict(raw.get("unidades_por_objetivo", {}) or {})
+    return _UNIDADES_SINGLETON

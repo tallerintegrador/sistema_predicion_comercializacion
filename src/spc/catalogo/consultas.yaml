@@ -52,7 +52,7 @@ modulo_ventas:
         - descuento_pct
         - categoria
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -67,6 +67,7 @@ modulo_ventas:
       pregunta: "Ingreso según canal, fin de semana y feriado"
       descripcion: "Predice ingresos en función del canal de venta, calendario y promociones."
       objetivo: "ingreso"
+      transform_objetivo: "log"  # ingreso es sesgado (cola larga): entrenar en log estabiliza
       columnas_entrada:
         - canal_venta
         - es_fin_de_semana
@@ -78,7 +79,7 @@ modulo_ventas:
         - dias_a_proximo_feriado
         - en_promocion
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -103,7 +104,7 @@ modulo_ventas:
         - dias_a_proximo_feriado
         - categoria
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -127,7 +128,7 @@ modulo_ventas:
         - precio_unitario
         - metodo_pago
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -156,7 +157,7 @@ modulo_ventas:
         - descuento_pct
         - categoria
       columnas_solo_pasado: []
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -192,7 +193,7 @@ modulo_ventas:
         - en_promocion
         - es_fin_de_semana
       columnas_solo_pasado: []
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "f1_macro"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -219,7 +220,7 @@ modulo_ventas:
         - dias_a_proximo_feriado
         - en_promocion
       columnas_solo_pasado: []
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha"
       cols_serie: ["id_tienda"]
@@ -251,10 +252,10 @@ modulo_ventas:
         - unidades_vendidas
         - ingreso
       agregacion: "by_sku"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
-      estilo_etiqueta: "volumen"
+      estilo_etiqueta: "auto"
       columna_etiqueta: null
       anti_fuga: |
         Clustering: sin partición temporal (agregar todo).
@@ -273,10 +274,10 @@ modulo_ventas:
         - descuento_pct
         - unidades_vendidas
       agregacion: "by_sku"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
-      estilo_etiqueta: "volumen"
+      estilo_etiqueta: "auto"
       columna_etiqueta: null
       anti_fuga: |
         Clustering: sin partición temporal.
@@ -294,10 +295,10 @@ modulo_ventas:
         - ingreso
         - precio_unitario
       agregacion: "by_tienda"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
-      estilo_etiqueta: "volumen"
+      estilo_etiqueta: "auto"
       columna_etiqueta: null
       anti_fuga: |
         Clustering: sin partición temporal.
@@ -348,7 +349,7 @@ modulo_compras:
         - descuento_volumen
         - precio_unitario_compra
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor", "sku"]
@@ -375,7 +376,7 @@ modulo_compras:
         - categoria
         - metodo_pago
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor"]
@@ -393,6 +394,7 @@ modulo_compras:
       pregunta: "Costo total de la orden"
       descripcion: "Predice el costo esperado de la orden a partir de factores (proveedor, categoría, lead time)."
       objetivo: "costo_total"
+      transform_objetivo: "log"  # costo_total es sesgado/heterocedástico: log estabiliza la escala
       columnas_entrada:
         - id_proveedor
         - categoria
@@ -402,7 +404,7 @@ modulo_compras:
         - categoria
         - lead_time_dias
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor", "sku"]
@@ -429,7 +431,7 @@ modulo_compras:
         - lead_time_dias
         - metodo_pago
       columnas_solo_pasado: []
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor"]
@@ -461,7 +463,7 @@ modulo_compras:
         - descuento_volumen
         - metodo_pago
       columnas_solo_pasado: []
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor"]
@@ -497,7 +499,7 @@ modulo_compras:
         - lead_time_dias
         - metodo_pago
       columnas_solo_pasado: []
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor"]
@@ -533,7 +535,7 @@ modulo_compras:
         - id_proveedor
         - precio_unitario_compra
       columnas_solo_pasado: []
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor"]
@@ -567,7 +569,7 @@ modulo_compras:
         - cumplimiento
         - costo_total
       agregacion: "by_proveedor"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
       estilo_etiqueta: "servicio"
@@ -588,10 +590,10 @@ modulo_compras:
         - precio_unitario_compra
         - cantidad_pedida
       agregacion: "by_sku"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
-      estilo_etiqueta: "volumen"
+      estilo_etiqueta: "auto"
       columna_etiqueta: null
       anti_fuga: |
         Clustering: sin partición temporal.
@@ -609,10 +611,10 @@ modulo_compras:
         - descuento_volumen
         - costo_total
       agregacion: "by_date_proveedor"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
-      estilo_etiqueta: "volumen"
+      estilo_etiqueta: "auto"
       columna_etiqueta: null
       anti_fuga: |
         Clustering: sin partición temporal.
@@ -651,28 +653,27 @@ modulo_almacen:
       id: "alm-r1"
       tipo: "regresion"
       pregunta: "Demanda diaria esperada (sobre factores)"
-      descripcion: "Predice demanda del día según demanda promedio, rotación, categoría y zona."
+      descripcion: "Predice demanda del día según categoría y zona (factores causales, sin promedios del mismo día)."
       objetivo: "demanda_dia"
       columnas_entrada:
-        - demanda_diaria_promedio
-        - rotacion
         - categoria
         - zona_almacen
       columnas_conocidas_futuro:
         - categoria
         - zona_almacen
-      columnas_solo_pasado:
-        - demanda_diaria_promedio
-        - rotacion
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
       anti_fuga: |
         Objetivo: demanda_dia (demanda futura).
-        Excluir: dias_de_cobertura (= stock / demanda, revelaría objetivo).
-        Columnas solo-pasado: demanda_diaria_promedio, rotacion (valor del día contiene consumo).
-        Features OK: categoría, zona son causales de demanda.
+        ANTI-FUGA (decisión): NO usar demanda_diaria_promedio ni rotacion como features.
+        Su valor del mismo día contiene el consumo del día (corr≈0.91 con demanda_dia); como el
+        motor no rezaga columnas, incluirlas sería una casi-copia del objetivo (near-leak). Se
+        predice solo desde factores causales conocidos a futuro.
+        Excluir: demanda_diaria_promedio, rotacion, dias_de_cobertura (= stock / demanda).
+        Nota honesta: al quitar la casi-copia, la señal es más débil; se reporta el error real.
         Validación temporal: train/valid/test por fecha.
 
     alm_r2:
@@ -692,7 +693,7 @@ modulo_almacen:
         - tiempo_reposicion_dias
       columnas_solo_pasado:
         - rotacion
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -710,53 +711,52 @@ modulo_almacen:
       id: "alm-r3"
       tipo: "regresion"
       pregunta: "Rotación por categoría/zona"
-      descripcion: "Predice velocidad de rotación según categoría, zona y demanda media."
+      descripcion: "Predice velocidad de rotación según categoría y zona (factores causales)."
       objetivo: "rotacion"
       columnas_entrada:
         - categoria
         - zona_almacen
-        - demanda_diaria_promedio
       columnas_conocidas_futuro:
         - categoria
         - zona_almacen
-      columnas_solo_pasado:
-        - demanda_diaria_promedio
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
       anti_fuga: |
         Objetivo: rotacion.
-        Excluir: dias_de_cobertura (derivada de stock/demanda).
-        Columnas solo-pasado: demanda_diaria_promedio (su valor del día ya contiene consumo).
-        Features OK: categoría, zona son causales.
+        ANTI-FUGA (decisión): NO usar demanda_diaria_promedio como feature; su valor del mismo
+        día ya contiene el consumo y el motor no rezaga columnas (near-leak). Se predice desde
+        factores causales.
+        Excluir: demanda_diaria_promedio, dias_de_cobertura (derivada de stock/demanda).
+        Nota honesta: sin la casi-copia, la señal es más débil; se reporta el error real.
         Validación temporal: train/valid/test por fecha.
 
     alm_r4:
       id: "alm-r4"
       tipo: "regresion"
       pregunta: "Stock máximo recomendado"
-      descripcion: "Predice el stock máximo óptimo según demanda y rotación."
+      descripcion: "Predice el stock máximo óptimo según categoría y tiempo de reposición (factores causales)."
       objetivo: "stock_maximo"
       columnas_entrada:
-        - demanda_diaria_promedio
-        - rotacion
         - categoria
         - tiempo_reposicion_dias
       columnas_conocidas_futuro:
         - categoria
         - tiempo_reposicion_dias
-      columnas_solo_pasado:
-        - demanda_diaria_promedio
-        - rotacion
-      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting"]
+      columnas_solo_pasado: []
+      modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
       anti_fuga: |
-        Objetivo: stock_maximo (política del cliente, predecible de demanda/rotación).
-        Excluir: dias_de_cobertura, stock_actual (derivadas o solo-pasado).
-        Features OK: demanda, rotación, categoría, reposición son causales.
+        Objetivo: stock_maximo (política del cliente).
+        ANTI-FUGA (decisión): NO usar demanda_diaria_promedio ni rotacion; su valor del mismo día
+        contiene consumo y el motor no rezaga columnas (near-leak). Se predice desde factores
+        causales conocidos a futuro.
+        Excluir: demanda_diaria_promedio, rotacion, dias_de_cobertura, stock_actual.
+        Nota honesta: sin las casi-copias, la señal es más débil; se reporta el error real.
         Validación temporal: train/valid/test por fecha.
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -779,7 +779,7 @@ modulo_almacen:
         - stock_actual
         - demanda_diaria_promedio
         - rotacion
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -800,31 +800,31 @@ modulo_almacen:
       id: "alm-c2"
       tipo: "clasificacion"
       pregunta: "¿Reposición urgente (sí/no)?"
-      descripcion: "Determina si la cobertura es insuficiente para el tiempo de reposición."
+      descripcion: "Determina si el stock cayó por debajo del mínimo de seguridad (hay que reponer ya)."
       objetivo: "reposicion_urgente"
       columnas_entrada:
         - stock_actual
-        - demanda_diaria_promedio
-        - tiempo_reposicion_dias
+        - stock_minimo
+        - rotacion
       columnas_conocidas_futuro:
-        - tiempo_reposicion_dias
+        - stock_minimo
       columnas_solo_pasado:
         - stock_actual
-        - demanda_diaria_promedio
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+        - rotacion
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
       derivacion_etiqueta:
         tipo: "regla"
-        formula: "dias_de_cobertura < tiempo_reposicion_dias"
-        descripcion: "reposicion_urgente = (cobertura < tiempo_reposición)"
+        formula: "stock_actual < stock_minimo"
+        descripcion: "reposicion_urgente = (stock_actual < stock_mínimo de seguridad)"
       anti_fuga: |
-        Derivación: REGLA DETERMINÍSTICA basada en cobertura.
-        Etiqueta: reposicion_urgente = 1 si días_cobertura < tiempo_reposición, 0 en caso contrario.
-        Excluir: dias_de_cobertura (es parte de la regla, no feature).
-        Columnas solo-pasado: stock, demanda (valor del día).
-        Features OK: tiempo_reposicion es causal.
+        Derivación: REGLA DETERMINÍSTICA (stock bajo el mínimo de seguridad).
+        DIFERENCIA con ALM-C1: C1 = quiebre inminente durante el lead time (stock <
+        demanda_día × reposición); C2 = por debajo del stock_mínimo de seguridad (más amplio).
+        Etiqueta: reposicion_urgente = 1 si stock_actual < stock_minimo, 0 en caso contrario.
+        Features OK: stock_minimo es política (conocida a futuro); stock/rotación del día.
         Desbalance: usar class_weight='balanced'.
         Validación temporal: train/valid/test por fecha.
 
@@ -843,7 +843,7 @@ modulo_almacen:
       columnas_solo_pasado:
         - stock_actual
         - rotacion
-      modelos_candidatos: ["logistic_regression", "random_forest"]
+      modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha"
       cols_serie: ["id_tienda", "sku"]
@@ -874,7 +874,7 @@ modulo_almacen:
         - demanda_diaria_promedio
         - dias_de_cobertura
       agregacion: "by_sku"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: 3
       estilo_etiqueta: "abc"
@@ -895,10 +895,10 @@ modulo_almacen:
         - rotacion
         - dias_de_cobertura
       agregacion: "by_sku"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
-      estilo_etiqueta: "volumen"
+      estilo_etiqueta: "auto"
       columna_etiqueta: null
       anti_fuga: |
         Clustering: sin partición temporal; k automático.
@@ -916,15 +916,69 @@ modulo_almacen:
         - demanda_diaria_promedio
         - rotacion
       agregacion: "by_zona"
-      modelos_candidatos: ["kmeans"]
+      modelos_candidatos: ["kmeans", "agglomerative"]
       metrica_seleccion: "silhouette"
       k_fijo: null
-      estilo_etiqueta: "volumen"
+      estilo_etiqueta: "auto"
       columna_etiqueta: null
       anti_fuga: |
         Clustering: sin partición temporal.
         Agregación: media de stock, demanda, rotación por zona.
         No hay riesgo de fuga.
+
+# ==============================================================================
+# Umbrales de calidad (fuente única; no bloqueantes). El motor los usa para el aviso
+# "señal débil" y para etiquetar la calidad (buena/limitada) en el detalle técnico.
+# ==============================================================================
+umbrales_calidad:
+  wape_aviso: 0.30           # regresión: aviso "señal débil" si WAPE > este valor
+  wape_buena: 0.25           # regresión: calidad "buena" si WAPE <= este valor
+  clasificacion_aviso: 0.50  # clasificación: aviso si la métrica (PR-AUC/F1) < este valor
+  pr_auc_buena: 0.60         # clasificación binaria: calidad "buena" si PR-AUC >= este valor
+  f1_buena: 0.50             # clasificación multiclase: calidad "buena" si F1 >= este valor
+  silhouette_aviso: 0.25     # clustering: grupos "poco definidos" si silueta < este valor
+  silhouette_buena: 0.50     # clustering: calidad "buena" si silueta >= este valor
+  metrica_casi_perfecta: 0.98  # clasificación: nota honesta si la métrica >= este valor
+  min_entidades_cluster: 5   # clustering: aviso "pocas entidades (referencial)" si hay menos
+  cv_objetivo_facil: 0.08    # regresión: nota "métrica fácil" si coef. de variación del objetivo < esto
+  min_miembros_cluster: 2    # clustering: descartar k que produzca algún grupo con menos miembros
+
+# ==============================================================================
+# Análisis / Tendencia (única sección con eje temporal). Horizonte del pronóstico.
+# ==============================================================================
+tendencia:
+  horizonte_dias: 14
+
+# ==============================================================================
+# Tipo de magnitud por objetivo de regresión (A2): decide si el recuadro resumen SUMA
+# (extensiva: flujos acumulables) o PROMEDIA (intensiva: tasas/niveles/ratios).
+# ==============================================================================
+magnitud_por_objetivo:
+  unidades_vendidas: extensiva
+  ingreso: extensiva
+  cantidad_pedida: extensiva
+  costo_total: extensiva
+  demanda_dia: intensiva
+  lead_time_dias: intensiva
+  cumplimiento: intensiva
+  dias_de_cobertura: intensiva
+  rotacion: intensiva
+  stock_maximo: intensiva
+
+# ==============================================================================
+# Unidades de la magnitud predicha por objetivo (para formatear en la UI).
+# ==============================================================================
+unidades_por_objetivo:
+  unidades_vendidas: "unidades"
+  ingreso: "S/"
+  cantidad_pedida: "unidades"
+  lead_time_dias: "días"
+  costo_total: "S/"
+  cumplimiento: "%"
+  demanda_dia: "unidades"
+  dias_de_cobertura: "días"
+  rotacion: "índice"
+  stock_maximo: "unidades"
 
 # ==============================================================================
 # Fin del Catálogo

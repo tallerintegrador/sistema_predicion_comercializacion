@@ -2,6 +2,11 @@
 
 Define las estructuras de respuesta para los endpoints /v3/{modulo}, /v3/catalogo,
 y /v3/{modulo}/plantilla.
+
+Convención de contrato (ADR-0028): las CLAVES del cuerpo JSON y los enums (``type``) están
+en inglés. Los VALORES de negocio en español (preguntas, avisos, etiquetas legibles) y los
+identificadores de datos del cliente (columnas de la plantilla, valores de módulo en la ruta)
+se mantienen en español porque son los datos reales del PYME.
 """
 
 from __future__ import annotations
@@ -12,97 +17,142 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
-class FilaComparacion(BaseModel):
+class ComparisonRow(BaseModel):
     """Fila de la tabla de comparación de modelos (solo detalle técnico)."""
 
-    modelo: str
-    metrica: str
-    valor: float
-    ganador: bool = False
+    model: str
+    metric: str
+    value: float
+    winner: bool = False
 
 
-class DetalleTecnico(BaseModel):
+class TechnicalDetail(BaseModel):
     """Información técnica de un reporte: modelo ganador, métricas, competencia."""
 
-    modelo_ganador: str
-    metrica: str
-    valor_metrica: float
-    tabla_comparacion: list[FilaComparacion]
-    fecha_entrenamiento: datetime
-    nota_tecnica: str | None = Field(
+    winner_model: str
+    metric: str
+    metric_value: float
+    quality: str = Field(
+        default="limitada", description="Calidad honesta según umbrales del catálogo: 'buena' | 'limitada'"
+    )
+    comparison_table: list[ComparisonRow]
+    trained_at: datetime
+    technical_note: str | None = Field(
         default=None, description="Nota honesta (p. ej. etiqueta por regla determinística)"
     )
 
 
-class ReporteConsulta(BaseModel):
+class RegressionSummary(BaseModel):
+    """Recuadro resumen de una regresión (A2): suma para extensivas, promedio para intensivas."""
+
+    aggregation: str  # "sum" | "mean"
+    value: float
+    label: str  # "Total estimado" | "Promedio estimado"
+    unit: str = ""
+    magnitude: str  # "extensiva" | "intensiva"
+
+
+class QueryReport(BaseModel):
     """Un reporte de una consulta ejecutada del catálogo."""
 
-    consulta_id: str
-    modulo: str
-    tipo: str  # "regresion", "clasificacion", "clustering"
-    pregunta: str
-    descripcion: str | None = None
-    unidad: str = Field(default="", description="Unidad de la magnitud predicha (unidades/S/./días/%/índice)")
-    resultado: dict[str, Any] = Field(
+    query_id: str
+    module: str
+    type: str  # "regression", "classification", "clustering"
+    question: str
+    description: str | None = None
+    unit: str = Field(default="", description="Unidad de la magnitud predicha (unidades/S/./días/%/índice)")
+    result: dict[str, Any] = Field(
         description="Predicciones/agrupación del reporte (estructura variable por tipo)"
     )
-    advertencia: str | None = Field(
+    summary: RegressionSummary | None = Field(
+        default=None, description="Recuadro resumen (solo regresión): suma/promedio según magnitud"
+    )
+    warning: str | None = Field(
         default=None, description="Advertencia de calidad baja (umbrales no bloqueantes)"
     )
-    detalle_tecnico: DetalleTecnico
+    technical_detail: TechnicalDetail
 
 
-class PuntoSerie(BaseModel):
+class SeriesPoint(BaseModel):
     """Un punto de la serie temporal (fecha + valor agregado)."""
 
-    fecha: str
-    valor: float
+    date: str
+    value: float
 
 
-class BloqueAnalisisTendencia(BaseModel):
+class TrendSummary(BaseModel):
+    """Resumen interpretativo del pronóstico (A3)."""
+
+    projection: float  # suma proyectada en el horizonte
+    change_pct: float  # variación % del pronóstico vs. período reciente
+    direction: str  # "creciente" | "estable" | "decreciente"
+
+
+class TrendBreakdown(BaseModel):
+    """Serie por dimensión (p. ej. categoría) para el filtro del frontend (A3)."""
+
+    label: str
+    history: list[SeriesPoint] = Field(default_factory=list)
+    forecast: list[SeriesPoint] = Field(default_factory=list)
+
+
+class TrendAnalysis(BaseModel):
     """Bloque de análisis/tendencia: la ÚNICA sección con línea temporal.
 
-    Claves en ASCII (sin tildes/ñ) para un contrato JSON limpio.
+    Claves en inglés/ASCII para un contrato JSON limpio.
     """
 
-    campo: str = "tendencia"
-    titulo: str = "Análisis / Tendencia"
-    descripcion: str = "Evolución temporal del negocio (histórico) y pronóstico referencial."
-    unidad: str = ""
-    metodo: str = ""
-    historico: list[PuntoSerie] = Field(default_factory=list)
-    pronostico: list[PuntoSerie] = Field(default_factory=list)
+    field: str = "trend"
+    title: str = "Análisis / Tendencia"
+    description: str = "Evolución temporal del negocio (histórico) y pronóstico referencial."
+    unit: str = ""
+    method: str = ""
+    horizon: int = 14  # días de pronóstico (del catálogo)
+    history: list[SeriesPoint] = Field(default_factory=list)
+    forecast: list[SeriesPoint] = Field(default_factory=list)
+    summary: TrendSummary | None = None
+    breakdowns: list[TrendBreakdown] = Field(default_factory=list)
 
 
-class RespuestaModulo(BaseModel):
+class DatasetInfo(BaseModel):
+    """Retroalimentación de validación de la carga (A8): qué se reconoció y qué se descartó."""
+
+    recognized_columns: list[str] = Field(default_factory=list)
+    missing_columns: list[str] = Field(default_factory=list)
+    rows_received: int = 0
+    rows_discarded: int = 0
+
+
+class ModuleResponse(BaseModel):
     """Respuesta completa de POST /v3/{modulo}."""
 
-    modulo: str
-    reportes: list[ReporteConsulta] = Field(
+    module: str
+    reports: list[QueryReport] = Field(
         min_length=10, max_length=10, description="Exactamente 10 reportes (4R+3C+3K)"
     )
-    analisis_tendencia: BloqueAnalisisTendencia | None = None
-    fecha_ejecución: datetime
+    trend_analysis: TrendAnalysis | None = None
+    dataset_info: DatasetInfo | None = None
+    executed_at: datetime
 
 
-class ConsultaInfo(BaseModel):
+class QueryInfo(BaseModel):
     """Información de una consulta para GET /v3/catalogo."""
 
     id: str
-    modulo: str
-    tipo: str
-    pregunta: str
-    descripcion: str | None = None
+    module: str
+    type: str
+    question: str
+    description: str | None = None
 
 
-class RespuestaCatalogo(BaseModel):
+class CatalogResponse(BaseModel):
     """Respuesta de GET /v3/catalogo."""
 
-    total_consultas: int = 30
-    consultas: list[ConsultaInfo]
+    total_queries: int = 30
+    queries: list[QueryInfo]
 
 
-class SolicitudAnalisisModulo(BaseModel):
+class ModuleAnalysisRequest(BaseModel):
     """Solicitud de POST /v3/{modulo} — datos a analizar."""
 
     rows: list[dict[str, Any]] = Field(min_length=1, description="Filas de datos del módulo")

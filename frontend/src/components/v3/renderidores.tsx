@@ -3,13 +3,14 @@
  * - Regresión: número principal + barras por dimensión (primario) + tabla; scatter real-vs-predicho colapsado.
  * - Clasificación: binaria (dona + tabla) o multiclase (barras por categoría + tabla).
  * - Clustering: tarjetas por grupo (primario) + mapa de segmentos (coordenadas REALES) colapsado.
- * Unidades y formato leídos del backend (resultado.unidad).
+ * Unidades y formato leídos del backend (result.unit). Claves del contrato en inglés (ADR-0028).
  */
 import { useMemo, useState } from 'react'
-import type { ReporteConsulta, AutoRow } from '../../api/types'
+import type { QueryReport, AutoRow } from '../../api/types'
 import { TablaInteractiva } from '../ui/TablaInteractiva'
 import { ScatterChart } from '../charts/ScatterChart'
 import { BarrasTop } from '../charts/BarrasTop'
+import { InfoTooltip } from '../ui/InfoTooltip'
 import { fmtValor } from '../../utils/format'
 import {
   ScatterChart as RechartsScatter,
@@ -26,7 +27,7 @@ import {
 } from 'recharts'
 
 interface RenderidorProps {
-  reporte: ReporteConsulta
+  reporte: QueryReport
   accentHex: string
 }
 
@@ -41,10 +42,23 @@ function humaniza(col: string): string {
     fecha: 'Fecha',
     fecha_orden: 'Fecha',
     canal_venta: 'Canal',
+    metodo_pago: 'Método de pago',
+    zona_almacen: 'Zona',
+    en_promocion: 'En promoción',
+    descuento_pct: 'Descuento %',
+    descuento_volumen: 'Descuento volumen',
+    es_fin_de_semana: 'Fin de semana',
+    dias_a_proximo_feriado: 'Días a feriado',
+    tiempo_reposicion_dias: 'Días de reposición',
+    lead_time_dias: 'Días de entrega',
     unidades_vendidas: 'Unidades',
     ingreso: 'Ingreso',
+    precio_unitario: 'Precio',
     precio_unitario_compra: 'Precio compra',
     cantidad_pedida: 'Cantidad',
+    stock_actual: 'Stock actual',
+    stock_maximo: 'Stock máximo',
+    demanda_diaria_promedio: 'Demanda media',
     dias_de_cobertura: 'Días de cobertura',
     rotacion: 'Rotación',
   }
@@ -53,27 +67,26 @@ function humaniza(col: string): string {
 
 /** Regresión: número principal + barras por dimensión + tabla; scatter real-vs-predicho colapsado. */
 export function RenderidorRegresion({ reporte, accentHex }: RenderidorProps) {
-  const resultado = reporte.resultado as Record<string, unknown>
-  const unidad = (reporte.unidad || (resultado.unidad as string) || '') as string
-  const predicciones = Array.isArray(resultado?.predicciones)
-    ? (resultado.predicciones as Array<Record<string, unknown>>)
+  const resultado = reporte.result as Record<string, unknown>
+  const unidad = (reporte.unit || (resultado.unit as string) || '') as string
+  const predicciones = Array.isArray(resultado?.predictions)
+    ? (resultado.predictions as Array<Record<string, unknown>>)
     : []
 
-  const total = useMemo(
-    () => predicciones.reduce((a, p) => a + (Number(p.valor) || 0), 0),
-    [predicciones],
-  )
+  // A2: el recuadro resumen lo decide el backend (suma para extensivas, promedio para
+  // intensivas), leído del catálogo. El frontend solo lo muestra.
+  const summary = reporte.summary
 
-  // Agrupar por dimensiones (todo excepto valor/real/fecha)
+  // Agrupar por dimensiones (todo excepto value/actual/fecha)
   const filas: AutoRow[] = useMemo(() => {
     const mapa = new Map<string, { dims: Record<string, unknown>; total: number; n: number }>()
     for (const p of predicciones) {
       const dims = Object.fromEntries(
-        Object.entries(p).filter(([k]) => !['valor', 'real', 'fecha', 'fecha_orden'].includes(k)),
+        Object.entries(p).filter(([k]) => !['value', 'actual', 'fecha', 'fecha_orden'].includes(k)),
       )
       const id = JSON.stringify(dims)
       const e = mapa.get(id) ?? { dims, total: 0, n: 0 }
-      e.total += Number(p.valor) || 0
+      e.total += Number(p.value) || 0
       e.n += 1
       mapa.set(id, e)
     }
@@ -99,7 +112,7 @@ export function RenderidorRegresion({ reporte, accentHex }: RenderidorProps) {
     () =>
       predicciones
         .slice(0, 200)
-        .map((p) => ({ x: Number(p.real) || 0, y: Number(p.valor) || 0 })),
+        .map((p) => ({ x: Number(p.actual) || 0, y: Number(p.value) || 0 })),
     [predicciones],
   )
 
@@ -110,19 +123,25 @@ export function RenderidorRegresion({ reporte, accentHex }: RenderidorProps) {
 
   return (
     <div className="space-y-3">
-      {/* Número principal */}
-      <div className="rounded-lg px-3 py-2" style={{ backgroundColor: `${accentHex}10` }}>
-        <div className="text-xs text-slate-500">Total estimado (periodo reciente)</div>
-        <div className="text-3xl font-bold" style={{ color: accentHex }}>
-          {fmtValor(total, unidad)}
+      {/* Número principal (A2): suma o promedio según la magnitud del objetivo (del catálogo) */}
+      {summary && (
+        <div className="rounded-lg px-3 py-2" style={{ backgroundColor: `${accentHex}10` }}>
+          <div className="text-xs text-slate-500">{summary.label} (periodo reciente)</div>
+          <div className="text-3xl font-bold" style={{ color: accentHex }}>
+            {fmtValor(summary.value, summary.unit || unidad)}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Gráfico primario: barras por dimensión */}
       {topItems.length > 0 && (
         <div>
           <p className="text-xs font-medium text-slate-500 mb-1">Top por {columnas[0]?.toLowerCase()}:</p>
           <BarrasTop data={topItems} hex={accentHex} valorLabel={`Total (${unidad || 'valor'})`} />
+          <p className="text-xs text-slate-400 mt-1">
+            Cada barra suma el valor estimado del periodo por {columnas[0]?.toLowerCase()}
+            {unidad ? ` (en ${unidad})` : ''}.
+          </p>
         </div>
       )}
 
@@ -157,11 +176,11 @@ export function RenderidorRegresion({ reporte, accentHex }: RenderidorProps) {
 
 /** Clasificación: binaria (dona) o multiclase (barras por categoría predicha). */
 export function RenderidorClasificacion({ reporte, accentHex }: RenderidorProps) {
-  const resultado = reporte.resultado as Record<string, unknown>
-  const predicciones = Array.isArray(resultado?.predicciones)
-    ? (resultado.predicciones as Array<Record<string, unknown>>)
+  const resultado = reporte.result as Record<string, unknown>
+  const predicciones = Array.isArray(resultado?.predictions)
+    ? (resultado.predictions as Array<Record<string, unknown>>)
     : []
-  const esMulticlase = predicciones.length > 0 && 'clase_predicha' in predicciones[0]
+  const esMulticlase = predicciones.length > 0 && 'predicted_class' in predicciones[0]
 
   if (predicciones.length === 0)
     return <p className="text-sm text-slate-500 italic">Sin predicciones.</p>
@@ -181,7 +200,7 @@ function RenderBinaria({
   accentHex: string
 }) {
   const [soloAlerta, setSoloAlerta] = useState(true)
-  const enAlerta = predicciones.filter((p) => Number(p.clase) === 1).length
+  const enAlerta = predicciones.filter((p) => Number(p.class) === 1).length
   const normal = predicciones.length - enAlerta
 
   const filas: AutoRow[] = useMemo(
@@ -189,12 +208,12 @@ function RenderBinaria({
       predicciones
         .map((p) => {
           const dims = Object.fromEntries(
-            Object.entries(p).filter(([k]) => !['clase', 'probabilidad'].includes(k)),
+            Object.entries(p).filter(([k]) => !['class', 'probability'].includes(k)),
           )
           return {
             ...Object.fromEntries(Object.entries(dims).map(([k, v]) => [humaniza(k), v])),
-            '¿En alerta?': Number(p.clase) === 1 ? 'Sí' : 'No',
-            'Confianza (%)': Math.round(Number(p.probabilidad ?? 0) * 100),
+            '¿En alerta?': Number(p.class) === 1 ? 'Sí' : 'No',
+            'Confianza (%)': Math.round(Number(p.probability ?? 0) * 100),
           }
         })
         .filter((f) => (soloAlerta ? f['¿En alerta?'] === 'Sí' : true))
@@ -222,9 +241,16 @@ function RenderBinaria({
         </ResponsiveContainer>
         <div className="text-sm">
           <div className="text-2xl font-bold" style={{ color: accentHex }}>{enAlerta}</div>
-          <div className="text-slate-500">en alerta de {predicciones.length}</div>
+          <div className="text-slate-500">
+            en alerta de {predicciones.length}{' '}
+            <InfoTooltip text={`De ${predicciones.length} casos del conjunto de prueba (los más recientes, que el modelo no vio al entrenar), ${enAlerta} quedaron marcados en alerta.`} />
+          </div>
         </div>
       </div>
+      <p className="text-xs text-slate-400">
+        El aro muestra cuántos casos quedaron <b>en alerta</b> vs. normales, sobre {predicciones.length} casos del
+        periodo de prueba.
+      </p>
 
       <label className="flex items-center gap-2 text-xs text-slate-600">
         <input type="checkbox" checked={soloAlerta} onChange={(e) => setSoloAlerta(e.target.checked)} />
@@ -251,7 +277,7 @@ function RenderMulticlase({
   const conteo = useMemo(() => {
     const m = new Map<string, number>()
     for (const p of predicciones) {
-      const c = String(p.clase_predicha ?? '—')
+      const c = String(p.predicted_class ?? '—')
       m.set(c, (m.get(c) ?? 0) + 1)
     }
     return [...m.entries()].map(([nombre, valor]) => ({ nombre, valor })).sort((a, b) => b.valor - a.valor)
@@ -262,12 +288,12 @@ function RenderMulticlase({
       predicciones
         .map((p) => {
           const dims = Object.fromEntries(
-            Object.entries(p).filter(([k]) => !['clase_predicha', 'probabilidad'].includes(k)),
+            Object.entries(p).filter(([k]) => !['predicted_class', 'probability'].includes(k)),
           )
           return {
             ...Object.fromEntries(Object.entries(dims).map(([k, v]) => [humaniza(k), v])),
-            'Predicción': String(p.clase_predicha ?? '—'),
-            'Confianza (%)': Math.round(Number(p.probabilidad ?? 0) * 100),
+            'Predicción': String(p.predicted_class ?? '—'),
+            'Confianza (%)': Math.round(Number(p.probability ?? 0) * 100),
           }
         })
         .sort((a, b) => Number(b['Confianza (%)']) - Number(a['Confianza (%)'])),
@@ -277,8 +303,12 @@ function RenderMulticlase({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-slate-500">Predicción más frecuente: <b>{conteo[0]?.nombre}</b></p>
+      <p className="text-xs text-slate-500">
+        Esta alerta <b>elige una categoría</b> (no es sí/no). Predicción más frecuente:{' '}
+        <b>{conteo[0]?.nombre}</b>.
+      </p>
       <BarrasTop data={conteo} hex={accentHex} valorLabel="Casos previstos" />
+      <p className="text-xs text-slate-400">Cada barra = cuántos casos del periodo de prueba caen en esa categoría.</p>
       {filas.length > 0 && (
         <TablaInteractiva rows={filas} columns={cols} inicial={6} buscarPlaceholder="Buscar…" />
       )}
@@ -288,18 +318,18 @@ function RenderMulticlase({
 
 /** Clustering: tarjetas por grupo (primario) + mapa de segmentos con coordenadas REALES (colapsado). */
 export function RenderidorClustering({ reporte }: RenderidorProps) {
-  const resultado = reporte.resultado as Record<string, unknown>
-  const segmentos = Array.isArray(resultado?.predicciones)
-    ? (resultado.predicciones as Array<Record<string, unknown>>)
+  const resultado = reporte.result as Record<string, unknown>
+  const segmentos = Array.isArray(resultado?.predictions)
+    ? (resultado.predictions as Array<Record<string, unknown>>)
     : []
-  const ejes = (resultado.ejes as { x?: string; y?: string }) ?? {}
+  const ejes = (resultado.axes as { x?: string; y?: string }) ?? {}
 
   const grupos = useMemo(() => {
     const m = new Map<string, { entidades: string[]; grupo: number }>()
     for (const s of segmentos) {
-      const et = String(s.etiqueta ?? 'Grupo')
-      const e = m.get(et) ?? { entidades: [], grupo: Number(s.grupo ?? 0) }
-      e.entidades.push(String(s.entidad ?? '—'))
+      const et = String(s.label ?? 'Grupo')
+      const e = m.get(et) ?? { entidades: [], grupo: Number(s.group ?? 0) }
+      e.entidades.push(String(s.entity ?? '—'))
       m.set(et, e)
     }
     return [...m.entries()].sort((a, b) => b[1].entidades.length - a[1].entidades.length)
@@ -312,8 +342,8 @@ export function RenderidorClustering({ reporte }: RenderidorProps) {
       segmentos.map((s) => ({
         x: Number(s.x) || 0,
         y: Number(s.y) || 0,
-        color: colorDe(Number(s.grupo ?? 0)),
-        entidad: String(s.entidad ?? ''),
+        color: colorDe(Number(s.group ?? 0)),
+        entidad: String(s.entity ?? ''),
       })),
     [segmentos],
   )
@@ -363,6 +393,10 @@ export function RenderidorClustering({ reporte }: RenderidorProps) {
                 </Scatter>
               </RechartsScatter>
             </ResponsiveContainer>
+            <p className="text-xs text-slate-400 mt-1">
+              Cómo leer esto: cada punto es una entidad y cada color un grupo. Los ejes son una
+              proyección 2D para <b>ver similitud</b> (no tienen unidades de negocio): puntos cercanos = parecidos.
+            </p>
           </div>
         </details>
       )}
@@ -376,7 +410,12 @@ function GrupoCard({ etiqueta, entidades, color }: { etiqueta: string; entidades
   return (
     <div className="rounded-lg border p-2.5" style={{ borderColor: color, backgroundColor: `${color}0d` }}>
       <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+        <span
+          className="w-2.5 h-2.5 rounded-full"
+          style={{ backgroundColor: color }}
+          role="img"
+          aria-label={`Color del grupo ${etiqueta}`}
+        />
         <p className="text-sm font-semibold text-slate-800">{etiqueta}</p>
       </div>
       <p className="text-xs text-slate-500 mt-0.5">{entidades.length} elementos</p>

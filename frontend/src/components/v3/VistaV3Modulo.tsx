@@ -13,13 +13,15 @@ import {
   getV3PlantillaJson,
   getV3Catalogo,
 } from '../../api/endpoints'
-import type { RespuestaModulo, ConsultaInfo, V3Domain } from '../../api/types'
+import type { AutoRow, ModuleResponse, QueryInfo, V3Domain } from '../../api/types'
 import { ModuleHeader } from '../ui/ModuleHeader'
 import { StepSection } from '../ui/StepSection'
 import { EmptyState } from '../ui/EmptyState'
 import { ErrorPanel } from '../ErrorPanel'
 import { SeccionReportes } from './SeccionReportes'
 import { BloqueTendencia } from './BloqueTendencia'
+import { ValidacionCarga } from './ValidacionCarga'
+import { TIPOS_REPORTE, ORDEN_TIPO, INFO_POR_TIPO } from '../../data/tiposReporte'
 import type { Accent, View } from '../../theme/modules'
 import type { LucideIcon } from 'lucide-react'
 
@@ -47,18 +49,27 @@ export function VistaV3Modulo({
   accent,
   empty,
 }: VistaV3ModuloProps) {
-  const [catalogo, setCatalogo] = useState<ConsultaInfo[]>([])
-  const [data, setData] = useState<RespuestaModulo | null>(null)
+  const [catalogo, setCatalogo] = useState<QueryInfo[]>([])
+  const [muestra, setMuestra] = useState<AutoRow[]>([])
+  const [data, setData] = useState<ModuleResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
 
-  // Carga catálogo al montar
+  // Carga catálogo y una muestra de la plantilla (A9) al montar
   useEffect(() => {
     let vivo = true
     getV3Catalogo()
-      .then((c) => vivo && setCatalogo(c.consultas.filter((x) => x.modulo === modulo)))
+      .then((c) => vivo && setCatalogo(c.queries.filter((x) => x.module === modulo)))
       .catch(() => vivo && setCatalogo([]))
+    getV3PlantillaJson(modulo)
+      .then(({ blob }) => blob.text())
+      .then((t) => {
+        const j = JSON.parse(t)
+        const rows: AutoRow[] = Array.isArray(j) ? j : (j.rows ?? [])
+        if (vivo) setMuestra(rows.slice(0, 3))
+      })
+      .catch(() => vivo && setMuestra([]))
     return () => {
       vivo = false
     }
@@ -74,7 +85,7 @@ export function VistaV3Modulo({
     try {
       if (nombre.endsWith('.xlsx') || nombre.endsWith('.json')) {
         // Usar endpoint /archivo que procesa Excel/JSON
-        const result = await postFile<RespuestaModulo>(`/v3/${modulo}/archivo`, file)
+        const result = await postFile<ModuleResponse>(`/v3/${modulo}/archivo`, file)
         setData(result.data)
         return
       }
@@ -109,24 +120,32 @@ export function VistaV3Modulo({
 
   const Empty = empty.icon
 
-  // Filtrar reportes por tipo
-  const reportesRegresion = data?.reportes.filter((r) => r.tipo === 'regresion') ?? []
-  const reportesClasificacion = data?.reportes.filter((r) => r.tipo === 'clasificacion') ?? []
-  const reportesClustering = data?.reportes.filter((r) => r.tipo === 'clustering') ?? []
+  // A1: listado del Paso 1 ordenado como los resultados (Predicción → Alerta → Segmento)
+  const catalogoOrdenado = [...catalogo].sort((a, b) => ORDEN_TIPO[a.type] - ORDEN_TIPO[b.type])
 
   return (
     <div className="space-y-5">
       <ModuleHeader view={view} />
 
-      {/* PASO 1 — ¿Qué datos necesito? */}
+      {/* PASO 1 — ¿Qué análisis obtendrás? */}
       <StepSection
         step={1}
-        title="¿Qué datos necesito?"
+        title="¿Qué análisis obtendrás?"
         accentChip={accent.chip}
-        description="Estas columnas son las que debes traer. El sistema te predecirá automáticamente con 10 análisis."
+        description="El sistema ejecuta 10 análisis automáticos por ti. Estos son y qué responden."
       >
         <div className="space-y-4">
-          {/* Listado de consultas */}
+          {/* Explicación de los 3 tipos (misma fuente que los resultados) */}
+          <div className="grid gap-2 sm:grid-cols-3">
+            {TIPOS_REPORTE.map((t) => (
+              <div key={t.type} className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
+                <p className="text-sm font-semibold text-slate-800">{t.icono} {t.chip}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{t.explicacion}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Listado de consultas (ordenado como los resultados) */}
           <div>
             <p className="text-sm font-medium text-slate-700 mb-2">
               10 análisis que se ejecutarán automáticamente:
@@ -140,19 +159,15 @@ export function VistaV3Modulo({
                   </tr>
                 </thead>
                 <tbody>
-                  {catalogo.length > 0 ? (
-                    catalogo.map((q) => (
-                      <tr key={q.consulta_id} className="border-b border-slate-100 last:border-0">
+                  {catalogoOrdenado.length > 0 ? (
+                    catalogoOrdenado.map((q) => (
+                      <tr key={q.id} className="border-b border-slate-100 last:border-0">
                         <td className="px-3 py-2">
                           <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: `${accent.hex}20`, color: accent.hex }}>
-                            {q.tipo === 'regresion'
-                              ? 'Predicción'
-                              : q.tipo === 'clasificacion'
-                                ? 'Alerta'
-                                : 'Segmento'}
+                            {INFO_POR_TIPO[q.type].chip}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-slate-700">{q.pregunta}</td>
+                        <td className="px-3 py-2 text-slate-700">{q.question}</td>
                       </tr>
                     ))
                   ) : (
@@ -191,6 +206,35 @@ export function VistaV3Modulo({
         <p className="help mt-2">
           Ambas plantillas traen todas las columnas necesarias y filas de ejemplo listas para reemplazar.
         </p>
+
+        {/* A9: mini-tabla de muestra para no descargar "a ciegas" */}
+        {muestra.length > 0 && (
+          <div className="mt-3">
+            <p className="mb-1 text-xs font-medium text-slate-500">Así se ven las columnas (ejemplo):</p>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 uppercase tracking-wide text-slate-400">
+                    {Object.keys(muestra[0]).map((c) => (
+                      <th key={c} className="whitespace-nowrap px-2.5 py-1.5 font-medium">{c}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {muestra.map((fila, i) => (
+                    <tr key={i} className="border-b border-slate-100 last:border-0">
+                      {Object.keys(muestra[0]).map((c) => (
+                        <td key={c} className="whitespace-nowrap px-2.5 py-1.5 text-slate-600">
+                          {String(fila[c] ?? '')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </StepSection>
 
       {/* PASO 3 — Analiza tus datos */}
@@ -244,50 +288,42 @@ export function VistaV3Modulo({
       {/* Resultados: 3 secciones + tendencia */}
       {data && (
         <div className="space-y-8">
-          {/* SECCIÓN A: Predicciones (regresión) */}
-          {reportesRegresion.length > 0 && (
-            <SeccionReportes
-              titulo="Predicciones"
-              icono="📊"
-              descripcion="Números: qué esperar según los factores de tu negocio"
-              reportes={reportesRegresion}
-              accentHex={accent.hex}
-            />
-          )}
+          {/* A8: retroalimentación de la carga */}
+          {data.dataset_info && <ValidacionCarga info={data.dataset_info} />}
 
-          {/* SECCIÓN B: Alertas (clasificación) */}
-          {reportesClasificacion.length > 0 && (
-            <SeccionReportes
-              titulo="Alertas"
-              icono="🔔"
-              descripcion="Sí/No: qué requiere tu atención"
-              reportes={reportesClasificacion}
-              accentHex={accent.hex}
-            />
-          )}
+          {/* A7: leyenda de vocabulario (puente vista ↔ términos técnicos) */}
+          <p className="text-xs text-slate-500">
+            <span className="font-medium">Cómo leer esto:</span>{' '}
+            <b>Predicción</b> = regresión (un número) · <b>Alerta</b> = clasificación (sí/no o categoría) ·{' '}
+            <b>Segmento</b> = agrupación (clustering). El detalle técnico está en «Ver detalle técnico».
+          </p>
 
-          {/* SECCIÓN C: Grupos (clustering) */}
-          {reportesClustering.length > 0 && (
-            <SeccionReportes
-              titulo="Grupos"
-              icono="🧩"
-              descripcion="Segmentación: cómo agrupar tus datos para mejor gestión"
-              reportes={reportesClustering}
-              accentHex={accent.hex}
-            />
-          )}
+          {/* Secciones de resultados: mismo orden y fuente que el Paso 1 (A1) */}
+          {TIPOS_REPORTE.map((t) => {
+            const reps = data.reports.filter((r) => r.type === t.type)
+            return reps.length > 0 ? (
+              <SeccionReportes
+                key={t.type}
+                titulo={t.titulo}
+                icono={t.icono}
+                descripcion={t.descripcion}
+                reportes={reps}
+                accentHex={accent.hex}
+              />
+            ) : null
+          })}
 
           {/* SECCIÓN D: Análisis/Tendencia */}
-          {data.analisis_tendencia && (
+          {data.trend_analysis && (
             <BloqueTendencia
-              bloque={data.analisis_tendencia}
+              bloque={data.trend_analysis}
               accentHex={accent.hex}
             />
           )}
 
           {/* Fecha de ejecución */}
           <div className="text-xs text-slate-400 text-center pt-4 border-t border-slate-200">
-            Análisis realizado el {new Date(data.fecha_ejecución).toLocaleString('es-PE')}
+            Análisis realizado el {new Date(data.executed_at).toLocaleString('es-PE')}
           </div>
         </div>
       )}
