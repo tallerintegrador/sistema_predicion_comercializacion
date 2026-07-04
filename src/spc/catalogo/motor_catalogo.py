@@ -34,7 +34,7 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.decomposition import PCA
-from sklearn.metrics import precision_recall_curve, auc, silhouette_score, f1_score
+from sklearn.metrics import average_precision_score, silhouette_score, f1_score
 from sklearn.preprocessing import StandardScaler
 
 from spc.catalogo.config import (
@@ -75,6 +75,7 @@ class _Entrenamiento:
     valor_metrica: float
     advertencia: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    resumen: dict[str, Any] | None = None  # A2: recuadro resumen sobre TODO el test (no truncado a 500)
 
 
 @dataclass
@@ -158,14 +159,15 @@ def _nota_tecnica(config: ConfigConsulta) -> str | None:
     if config.tipo == "clasificacion" and der is not None:
         if der.tipo == "regla":
             return (
-                "La etiqueta se calcula con una regla determinística "
-                f"({der.formula}). Por eso la métrica sale muy alta: el modelo aprende una "
-                "fórmula conocida, no un patrón incierto."
+                "La etiqueta se define con una regla determinística "
+                f"({der.formula}). Las columnas que intervienen en esa regla están excluidas "
+                "de las entradas; el modelo estima la alerta desde otros factores, no la recalcula."
             )
         if der.tipo == "umbral":
             return (
                 f"La etiqueta usa un umbral fijo de negocio "
-                f"({der.columna_objetivo} ≥ {der.umbral_valor})."
+                f"({der.columna_objetivo} ≥ {der.umbral_valor}); la columna del umbral está "
+                "excluida de las entradas."
             )
         if der.tipo == "percentil":
             grupo = f" por {der.agrupar_por}" if der.agrupar_por else " global"
@@ -187,9 +189,9 @@ def _nota_metrica_casi_perfecta(
         and valor_metrica >= umbral
     ):
         return (
-            f"La métrica es muy alta ({valor_metrica:.0%}) porque, con estos datos, la etiqueta "
-            "resulta casi determinística a partir de los factores. No es fuga (las columnas que "
-            "definen la etiqueta están excluidas), pero conviene leerla con cautela."
+            f"La métrica es muy alta ({valor_metrica:.0%}): con estos datos los factores "
+            "disponibles ya casi determinan la etiqueta. Conviene leerla con cautela (una cifra "
+            "cercana al 100% suele indicar un problema fácil, no necesariamente un mejor modelo)."
         )
     return None
 
@@ -207,21 +209,32 @@ def _calidad(tipo: str, metrica: str, valor: float, u: UmbralesCalidad) -> str:
     return "limitada"
 
 
-def _resumen_regresion(config: ConfigConsulta, predicciones: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _resumen_regresion(config: ConfigConsulta, valores: Any) -> dict[str, Any] | None:
     """Recuadro resumen A2: SUMA para magnitudes extensivas, PROMEDIO para intensivas.
+
+    `valores` es el conjunto de valores predichos de TODO el tramo de TEST (no la lista
+    truncada a MAX_PREDICCIONES que se muestra en la tabla): así el "Total estimado" refleja
+    el periodo completo y no depende del tope de visualización.
 
     El tipo de magnitud se lee del catálogo (no se hard-codea). Extensiva = flujo acumulable
     (unidades, S/); intensiva = tasa/nivel/ratio (%, días, rotación, cobertura…), que no tiene
     sentido sumar.
     """
-    valores = [p["value"] for p in predicciones if isinstance(p.get("value"), (int, float))]
-    if not valores:
+    vals: list[float] = []
+    for v in valores:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if not (math.isnan(f) or math.isinf(f)):
+            vals.append(f)
+    if not vals:
         return None
     magnitud = obtener_magnitudes().get(config.objetivo, "extensiva")
     if magnitud == "intensiva":
-        agg, valor, label = "mean", float(np.mean(valores)), "Promedio estimado"
+        agg, valor, label = "mean", float(np.mean(vals)), "Promedio estimado"
     else:
-        agg, valor, label = "sum", float(np.sum(valores)), "Total estimado"
+        agg, valor, label = "sum", float(np.sum(vals)), "Total estimado"
     return {
         "aggregation": agg,
         "value": _num2(valor),
@@ -421,10 +434,16 @@ def _wape(y_real: np.ndarray, y_pred: np.ndarray) -> float:
 
 
 def _pr_auc(y_real: np.ndarray, y_prob: np.ndarray) -> float:
+    """PR-AUC = Average Precision (métrica correcta; el no-skill = prevalencia de positivos).
+
+    Antes se usaba auc(recall, precision) con interpolación lineal, que SOBREESTIMA (un
+    predictor constante daba ~0.60 en vez de la prevalencia ~0.20), haciendo que 'baseline'
+    ganara de forma artificial incluso cuando un modelo real tenía señal. average_precision_score
+    corrige ese sesgo (sklearn lo recomienda explícitamente sobre auc(recall, precision)).
+    """
     if len(np.unique(y_real)) < 2:
         return 0.0
-    precision, recall, _ = precision_recall_curve(y_real, y_prob)
-    return float(auc(recall, precision))
+    return float(average_precision_score(y_real, y_prob))
 
 
 def _f1_macro(y_real: np.ndarray, y_pred: np.ndarray) -> float:
@@ -537,7 +556,10 @@ def entrenar_regresion(
         item["actual"] = _num2(y_real[pos])
         predicciones.append(item)
 
-    return _Entrenamiento(tabla, predicciones, mejor_nombre, wape_test, None)
+    # A2 (fix tope 500): el resumen se calcula sobre TODO el tramo de test (y_pred completo),
+    # aunque la tabla mostrada se limite a MAX_PREDICCIONES filas.
+    resumen = _resumen_regresion(config, y_pred)
+    return _Entrenamiento(tabla, predicciones, mejor_nombre, wape_test, None, resumen=resumen)
 
 
 # ==============================================================================
@@ -846,16 +868,21 @@ def entrenar_clustering(df: pd.DataFrame, config: ConfigConsulta) -> _Entrenamie
             if best_a > mejor_sil:
                 mejor_sil, mejor_algo, mejor_labels = best_a, algo, best_a_labels
 
-    # Fallback (pocas entidades: toda partición tiene singletons) → KMeans sin la restricción.
+    # Fallback (toda partición dejaba grupos diminutos): elige la que MENOS singletons deje y,
+    # entre esas, la de mejor silueta (reduce k para evitar grupos de 1; si es inevitable, se avisa).
     if mejor_labels is None:
+        mejor_score = None  # (n_singletons, -silueta): menor es mejor
         for k in k_values:
             try:
                 labels = KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(X_s)
                 if len(np.unique(labels)) < 2:
                     continue
+                _, counts = np.unique(labels, return_counts=True)
+                n_sing = int((counts < min_miembros).sum())
                 sil = silhouette_score(X_s, labels)
-                if sil > mejor_sil:
-                    mejor_sil, mejor_algo, mejor_labels = sil, "kmeans", labels
+                score = (n_sing, -sil)
+                if mejor_score is None or score < mejor_score:
+                    mejor_score, mejor_sil, mejor_algo, mejor_labels = score, sil, "kmeans", labels
             except Exception as e:
                 log.warning(f"{config.id}: clustering fallback k={k} falló: {e}")
         if mejor_labels is not None:
@@ -911,12 +938,76 @@ def entrenar_clustering(df: pd.DataFrame, config: ConfigConsulta) -> _Entrenamie
         for a, s in mejor_por_algo.items()
     ] or [FilaComparacion(mejor_algo or "kmeans", "silhouette", mejor_sil, ganador=True)]
     avisos: list[str] = []
+    _, counts_final = np.unique(mejor_labels, return_counts=True)
+    n_singleton = int((counts_final < min_miembros).sum())
+    if n_singleton:
+        avisos.append(
+            f"Segmentación con {n_singleton} grupo(s) de 1 solo elemento: referencial, no accionable."
+        )
     if n < u.min_entidades_cluster:
         avisos.append(f"Segmentación sobre pocas entidades ({n}): referencial, no concluyente.")
     if mejor_sil < u.silhouette_aviso:
         avisos.append("Grupos poco definidos: la separación entre segmentos es débil (referencial).")
     adv = " ".join(avisos) or None
     return _Entrenamiento(tabla, predicciones, mejor_algo or "kmeans", mejor_sil, adv, {"axes": ejes})
+
+
+# ==============================================================================
+# Clasificación ABC (REGLA de Pareto por valor acumulado; NO clustering) — ALM-K1
+# ==============================================================================
+
+def entrenar_abc(df: pd.DataFrame, config: ConfigConsulta) -> _Entrenamiento:
+    """Análisis ABC CLÁSICO por valor acumulado (Pareto ~80/15/5).
+
+    Es una REGLA de negocio determinística, no clustering: ordena las entidades (SKU) por su
+    VALOR de mayor a menor y las parte en A/B/C según el % ACUMULADO del valor total.
+
+    Criterio de valor: ``demanda_diaria_promedio`` (volumen de movimiento por SKU); si no está,
+    la primera columna de entrada. Cortes: A hasta 80% acumulado, B 80–95%, C 95–100%.
+    """
+    agg, keys = _agregar_clustering(df, config)
+    if len(agg) < 2 or not keys:
+        return _Entrenamiento([], [], "—", 0.0, "Muy pocas entidades para el análisis ABC.")
+
+    feats = list(agg.columns)
+    val_col = "demanda_diaria_promedio" if "demanda_diaria_promedio" in feats else feats[0]
+    valor = pd.to_numeric(agg[val_col], errors="coerce").fillna(0.0).clip(lower=0.0)
+    orden = valor.sort_values(ascending=False)
+    total = float(orden.sum()) or 1.0
+    cum = orden.cumsum() / total
+
+    def _clase(frac: float) -> int:
+        if frac <= 0.80:
+            return 0  # A (más importante)
+        if frac <= 0.95:
+            return 1  # B (intermedia)
+        return 2      # C (menos importante)
+
+    grupo_de = {ent_id: _clase(float(frac)) for ent_id, frac in cum.items()}
+    labels = np.array([grupo_de[i] for i in agg.index], dtype=int)
+    nombres = _etiquetas_por_estilo("abc", 3)
+
+    predicciones: list[dict[str, Any]] = []
+    for ent_id in agg.index:
+        g = int(grupo_de[ent_id])
+        entidad = " · ".join(str(x) for x in ent_id) if isinstance(ent_id, tuple) else str(ent_id)
+        predicciones.append({
+            "entity": entidad,
+            "label": nombres[min(g, len(nombres) - 1)],
+            "group": g,
+            "x": _num2(float(valor[ent_id])),
+            "y": _num2(float(cum[ent_id]) * 100.0),
+        })
+
+    # Métrica propia del ABC (una regla NO tiene "cohesión"/silueta): fracción del valor total
+    # que concentra la Clase A. Es la lectura honesta de un análisis de Pareto.
+    share_a = float(valor[[i for i in agg.index if grupo_de[i] == 0]].sum()) / total
+
+    adv = ("Todos los SKU cayeron en una sola clase ABC (valor muy concentrado): referencial."
+           if len(np.unique(labels)) < 2 else None)
+    tabla = [FilaComparacion("regla_abc_pareto", "value_share_a", share_a, ganador=True)]
+    meta = {"axes": {"x": val_col, "y": "valor acumulado %"}, "abc_valor": val_col}
+    return _Entrenamiento(tabla, predicciones, "regla_abc_pareto", share_a, adv, meta)
 
 
 # ==============================================================================
@@ -1033,8 +1124,13 @@ def ejecutar_consulta(consulta_id: str, df: pd.DataFrame) -> ResultadoConsulta:
         ent = entrenar_clasificacion(df, config, construir_features(df, config, modulo_config))
         metrica = "f1_macro" if config.derivacion_etiqueta is None else "pr_auc"
     elif config.tipo == "clustering":
-        ent = entrenar_clustering(df, config)
-        metrica = "silhouette"
+        if config.estilo_etiqueta == "abc":
+            # ALM-K1 NO es clustering: es la regla de Pareto por valor acumulado.
+            ent = entrenar_abc(df, config)
+            metrica = "value_share_a"
+        else:
+            ent = entrenar_clustering(df, config)
+            metrica = "silhouette"
     else:
         raise ValueError(f"Tipo de consulta desconocido: {config.tipo}")
 
@@ -1064,11 +1160,22 @@ def ejecutar_consulta(consulta_id: str, df: pd.DataFrame) -> ResultadoConsulta:
         if facil:
             nota = f"{nota} {facil}" if nota else facil
 
+    # ABC (ALM-K1): dejar claro que es una REGLA de negocio, no clustering, y su criterio de valor.
+    if config.tipo == "clustering" and config.estilo_etiqueta == "abc":
+        crit = ent.meta.get("abc_valor", "demanda_diaria_promedio")
+        nota_abc = (
+            "Clasificación ABC por REGLA de Pareto (no es clustering): se ordenan los SKU por su "
+            f"valor ({crit} = volumen de movimiento) y se asignan A/B/C por valor acumulado "
+            "(A ≈ primeros 80%, B 80–95%, C 95–100%)."
+        )
+        nota = f"{nota_abc} {nota}" if nota else nota_abc
+
     # Calidad honesta (solo si hubo entrenamiento real; degradado = limitada).
     calidad = _calidad(config.tipo, metrica, ent.valor_metrica, u) if ent.tabla else "limitada"
 
-    # A2: recuadro resumen (suma para extensivas, promedio para intensivas).
-    resumen = _resumen_regresion(config, ent.predicciones) if config.tipo == "regresion" else None
+    # A2: recuadro resumen (suma para extensivas, promedio para intensivas), calculado en el
+    # entrenador sobre TODO el tramo de test (no sobre la lista truncada a MAX_PREDICCIONES).
+    resumen = ent.resumen if config.tipo == "regresion" else None
 
     resultado = ResultadoConsulta(
         consulta_id=consulta_id,

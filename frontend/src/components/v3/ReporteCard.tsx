@@ -18,6 +18,7 @@ function ayudaMetrica(metrica: string): string {
       pr_auc: 'Confianza de la alerta: qué tan bien separa los casos con y sin alerta (0 a 1; mayor es mejor).',
       f1_macro: 'Acierto equilibrado entre todas las categorías (0 a 1; mayor es mejor).',
       silhouette: 'Cohesión de los grupos: qué tan separados y compactos son (−1 a 1; mayor es mejor).',
+      value_share_a: 'Concentración de la clase A: qué % del valor total (volumen de movimiento) mueven los pocos productos de la clase A. Es una regla de Pareto (ABC), no un modelo.',
     }[metrica.toLowerCase()] || 'Métrica técnica del modelo.'
   )
 }
@@ -40,6 +41,7 @@ function etiquetaMetrica(metrica: string): string {
       pr_auc: 'Confianza',
       f1_macro: 'Acierto (F1)',
       silhouette: 'Cohesión de grupos',
+      value_share_a: 'Concentración clase A',
     }[metrica.toLowerCase()] || metrica
   )
 }
@@ -48,6 +50,7 @@ function etiquetaMetrica(metrica: string): string {
 function valorMetrica(metrica: string, valor: number): string {
   const m = metrica.toLowerCase()
   if (m === 'wape') return `${(valor * 100).toFixed(0)}% (menor = mejor)`
+  if (m === 'value_share_a') return `${(valor * 100).toFixed(0)}% del valor en clase A`
   return NUM.format(valor)
 }
 

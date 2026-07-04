@@ -283,6 +283,15 @@ function RenderMulticlase({
     return [...m.entries()].map(([nombre, valor]) => ({ nombre, valor })).sort((a, b) => b.valor - a.valor)
   }, [predicciones])
 
+  // ITEM 7: la tabla sigue el MISMO orden que el gráfico (primero la categoría más frecuente,
+  // mismo ranking que las barras) y, dentro de cada categoría, por confianza. Así tabla y
+  // gráfico coinciden y no confunden (antes la tabla ordenaba solo por confianza).
+  const rankCategoria = useMemo(() => {
+    const m = new Map<string, number>()
+    conteo.forEach((c, i) => m.set(c.nombre, i))
+    return m
+  }, [conteo])
+
   const filas: AutoRow[] = useMemo(
     () =>
       predicciones
@@ -296,8 +305,12 @@ function RenderMulticlase({
             'Confianza (%)': Math.round(Number(p.probability ?? 0) * 100),
           }
         })
-        .sort((a, b) => Number(b['Confianza (%)']) - Number(a['Confianza (%)'])),
-    [predicciones],
+        .sort((a, b) => {
+          const ra = rankCategoria.get(String(a['Predicción'])) ?? 999
+          const rb = rankCategoria.get(String(b['Predicción'])) ?? 999
+          return ra !== rb ? ra - rb : Number(b['Confianza (%)']) - Number(a['Confianza (%)'])
+        }),
+    [predicciones, rankCategoria],
   )
   const cols = filas[0] ? Object.keys(filas[0]) : []
 
@@ -308,7 +321,10 @@ function RenderMulticlase({
         <b>{conteo[0]?.nombre}</b>.
       </p>
       <BarrasTop data={conteo} hex={accentHex} valorLabel="Casos previstos" />
-      <p className="text-xs text-slate-400">Cada barra = cuántos casos del periodo de prueba caen en esa categoría.</p>
+      <p className="text-xs text-slate-400">
+        Cada barra = cuántos casos del periodo de prueba caen en esa categoría. La tabla de abajo
+        sigue el mismo orden (categoría más frecuente primero, y dentro de cada una por confianza).
+      </p>
       {filas.length > 0 && (
         <TablaInteractiva rows={filas} columns={cols} inicial={6} buscarPlaceholder="Buscar…" />
       )}

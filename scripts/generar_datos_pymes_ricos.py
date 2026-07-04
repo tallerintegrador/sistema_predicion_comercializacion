@@ -120,6 +120,27 @@ SECTORES: dict[str, dict] = {
         ],
         "prob_promo": 0.12,
     },
+    "botica_farmasalud": {
+        "titulo": "Botica / Farmacia «FarmaSalud»",
+        "tiendas": ["Botica San José (SJL)", "Farmacia La Salud (Comas)",
+                    "Botica Económica (VMT)", "Farmacia El Pueblo (Ate)",
+                    "Botica Santa María (Los Olivos)", "Farmacia Central (Lima)"],
+        "proveedores": ["Química Suiza", "Drokasa", "Perufarma", "Distribuidora Albis",
+                        "Deco Droguería", "BASA Laboratorios", "Refasa", "Dimexa",
+                        "Farmindustria", "Medifarma", "Genfar Perú", "Portugal Distribución"],
+        # (nombre, categoria, precio_venta S/, elasticidad, demanda_base)
+        "productos": [
+            ("Paracetamol 500mg x10", "Analgésicos", 3.5, 1.1, 90), ("Ibuprofeno 400mg x10", "Analgésicos", 5.0, 1.2, 70),
+            ("Amoxicilina 500mg x10", "Antibióticos", 12.0, 0.9, 40), ("Panadol Antigripal", "Antigripales", 8.5, 1.3, 60),
+            ("Alcohol 96° 1L", "Primeros auxilios", 7.0, 1.4, 55), ("Agua oxigenada 120ml", "Primeros auxilios", 4.0, 1.3, 45),
+            ("Algodón 100g", "Primeros auxilios", 3.5, 1.2, 40), ("Vitamina C 1g x10", "Vitaminas", 15.0, 1.6, 35),
+            ("Bloqueador solar SPF50", "Cuidado personal", 35.0, 1.9, 15), ("Pañal Huggies M x30", "Bebé", 42.0, 1.5, 25),
+            ("Leche NAN 1 400g", "Bebé", 55.0, 1.4, 18), ("Jabón antibacterial", "Higiene", 6.0, 1.5, 50),
+            ("Shampoo anticaspa", "Cuidado personal", 18.0, 2.0, 20), ("Pasta dental Colgate", "Higiene", 5.5, 1.6, 60),
+            ("Termómetro digital", "Instrumental", 20.0, 1.8, 10), ("Mascarilla KN95 x10", "Protección", 12.0, 1.7, 30),
+        ],
+        "prob_promo": 0.10,
+    },
 }
 
 
@@ -157,6 +178,9 @@ def _perfil_proveedores(provs: list, rng: np.random.Generator) -> list[dict]:
         out.append(dict(id=f"PROV-{i+1:02d}", nombre=nombre, lead=lead_medio,
                         lead_sigma=float(rng.uniform(1.0, 3.0)), cumpl=cumpl_base,
                         factor_costo=float(rng.uniform(0.85, 1.15)),
+                        # descuento por volumen = POLÍTICA del proveedor (no derivada de la cantidad,
+                        # ver COM-C3): cada proveedor tiene su nivel típico de descuento.
+                        desc_pol=float(rng.uniform(0.03, 0.15)),
                         escala=float(rng.uniform(0.6, 1.6))))  # tamaño típico de pedido (para COM-R3)
     return out
 
@@ -183,8 +207,10 @@ def generar_ventas(sector: dict, skus: list[dict], seed: int) -> pd.DataFrame:
                     continue
                 finde = int(f.weekday() >= 5)
                 d_fer = _dias_a_feriado(f)
-                f_finde = 1.0 + 0.25 * finde
-                f_fer = 1.0 + 0.5 * max(0.0, (4 - d_fer) / 4.0)
+                # ITEM 6: picos de fin de semana/feriado algo más marcados (realistas en retail)
+                # para que VEN-C3 "día pico" tenga señal de calendario clara.
+                f_finde = 1.0 + 0.35 * finde
+                f_fer = 1.0 + 0.6 * max(0.0, (4 - d_fer) / 4.0)
                 promo = int(r.random() < sector["prob_promo"])
                 desc = round(float(r.uniform(8, 25)), 1) if promo else 0.0
                 precio = round(s["precio"] * ((1 - desc / 100) if promo else float(r.uniform(0.97, 1.03))), 2)
@@ -234,9 +260,12 @@ def generar_compras(sector: dict, skus: list[dict], provs: list[dict], seed: int
             for o in range(n_ord):
                 f = VENTANA_INICIO + timedelta(days=min(VENTANA_DIAS - 1, fase + o * paso))
                 lead = int(np.clip(round(r.normal(pv["lead"] + cat_lead[s["categoria"]], pv["lead_sigma"])), 1, 40))
-                desc_vol = round(float(np.clip(r.normal(0.08, 0.04), 0.0, 0.2)), 3)
+                # descuento_volumen INDEPENDIENTE de cantidad_pedida (política del proveedor + ruido):
+                # antes derivaba de la cantidad y reintroducía la etiqueta de COM-C3 (fuga por proxy).
+                desc_vol = round(float(np.clip(r.normal(pv["desc_pol"], 0.03), 0.0, 0.2)), 3)
                 precio = round(s["precio"] * 0.6 * pv["factor_costo"] * float(r.uniform(0.95, 1.06)), 2)
-                cantidad = base_qty * (1 + 0.015 * lead) * (1 + 0.8 * desc_vol) * float(r.uniform(0.85, 1.15))
+                # cantidad ya NO depende de desc_vol (se quitó el factor (1 + 0.8*desc_vol)).
+                cantidad = base_qty * (1 + 0.015 * lead) * float(r.uniform(0.85, 1.15))
                 cantidad = float(max(1, round(cantidad)))
                 cumpl = float(np.clip(r.normal(pv["cumpl"] - 0.012 * (lead - pv["lead"]), 0.12), 0.55, 1.0))
                 recibida = float(round(cantidad * cumpl))
@@ -261,6 +290,11 @@ def generar_almacen(sector: dict, skus: list[dict], seed: int) -> pd.DataFrame:
     zona_dem = {z: float(rng.uniform(0.7, 1.4)) for z in ZONAS}
     zona_rot = {z: float(rng.uniform(0.7, 1.4)) for z in ZONAS}
     cat_dem = {s["categoria"]: float(rng.uniform(0.8, 1.3)) for s in skus}
+    # ITEM 6: perfiles de RIESGO por zona/categoría → dan señal real a ALM-C1/C2/C3, que ahora
+    # predicen el riesgo desde categoria/zona/rotacion (no desde el propio stock, ver ITEM 2).
+    zona_quiebre = {z: float(rng.uniform(0.03, 0.30)) for z in ZONAS}  # propensión a quiebre por zona
+    zona_sobre = {z: float(rng.uniform(0.03, 0.22)) for z in ZONAS}    # propensión a sobrestock por zona
+    cat_riesgo = {s["categoria"]: float(rng.uniform(0.7, 1.35)) for s in skus}  # multiplicador por categoría
     # B6: snapshots muestreados en TODA la ventana (misma densidad de fechas que ventas).
     all_fechas = _fechas()
     p_incl = 10000 / (len(all_fechas) * len(tiendas) * len(skus))
@@ -278,16 +312,22 @@ def generar_almacen(sector: dict, skus: list[dict], seed: int) -> pd.DataFrame:
             # stock_mínimo = STOCK DE SEGURIDAD (1.5× demanda del lead time), distinto del
             # umbral de quiebre (ALM-C1) para diferenciar ALM-C2 "reposición urgente".
             stock_min = int(round(dem_prom * repo * 1.5))
+            # Probabilidades de quiebre/sobrestock que DEPENDEN de zona/categoría/rotación (ITEM 6):
+            # más rotación → más riesgo de quiebre y menos de sobrestock. Como zona/categoría/rotación
+            # son las features de ALM-C1/C2/C3, el modelo aprende un riesgo REAL (no una tautología).
+            rot_norm = float(np.clip(rot / 2.5, 0.6, 1.6))
+            p_q = float(np.clip(zona_quiebre[s["zona"]] * cat_riesgo[s["categoria"]] * (0.5 + 0.5 * rot_norm), 0.02, 0.6))
+            p_s = float(np.clip(zona_sobre[s["zona"]] * (1.7 - 0.6 * rot_norm), 0.02, 0.45))
             for f in all_fechas:
                 if r.random() > p_incl:
                     continue
                 finde = int(f.weekday() >= 5)
                 demanda_dia = max(0, int(round(dem_prom * (1.15 if finde else 1.0) * float(np.exp(r.normal(0, 0.18))))))
-                # cobertura objetivo con casos de quiebre (~15%) y sobrestock (~12%)
+                # cobertura: prob. de quiebre/sobrestock según zona/categoría/rotación (ITEM 6)
                 u = r.random()
-                if u < 0.15:
+                if u < p_q:
                     cov = float(r.uniform(0.2, 0.95)) * repo          # quiebre (ALM-C1)
-                elif u < 0.27:
+                elif u < p_q + p_s:
                     cov = s["cobertura"] + float(r.uniform(1, 12))    # sobrestock (ALM-C3)
                 else:
                     cov = float(r.uniform(repo, s["cobertura"]))
@@ -395,14 +435,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Genera datasets ricos con señal causal (2 rubros PYME peruana).")
     parser.add_argument("-o", "--out", default="ejemplos/datos_para_subir", help="Carpeta de salida.")
     parser.add_argument("--seed", type=int, default=2025)
+    parser.add_argument("--solo-excel", action="store_true", help="Escribe SOLO Excel (.xlsx), sin JSON.")
+    parser.add_argument("--sectores", default="",
+                        help="Slugs separados por coma para generar solo esos (default: todos). "
+                             "Opciones: " + ", ".join(SECTORES))
     args = parser.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     except (AttributeError, ValueError):
         pass
 
+    seleccion = {s.strip() for s in args.sectores.split(",") if s.strip()}
     out = Path(args.out)
+    # `si` se mantiene = índice original del sector para que las semillas (y por tanto los datos)
+    # sean idénticos aunque se filtre con --sectores.
     for si, (slug, sector) in enumerate(SECTORES.items()):
+        if seleccion and slug not in seleccion:
+            continue
         skus = _perfil_skus(sector["productos"], _rng(args.seed, 10, si))
         provs = _perfil_proveedores(sector["proveedores"], _rng(args.seed, 11, si))
         ventas = generar_ventas(sector, skus, args.seed)
@@ -412,8 +461,9 @@ def main(argv: list[str] | None = None) -> int:
         carpeta = out / slug
         for nombre, df in [("ventas", ventas), ("compras", compras), ("almacen", almacen)]:
             (carpeta).mkdir(parents=True, exist_ok=True)
-            (carpeta / f"{nombre}.json").write_text(
-                json.dumps(df.to_dict("records"), ensure_ascii=False, indent=2), encoding="utf-8")
+            if not args.solo_excel:
+                (carpeta / f"{nombre}.json").write_text(
+                    json.dumps(df.to_dict("records"), ensure_ascii=False, indent=2), encoding="utf-8")
             _escribir_excel(df, sector["titulo"], carpeta / f"{nombre}.xlsx")
         print(f"[ok] {sector['titulo']} -> {carpeta}")
         _verificar(slug, ventas, compras, almacen)

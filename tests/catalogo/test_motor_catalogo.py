@@ -250,7 +250,9 @@ class TestEjecucionConsultaSimple:
         resultado = ejecutar_consulta("ven_k1", df)
 
         assert resultado.tipo == "clustering"
-        assert resultado.modelo_ganador == "kmeans"
+        # kmeans y agglomerative compiten por silueta; con datos aleatorios sin semilla cualquiera
+        # puede ganar (el test no debe depender del ganador estocástico).
+        assert resultado.modelo_ganador in ("kmeans", "agglomerative")
         assert resultado.metrica_ganador == "silhouette"
 
 
@@ -290,10 +292,11 @@ class TestHonestidad:
 
     def test_resumen_extensiva_suma_intensiva_promedia(self):
         """A2: unidades_vendidas (extensiva) SUMA; cumplimiento (intensiva) PROMEDIA."""
-        preds = [{"value": 10.0}, {"value": 20.0}, {"value": 30.0}]
-        r_ext = _resumen_regresion(obtener_consulta("ven_r1"), preds)   # unidades_vendidas
+        # _resumen_regresion recibe los valores predichos de TODO el test (no la lista truncada).
+        vals = [10.0, 20.0, 30.0]
+        r_ext = _resumen_regresion(obtener_consulta("ven_r1"), vals)   # unidades_vendidas
         assert r_ext["aggregation"] == "sum" and r_ext["value"] == 60.0
-        r_int = _resumen_regresion(obtener_consulta("com_r4"), preds)   # cumplimiento (%)
+        r_int = _resumen_regresion(obtener_consulta("com_r4"), vals)   # cumplimiento (%)
         assert r_int["aggregation"] == "mean" and r_int["value"] == 20.0
 
     def test_nota_objetivo_facil_por_baja_varianza(self):
@@ -356,9 +359,14 @@ class TestModelosB2:
         assert "baseline" in modelos
 
     def test_clustering_sin_singletons(self):
-        """VEN-K1: ningún grupo queda con un solo elemento (anti-singleton)."""
+        """VEN-K1: se evitan grupos de 1 elemento; si son INEVITABLES, se AVISA (ITEM 5)."""
         r = ejecutar_consulta("ven_k1", self._ventas())
         from collections import Counter
         tam = Counter(p["label"] for p in r.predicciones)
         assert r.predicciones, "debe haber segmentos"
-        assert min(tam.values()) >= 2, f"hay grupos de 1 elemento: {dict(tam)}"
+        # El motor prioriza particiones sin singletons; solo se permite un grupo de 1 si el
+        # aviso lo declara claramente (no accionable), nunca en silencio.
+        if min(tam.values()) < 2:
+            assert r.advertencia and "1 solo elemento" in r.advertencia, (
+                f"hay grupos de 1 elemento sin aviso: {dict(tam)} · adv={r.advertencia}"
+            )

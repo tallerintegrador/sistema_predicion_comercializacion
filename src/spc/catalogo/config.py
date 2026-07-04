@@ -67,7 +67,6 @@ class ConfigConsulta:
     objetivo: str
     columnas_entrada: list[str]
     columnas_conocidas_futuro: list[str] = field(default_factory=list)
-    columnas_solo_pasado: list[str] = field(default_factory=list)
     transform_objetivo: str | None = None  # None | "log" (regresión con objetivo sesgado)
 
     # ML: candidatos, métrica, validación
@@ -184,7 +183,6 @@ def _parse_consultas_de_dict(dominio_dict: dict[str, Any]) -> dict[str, ConfigCo
             objetivo=consulta_data.get("objetivo", ""),
             columnas_entrada=consulta_data.get("columnas_entrada", []),
             columnas_conocidas_futuro=consulta_data.get("columnas_conocidas_futuro", []),
-            columnas_solo_pasado=consulta_data.get("columnas_solo_pasado", []),
             transform_objetivo=consulta_data.get("transform_objetivo"),
             modelos_candidatos=consulta_data.get("modelos_candidatos", []),
             metrica_seleccion=consulta_data.get("metrica_seleccion", "wape"),

@@ -51,7 +51,6 @@ modulo_ventas:
         - en_promocion
         - descuento_pct
         - categoria
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -78,7 +77,6 @@ modulo_ventas:
         - es_fin_de_semana
         - dias_a_proximo_feriado
         - en_promocion
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -103,7 +101,6 @@ modulo_ventas:
         - es_fin_de_semana
         - dias_a_proximo_feriado
         - categoria
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -127,7 +124,6 @@ modulo_ventas:
         - categoria
         - precio_unitario
         - metodo_pago
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -156,7 +152,6 @@ modulo_ventas:
         - en_promocion
         - descuento_pct
         - categoria
-      columnas_solo_pasado: []
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha"
@@ -192,7 +187,6 @@ modulo_ventas:
         - precio_unitario
         - en_promocion
         - es_fin_de_semana
-      columnas_solo_pasado: []
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "f1_macro"
       col_fecha: "fecha"
@@ -219,7 +213,6 @@ modulo_ventas:
         - es_fin_de_semana
         - dias_a_proximo_feriado
         - en_promocion
-      columnas_solo_pasado: []
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha"
@@ -228,11 +221,12 @@ modulo_ventas:
         tipo: "percentil"
         columna_objetivo: "unidades_vendidas"
         percentil: 75
-        agrupar_por: null
+        agrupar_por: "sku"  # ITEM 6: pico RELATIVO a cada SKU (no global): así la clase positiva
+                            # existe para todos los productos y el calendario tiene señal real.
         calcular_en: "train_only"
-        descripcion: "dia_pico = (unidades_vendidas > P75 global en TRAIN)"
+        descripcion: "dia_pico = (unidades_vendidas > P75 del SKU en TRAIN)"
       anti_fuga: |
-        Derivación: P75 global de unidades, fijado solo en TRAIN.
+        Derivación: P75 de unidades POR SKU, fijado solo en TRAIN.
         Etiqueta: dia_pico (0/1).
         Excluir: ingreso, precio, descuento (correlación indirecta).
         Features OK: finde, feriado, promo son causales del volumen.
@@ -348,7 +342,6 @@ modulo_compras:
         - lead_time_dias
         - descuento_volumen
         - precio_unitario_compra
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
@@ -375,7 +368,6 @@ modulo_compras:
         - id_proveedor
         - categoria
         - metodo_pago
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
@@ -403,7 +395,6 @@ modulo_compras:
         - id_proveedor
         - categoria
         - lead_time_dias
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
@@ -430,7 +421,6 @@ modulo_compras:
         - id_proveedor
         - lead_time_dias
         - metodo_pago
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha_orden"
@@ -462,7 +452,6 @@ modulo_compras:
         - categoria
         - descuento_volumen
         - metodo_pago
-      columnas_solo_pasado: []
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha_orden"
@@ -488,8 +477,8 @@ modulo_compras:
       id: "com-c2"
       tipo: "clasificacion"
       pregunta: "¿Cumplimiento alto (sí/no)?"
-      descripcion: "Predice si el cumplimiento del proveedor será alto según lead time."
-      objetivo: "entrega_completa"
+      descripcion: "Predice si el cumplimiento del proveedor será alto (relativo al resto) según proveedor y lead time."
+      objetivo: "cumplimiento_alto"
       columnas_entrada:
         - id_proveedor
         - lead_time_dias
@@ -498,23 +487,23 @@ modulo_compras:
         - id_proveedor
         - lead_time_dias
         - metodo_pago
-      columnas_solo_pasado: []
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha_orden"
       cols_serie: ["id_proveedor"]
       derivacion_etiqueta:
-        tipo: "umbral"
+        tipo: "percentil"
         columna_objetivo: "cumplimiento"
-        umbral: 0.98
+        percentil: 60  # ITEM 6: "alto" = top ~40% RELATIVO (el umbral fijo 0.98 daba 0 positivos y
+                       # ganaba baseline). Ahora la clase existe y depende del perfil del proveedor.
         agrupar_por: null
         calcular_en: "train_only"
-        descripcion: "entrega_completa = (cumplimiento >= 0.98)"
+        descripcion: "cumplimiento_alto = (cumplimiento > P60 en TRAIN)"
       anti_fuga: |
-        Derivación: UMBRAL FIJO de negocio (cumplimiento >= 0.98 = entrega completa).
-        Etiqueta: entrega_completa (0/1). No es percentil: es una regla clara y estable.
+        Derivación: P60 de cumplimiento en TRAIN (relativo: "alto" = por encima del resto).
+        Etiqueta: cumplimiento_alto (0/1).
         Excluir: cantidad_recibida, cantidad_pedida, costo_total (post-entrega).
-        Features OK: id_proveedor, lead_time, metodo_pago son causales.
+        Features OK: id_proveedor, lead_time, metodo_pago son causales del cumplimiento.
         Desbalance: usar class_weight='balanced'.
         Validación temporal: train/valid/test por fecha_orden.
 
@@ -534,7 +523,6 @@ modulo_compras:
         - categoria
         - id_proveedor
         - precio_unitario_compra
-      columnas_solo_pasado: []
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
       col_fecha: "fecha_orden"
@@ -661,7 +649,6 @@ modulo_almacen:
       columnas_conocidas_futuro:
         - categoria
         - zona_almacen
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -691,8 +678,6 @@ modulo_almacen:
         - categoria
         - zona_almacen
         - tiempo_reposicion_dias
-      columnas_solo_pasado:
-        - rotacion
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -719,7 +704,6 @@ modulo_almacen:
       columnas_conocidas_futuro:
         - categoria
         - zona_almacen
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -745,7 +729,6 @@ modulo_almacen:
       columnas_conocidas_futuro:
         - categoria
         - tiempo_reposicion_dias
-      columnas_solo_pasado: []
       modelos_candidatos: ["ridge", "random_forest", "hist_gradient_boosting", "extra_trees"]
       metrica_seleccion: "wape"
       col_fecha: "fecha"
@@ -768,16 +751,16 @@ modulo_almacen:
       pregunta: "¿Riesgo de quiebre (sí/no)?"
       descripcion: "Detecta si hay riesgo de ruptura de stock durante el período de reposición."
       objetivo: "riesgo_quiebre"
+      # ANTI-TAUTOLOGÍA (ADR-0031): las columnas que DEFINEN la etiqueta
+      # (stock_actual, demanda_diaria_promedio, tiempo_reposicion_dias) NO entran como
+      # features; el riesgo se estima desde factores independientes del producto/zona.
       columnas_entrada:
-        - stock_actual
-        - demanda_diaria_promedio
+        - categoria
+        - zona_almacen
         - rotacion
-        - tiempo_reposicion_dias
       columnas_conocidas_futuro:
-        - tiempo_reposicion_dias
-      columnas_solo_pasado:
-        - stock_actual
-        - demanda_diaria_promedio
+        - categoria
+        - zona_almacen
         - rotacion
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
@@ -802,14 +785,15 @@ modulo_almacen:
       pregunta: "¿Reposición urgente (sí/no)?"
       descripcion: "Determina si el stock cayó por debajo del mínimo de seguridad (hay que reponer ya)."
       objetivo: "reposicion_urgente"
+      # ANTI-TAUTOLOGÍA (ADR-0031): stock_actual y stock_minimo DEFINEN la etiqueta y NO
+      # entran como features; la urgencia se estima desde factores del producto/zona.
       columnas_entrada:
-        - stock_actual
-        - stock_minimo
+        - categoria
+        - zona_almacen
         - rotacion
       columnas_conocidas_futuro:
-        - stock_minimo
-      columnas_solo_pasado:
-        - stock_actual
+        - categoria
+        - zona_almacen
         - rotacion
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
@@ -834,14 +818,15 @@ modulo_almacen:
       pregunta: "¿Sobrestock (sí/no)?"
       descripcion: "Identifica si hay exceso de inventario respecto al máximo permitido."
       objetivo: "sobrestock"
+      # ANTI-TAUTOLOGÍA (ADR-0031): stock_actual y stock_maximo DEFINEN la etiqueta y NO
+      # entran como features; el sobrestock se estima desde factores del producto/zona.
       columnas_entrada:
-        - stock_actual
-        - stock_maximo
+        - categoria
+        - zona_almacen
         - rotacion
       columnas_conocidas_futuro:
-        - stock_maximo
-      columnas_solo_pasado:
-        - stock_actual
+        - categoria
+        - zona_almacen
         - rotacion
       modelos_candidatos: ["logistic_regression", "random_forest", "hist_gradient_boosting"]
       metrica_seleccion: "pr_auc"
