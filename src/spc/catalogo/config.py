@@ -324,3 +324,35 @@ def obtener_unidades() -> dict[str, str]:
         raw = _cargar_yaml_raw()
         _UNIDADES_SINGLETON = dict(raw.get("unidades_por_objetivo", {}) or {})
     return _UNIDADES_SINGLETON
+
+
+# Singleton de etiquetas legibles por columna (leídas del catálogo)
+_ETIQUETAS_SINGLETON: dict[str, str] | None = None
+
+
+def obtener_etiquetas() -> dict[str, str]:
+    """Mapa columna → etiqueta legible en español (fuente única desde el catálogo).
+
+    Lo consume el frontend vía GET /v3/catalogo para no duplicar el diccionario de nombres.
+    """
+    global _ETIQUETAS_SINGLETON
+    if _ETIQUETAS_SINGLETON is None:
+        raw = _cargar_yaml_raw()
+        _ETIQUETAS_SINGLETON = dict(raw.get("etiquetas_columnas", {}) or {})
+    return _ETIQUETAS_SINGLETON
+
+
+# Singleton de descripciones legibles por columna (leídas del catálogo)
+_DESCRIPCIONES_SINGLETON: dict[str, str] | None = None
+
+
+def obtener_descripciones() -> dict[str, str]:
+    """Mapa columna → interpretación de una línea (fuente única desde el catálogo).
+
+    Alimenta el popup ⓘ de "Basado en" en cada tarjeta v3: qué es la columna y cómo influye.
+    """
+    global _DESCRIPCIONES_SINGLETON
+    if _DESCRIPCIONES_SINGLETON is None:
+        raw = _cargar_yaml_raw()
+        _DESCRIPCIONES_SINGLETON = dict(raw.get("descripciones_columnas", {}) or {})
+    return _DESCRIPCIONES_SINGLETON

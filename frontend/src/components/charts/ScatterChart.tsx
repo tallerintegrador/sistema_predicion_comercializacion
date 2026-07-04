@@ -31,7 +31,16 @@ interface ScatterChartProps {
   showTrendline?: boolean
 }
 
-const fmtEje = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 0, notation: 'compact' })
+// Formato de ticks adaptativo al rango: magnitudes fraccionarias (%, ratios, rotación) muestran
+// decimales; magnitudes grandes (unidades, S/) usan notación compacta (86.547 → "87k").
+// Antes se forzaba maximumFractionDigits:0, que colapsaba un objetivo 0.54–1.0 a "1 1 1 1".
+function fmtEje(v: number, span: number): string {
+  const digits = span < 5 ? 2 : span < 50 ? 1 : 0
+  return new Intl.NumberFormat('es-PE', {
+    maximumFractionDigits: digits,
+    notation: digits === 0 ? 'compact' : 'standard',
+  }).format(v)
+}
 
 export function ScatterChart({ data, xLabel, yLabel, hex = '#4f46e5' }: ScatterChartProps) {
   if (data.length === 0) return null
@@ -51,7 +60,7 @@ export function ScatterChart({ data, xLabel, yLabel, hex = '#4f46e5' }: ScatterC
           type="number"
           dataKey="x"
           domain={dominio}
-          tickFormatter={(v) => fmtEje.format(Number(v))}
+          tickFormatter={(v) => fmtEje(Number(v), hi - lo)}
           tick={{ fontSize: 11 }}
           label={{ value: xLabel, position: 'insideBottom', offset: -12, fontSize: 12 }}
         />
@@ -59,13 +68,13 @@ export function ScatterChart({ data, xLabel, yLabel, hex = '#4f46e5' }: ScatterC
           type="number"
           dataKey="y"
           domain={dominio}
-          tickFormatter={(v) => fmtEje.format(Number(v))}
+          tickFormatter={(v) => fmtEje(Number(v), hi - lo)}
           tick={{ fontSize: 11 }}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 4, fontSize: 12 }}
         />
         <Tooltip
           cursor={{ strokeDasharray: '3 3' }}
-          formatter={(v: number, name) => [Number(v).toLocaleString('es-PE'), name === 'y' ? 'Predicho' : 'Real']}
+          formatter={(v, name) => [Number(v).toLocaleString('es-PE'), name === 'y' ? 'Predicho' : 'Real']}
         />
         <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} />
         {/* Recta y = x: predicción perfecta */}

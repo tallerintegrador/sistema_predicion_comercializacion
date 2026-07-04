@@ -7,7 +7,8 @@ Verifican lo que el plan exige de los generadores:
   son columnas **calculadas** coherentes; `en_promocion` y `es_fin_de_semana` son
   banderas 0/1; no hay `feriado` binario sino `dias_a_proximo_feriado` ≥ 0.
 - **Señal para los 3 modelos:** las etiquetas derivables (`demanda_alta`,
-  `entrega_con_retraso`, `riesgo_quiebre`) tienen las DOS clases presentes.
+  `entrega_con_retraso`, `riesgo_quiebre`, `reposicion_urgente`, `sobrestock`) tienen las
+  DOS clases presentes.
 """
 
 from __future__ import annotations
@@ -153,6 +154,16 @@ def test_almacen_etiqueta_riesgo_quiebre_dos_clases() -> None:
         df["stock_actual"] < df["demanda_diaria_promedio"] * df["tiempo_reposicion_dias"]
     ).astype(int)
     assert 0 < riesgo.mean() < 1
+
+
+def test_almacen_alertas_reposicion_y_sobrestock_dos_clases() -> None:
+    # Las alertas ALM-C2 (stock < mínimo) y ALM-C3 (stock > máximo) deben tener casos
+    # positivos: el generador modela reposiciones tardías (stockout) y sobre-pedidos.
+    df = generar_dominio("almacen", seed=42)
+    reposicion = (df["stock_actual"] < df["stock_minimo"]).astype(int)
+    sobrestock = (df["stock_actual"] > df["stock_maximo"]).astype(int)
+    assert 0 < reposicion.mean() < 1
+    assert 0 < sobrestock.mean() < 1
 
 
 def test_almacen_objetivo_es_demanda_dia() -> None:

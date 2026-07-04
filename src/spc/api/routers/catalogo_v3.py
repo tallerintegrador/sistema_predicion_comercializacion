@@ -24,6 +24,7 @@ from spc.api.dependencies import obtener_client_id, obtener_corpus_opcional
 from spc.api.schemas.catalogo_v3 import (
     ModuleResponse,
     QueryReport,
+    ColumnUsed,
     RegressionSummary,
     DatasetInfo,
     TechnicalDetail,
@@ -36,7 +37,12 @@ from spc.api.schemas.catalogo_v3 import (
     QueryInfo,
     ModuleAnalysisRequest,
 )
-from spc.catalogo.config import obtener_catalogo, obtener_modulo
+from spc.catalogo.config import (
+    obtener_catalogo,
+    obtener_descripciones,
+    obtener_etiquetas,
+    obtener_modulo,
+)
 from spc.catalogo.motor_catalogo import ejecutar_consulta, calcular_tendencia
 from spc.catalogo.plantillas import generar_plantilla_excel, generar_plantilla_json
 from spc.service.errores import SolicitudInvalida
@@ -76,6 +82,7 @@ def listar_catalogo() -> CatalogResponse:
     return CatalogResponse(
         total_queries=len(consultas),
         queries=sorted(consultas, key=lambda c: (c.module, c.id)),
+        column_labels=obtener_etiquetas(),
     )
 
 
@@ -132,6 +139,45 @@ def descargar_plantilla(modulo: str, formato: str = "excel") -> FileResponse:
 # ==============================================================================
 # Función auxiliar: ejecutar análisis completo
 # ==============================================================================
+def _columnas_usadas(consulta: Any) -> list[ColumnUsed]:
+    """Columnas en que se basa la consulta, con rol e interpretación para el popup ⓘ.
+
+    Deriva de la config del catálogo (fuente única): objetivo, columnas_entrada y la
+    dimensión de agrupación (cols_serie o entidad_cluster en clustering). Deduplica por
+    nombre dando prioridad al objetivo. Etiquetas y descripciones salen del mismo YAML.
+    """
+    etiquetas = obtener_etiquetas()
+    descripciones = obtener_descripciones()
+
+    # (nombre, rol) en orden de prioridad; el primer rol gana en el dedup.
+    candidatas: list[tuple[str, str]] = []
+    if consulta.objetivo:
+        candidatas.append((consulta.objetivo, "objetivo"))
+    for col in consulta.columnas_entrada:
+        candidatas.append((col, "feature"))
+    dimensiones = list(consulta.cols_serie)
+    if consulta.entidad_cluster:
+        dimensiones.append(consulta.entidad_cluster)
+    for col in dimensiones:
+        candidatas.append((col, "dimension"))
+
+    columnas: list[ColumnUsed] = []
+    vistas: set[str] = set()
+    for nombre, rol in candidatas:
+        if nombre in vistas:
+            continue
+        vistas.add(nombre)
+        columnas.append(
+            ColumnUsed(
+                name=nombre,
+                label=etiquetas.get(nombre, nombre.replace("_", " ")),
+                role=rol,
+                description=descripciones.get(nombre, ""),
+            )
+        )
+    return columnas
+
+
 def _reporte_degradado(consulta: Any, modulo: str, mensaje: str) -> QueryReport:
     """Reporte de respaldo cuando una consulta falla de forma inesperada.
 
@@ -150,6 +196,7 @@ def _reporte_degradado(consulta: Any, modulo: str, mensaje: str) -> QueryReport:
         unit="",
         result={"predictions": []},
         warning=f"No se pudo completar este análisis: {mensaje}",
+        columns_used=_columnas_usadas(consulta),
         technical_detail=TechnicalDetail(
             winner_model="—",
             metric=metrica,
@@ -221,6 +268,7 @@ def _ejecutar_analisis_interno(
                 },
                 summary=RegressionSummary(**resultado.resumen) if resultado.resumen else None,
                 warning=resultado.advertencia,
+                columns_used=_columnas_usadas(consulta),
                 technical_detail=TechnicalDetail(
                     winner_model=resultado.modelo_ganador,
                     metric=resultado.metrica_ganador,
@@ -415,71 +463,27 @@ async def analizar_desde_archivo(
 # ==============================================================================
 @router.get("/{modulo}/demo", summary="Ejecuta análisis con datos de ejemplo")
 def demo_analisis(modulo: str, client_id: ClientIdDep) -> ModuleResponse:
-    """Ejecuta el análisis v3 con datos sintéticos de demostración para ver cómo funciona."""
-    import numpy as np
+    """Ejecuta el análisis v3 con datos sintéticos de demostración para ver cómo funciona.
 
-    # Validar módulo
-    modulo_config = obtener_modulo(modulo)
-    if not modulo_config:
+    Usa el **mismo generador sintético** del sistema (``spc.synthetic``) que las plantillas y
+    la evaluación offline, en vez de fabricar filas ad-hoc: así el demo respeta exactamente el
+    esquema del módulo (una sola fuente de verdad) y muestra señal realista.
+    """
+    from spc.synthetic import generar_dominio
+
+    # Validar módulo (lanza ValueError si no existe → 400)
+    try:
+        obtener_modulo(modulo)
+    except ValueError:
         raise HTTPException(status_code=400, detail=f"Módulo inexistente: {modulo}")
 
-    # Generar datos sintéticos según el módulo
-    n_filas = 200 if modulo == "ventas" else 100 if modulo == "compras" else 150
-    filas_demo = []
+    # Parámetros modestos: suficientes para el split temporal y varias entidades de
+    # clustering, pero acotados para que el demo responda rápido.
+    params = {
+        "ventas": dict(n_tiendas=2, n_productos=8, n_dias=90),
+        "compras": dict(n_proveedores=6, n_productos=6, n_ordenes_por_serie=30),
+        "almacen": dict(n_tiendas=2, n_productos=8, n_dias=90),
+    }[modulo]
+    df_demo = generar_dominio(modulo, seed=42, **params)
 
-    if modulo == "ventas":
-        for i in range(n_filas):
-            filas_demo.append({
-                "fecha": str((pd.Timestamp("2025-01-01") + pd.Timedelta(days=i % 60)).date()),
-                "id_tienda": f"T{(i % 2) + 1}",
-                "sku": f"SKU{(i % 5) + 1}",
-                "categoria": ["Bebidas", "Abarrotes", "Lacteos"][i % 3],
-                "unidades_vendidas": float(np.random.poisson(100) + np.random.randn() * 10),
-                "precio_unitario": float(np.random.uniform(50, 200)),
-                "ingreso": float(np.random.uniform(5000, 20000)),
-                "en_promocion": int(np.random.randint(0, 2)),
-                "descuento_pct": float(np.random.uniform(0, 30)),
-                "metodo_pago": ["MP1", "MP2"][i % 2],
-                "canal_venta": ["Online", "Tienda"][i % 2],
-                "es_fin_de_semana": int(i % 7 >= 5),
-                "dias_a_proximo_feriado": int(np.random.randint(1, 50)),
-            })
-    elif modulo == "compras":
-        for i in range(n_filas):
-            filas_demo.append({
-                "fecha_orden": str((pd.Timestamp("2025-01-01") + pd.Timedelta(days=i % 60)).date()),
-                "id_proveedor": f"P{(i % 5) + 1}",
-                "sku": f"SKU{(i % 3) + 1}",
-                "categoria": ["Cat1", "Cat2"][i % 2],
-                "cantidad_pedida": float(np.random.randint(10, 100)),
-                "precio_unitario_compra": float(np.random.uniform(50, 150)),
-                "costo_total": float(np.random.uniform(1000, 10000)),
-                "lead_time_dias": int(np.random.randint(1, 30)),
-                "cantidad_recibida": float(np.random.randint(10, 100)),
-                "cumplimiento": float(np.random.rand()),
-                "metodo_pago": ["MP1", "MP2"][i % 2],
-                "descuento_volumen": float(np.random.uniform(0, 0.2)),
-            })
-    elif modulo == "almacen":
-        for i in range(n_filas):
-            filas_demo.append({
-                "fecha": str((pd.Timestamp("2025-01-01") + pd.Timedelta(days=i % 60)).date()),
-                "id_tienda": f"T{(i % 2) + 1}",
-                "sku": f"SKU{(i % 4) + 1}",
-                "categoria": ["Cat1", "Cat2", "Cat3"][i % 3],
-                "stock_actual": float(np.random.randint(10, 500)),
-                "stock_minimo": float(np.random.randint(5, 50)),
-                "stock_maximo": float(np.random.randint(100, 1000)),
-                "demanda_dia": float(np.random.poisson(50)),
-                "demanda_diaria_promedio": float(np.random.uniform(30, 150)),
-                "dias_de_cobertura": float(np.random.uniform(1, 30)),
-                "rotacion": float(np.random.uniform(0.1, 5.0)),
-                "tiempo_reposicion_dias": int(np.random.randint(1, 15)),
-                "zona_almacen": f"Z{(i % 3) + 1}",
-            })
-
-    # Convertir a DataFrame
-    df_demo = pd.DataFrame(filas_demo)
-
-    # Ejecutar análisis
     return _ejecutar_analisis_interno(modulo, df_demo)

@@ -12,6 +12,7 @@ import { ScatterChart } from '../charts/ScatterChart'
 import { BarrasTop } from '../charts/BarrasTop'
 import { InfoTooltip } from '../ui/InfoTooltip'
 import { fmtValor } from '../../utils/format'
+import { humaniza } from '../../data/etiquetas'
 import {
   ScatterChart as RechartsScatter,
   Scatter,
@@ -32,38 +33,6 @@ interface RenderidorProps {
 }
 
 const COLORES_GRUPO = ['#2563eb', '#f97316', '#16a34a', '#db2777', '#7c3aed', '#0891b2']
-
-function humaniza(col: string): string {
-  const mapeo: Record<string, string> = {
-    id_tienda: 'Tienda',
-    id_proveedor: 'Proveedor',
-    sku: 'Producto',
-    categoria: 'Categoría',
-    fecha: 'Fecha',
-    fecha_orden: 'Fecha',
-    canal_venta: 'Canal',
-    metodo_pago: 'Método de pago',
-    zona_almacen: 'Zona',
-    en_promocion: 'En promoción',
-    descuento_pct: 'Descuento %',
-    descuento_volumen: 'Descuento volumen',
-    es_fin_de_semana: 'Fin de semana',
-    dias_a_proximo_feriado: 'Días a feriado',
-    tiempo_reposicion_dias: 'Días de reposición',
-    lead_time_dias: 'Días de entrega',
-    unidades_vendidas: 'Unidades',
-    ingreso: 'Ingreso',
-    precio_unitario: 'Precio',
-    precio_unitario_compra: 'Precio compra',
-    cantidad_pedida: 'Cantidad',
-    stock_actual: 'Stock actual',
-    stock_maximo: 'Stock máximo',
-    demanda_diaria_promedio: 'Demanda media',
-    dias_de_cobertura: 'Días de cobertura',
-    rotacion: 'Rotación',
-  }
-  return mapeo[col] ?? col.replace(/_/g, ' ')
-}
 
 /** Regresión: número principal + barras por dimensión + tabla; scatter real-vs-predicho colapsado. */
 export function RenderidorRegresion({ reporte, accentHex }: RenderidorProps) {
@@ -181,27 +150,100 @@ export function RenderidorClasificacion({ reporte, accentHex }: RenderidorProps)
     ? (resultado.predictions as Array<Record<string, unknown>>)
     : []
   const esMulticlase = predicciones.length > 0 && 'predicted_class' in predicciones[0]
+  const ejes = (resultado.axes as { x?: string; y?: string }) ?? {}
+  const clases = Array.isArray(resultado.classes) ? (resultado.classes as unknown[]).map(String) : []
 
   if (predicciones.length === 0)
     return <p className="text-sm text-slate-500 italic">Sin predicciones.</p>
 
   return esMulticlase ? (
-    <RenderMulticlase predicciones={predicciones} accentHex={accentHex} />
+    <RenderMulticlase predicciones={predicciones} accentHex={accentHex} ejes={ejes} clases={clases} />
   ) : (
-    <RenderBinaria predicciones={predicciones} accentHex={accentHex} />
+    <RenderBinaria predicciones={predicciones} accentHex={accentHex} ejes={ejes} />
+  )
+}
+
+/** Punto del scatter de clasificación: color por clase; contorno = mal clasificado. */
+type PuntoClase = { x: number; y: number; color: string; etiqueta: string; error: boolean }
+
+/** Scatter 2D compartido (binaria/multiclase): proyección de casos coloreada por clase. */
+function ScatterClases({ puntos, ejes }: { puntos: PuntoClase[]; ejes: { x?: string; y?: string } }) {
+  const hayError = puntos.some((p) => p.error)
+  return (
+    <details className="rounded-lg border border-slate-200 bg-slate-50/60 p-2">
+      <summary className="cursor-pointer select-none text-xs font-medium text-slate-500">
+        Ver mapa de casos: dispersión por clase
+      </summary>
+      <div className="mt-2">
+        <ResponsiveContainer width="100%" height={240}>
+          <RechartsScatter margin={{ top: 12, right: 16, bottom: 28, left: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis
+              type="number"
+              dataKey="x"
+              name={humaniza(ejes.x ?? 'x')}
+              tick={{ fontSize: 10 }}
+              label={{ value: humaniza(ejes.x ?? ''), position: 'bottom', offset: 0, fontSize: 11 }}
+            />
+            <YAxis
+              type="number"
+              dataKey="y"
+              name={humaniza(ejes.y ?? 'y')}
+              tick={{ fontSize: 10 }}
+              label={{ value: humaniza(ejes.y ?? ''), angle: -90, position: 'insideLeft', fontSize: 11 }}
+            />
+            <ZAxis range={[60, 60]} />
+            <Tooltip cursor={{ strokeDasharray: '3 3' }} formatter={(value) => Number(value).toFixed(2)} />
+            <Scatter data={puntos}>
+              {puntos.map((p, i) => (
+                <Cell
+                  key={i}
+                  fill={p.color}
+                  fillOpacity={p.error ? 0.2 : 0.85}
+                  stroke={p.error ? '#ef4444' : 'none'}
+                  strokeWidth={p.error ? 1.5 : 0}
+                />
+              ))}
+            </Scatter>
+          </RechartsScatter>
+        </ResponsiveContainer>
+        <p className="text-xs text-slate-400 mt-1">
+          Cada punto es un caso del periodo de prueba; el <b>color</b> es la clase predicha. Los ejes son
+          una proyección 2D para <b>ver similitud</b> (sin unidades de negocio): puntos cercanos = parecidos.
+          {hayError && <> Los puntos con <b>contorno rojo</b> se clasificaron mal (predicho ≠ real).</>}
+        </p>
+      </div>
+    </details>
   )
 }
 
 function RenderBinaria({
   predicciones,
   accentHex,
+  ejes,
 }: {
   predicciones: Array<Record<string, unknown>>
   accentHex: string
+  ejes: { x?: string; y?: string }
 }) {
   const [soloAlerta, setSoloAlerta] = useState(true)
   const enAlerta = predicciones.filter((p) => Number(p.class) === 1).length
   const normal = predicciones.length - enAlerta
+
+  // Scatter: color = alerta (accent) vs normal (gris), mismo criterio que la dona; contorno = error.
+  const puntos: PuntoClase[] = useMemo(
+    () =>
+      predicciones
+        .filter((p) => p.x !== undefined && p.y !== undefined)
+        .map((p) => ({
+          x: Number(p.x) || 0,
+          y: Number(p.y) || 0,
+          color: Number(p.class) === 1 ? accentHex : '#94a3b8',
+          etiqueta: Number(p.class) === 1 ? 'En alerta' : 'Normal',
+          error: Number(p.class) !== Number(p.actual),
+        })),
+    [predicciones, accentHex],
+  )
 
   const filas: AutoRow[] = useMemo(
     () =>
@@ -263,6 +305,8 @@ function RenderBinaria({
           {soloAlerta ? '¡Ninguno en alerta con los datos de prueba!' : 'Sin datos.'}
         </p>
       )}
+
+      {puntos.length >= 2 && <ScatterClases puntos={puntos} ejes={ejes} />}
     </div>
   )
 }
@@ -270,9 +314,13 @@ function RenderBinaria({
 function RenderMulticlase({
   predicciones,
   accentHex,
+  ejes,
+  clases,
 }: {
   predicciones: Array<Record<string, unknown>>
   accentHex: string
+  ejes: { x?: string; y?: string }
+  clases: string[]
 }) {
   const conteo = useMemo(() => {
     const m = new Map<string, number>()
@@ -314,6 +362,34 @@ function RenderMulticlase({
   )
   const cols = filas[0] ? Object.keys(filas[0]) : []
 
+  // Color por clase: índice en la lista de clases del backend (fallback: orden del conteo).
+  const ordenClase = useMemo(() => {
+    const base = clases.length > 0 ? clases : conteo.map((c) => c.nombre)
+    const m = new Map<string, number>()
+    base.forEach((c, i) => m.set(String(c), i))
+    return m
+  }, [clases, conteo])
+  const colorClase = (etq: string) =>
+    COLORES_GRUPO[(ordenClase.get(etq) ?? 0) % COLORES_GRUPO.length]
+
+  const puntos: PuntoClase[] = useMemo(
+    () =>
+      predicciones
+        .filter((p) => p.x !== undefined && p.y !== undefined)
+        .map((p) => {
+          const etq = String(p.predicted_class ?? '—')
+          return {
+            x: Number(p.x) || 0,
+            y: Number(p.y) || 0,
+            color: colorClase(etq),
+            etiqueta: etq,
+            error: String(p.predicted_class) !== String(p.actual),
+          }
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [predicciones, ordenClase],
+  )
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
@@ -327,6 +403,19 @@ function RenderMulticlase({
       </p>
       {filas.length > 0 && (
         <TablaInteractiva rows={filas} columns={cols} inicial={6} buscarPlaceholder="Buscar…" />
+      )}
+      {puntos.length >= 2 && (
+        <div className="space-y-1">
+          <ScatterClases puntos={puntos} ejes={ejes} />
+          <div className="flex flex-wrap gap-x-3 gap-y-1 px-1">
+            {conteo.map((c) => (
+              <span key={c.nombre} className="inline-flex items-center gap-1 text-xs text-slate-500">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colorClase(c.nombre) }} />
+                {c.nombre}
+              </span>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

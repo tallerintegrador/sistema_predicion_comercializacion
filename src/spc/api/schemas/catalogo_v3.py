@@ -52,6 +52,15 @@ class RegressionSummary(BaseModel):
     magnitude: str  # "extensiva" | "intensiva"
 
 
+class ColumnUsed(BaseModel):
+    """Una columna que usa la consulta, con su rol e interpretación para el popup ⓘ."""
+
+    name: str
+    label: str
+    role: str = Field(description="'objetivo' (lo que predice) | 'feature' (entrada) | 'dimension'")
+    description: str = Field(default="", description="Interpretación de negocio; vacío = sin ⓘ")
+
+
 class QueryReport(BaseModel):
     """Un reporte de una consulta ejecutada del catálogo."""
 
@@ -69,6 +78,10 @@ class QueryReport(BaseModel):
     )
     warning: str | None = Field(
         default=None, description="Advertencia de calidad baja (umbrales no bloqueantes)"
+    )
+    columns_used: list[ColumnUsed] = Field(
+        default_factory=list,
+        description="Columnas en que se basa la predicción (objetivo/features/dimensiones)",
     )
     technical_detail: TechnicalDetail
 
@@ -150,6 +163,10 @@ class CatalogResponse(BaseModel):
 
     total_queries: int = 30
     queries: list[QueryInfo]
+    column_labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Etiquetas legibles por columna (fuente única del catálogo, para la UI)",
+    )
 
 
 class ModuleAnalysisRequest(BaseModel):

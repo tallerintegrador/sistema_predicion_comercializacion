@@ -77,9 +77,17 @@ def generar(
                     ventana.pop(0)
                 demanda_prom_serie[i] = float(np.mean(ventana))
                 stock = stock - consumo[i]
-                # Reposición al tocar el mínimo (sube hacia el máximo, con ruido).
+                # Reposición al tocar el mínimo. Realista (no siempre perfecta), para que las
+                # alertas de inventario tengan casos que aprender:
+                #  - a veces la entrega llega TARDE → el stock cae por debajo del mínimo (stockout).
+                #  - a veces se SOBRE-PIDE → el stock supera el máximo (sobrestock).
                 if stock <= stock_min:
-                    stock = stock_max * comun.entre(rng, 0.9, 1.0)
+                    if rng.random() < 0.12:
+                        pass  # reposición tardía: se deja caer bajo el mínimo unos días
+                    elif rng.random() < 0.10:
+                        stock = stock_max * comun.entre(rng, 1.10, 1.35)  # sobre-pedido
+                    else:
+                        stock = stock_max * comun.entre(rng, 0.9, 1.0)  # reposición normal
                 stock = max(0.0, stock)
 
             demanda_prom_serie = np.maximum(0.1, demanda_prom_serie)

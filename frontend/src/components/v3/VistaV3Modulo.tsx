@@ -22,6 +22,7 @@ import { SeccionReportes } from './SeccionReportes'
 import { BloqueTendencia } from './BloqueTendencia'
 import { ValidacionCarga } from './ValidacionCarga'
 import { TIPOS_REPORTE, ORDEN_TIPO, INFO_POR_TIPO } from '../../data/tiposReporte'
+import { setColumnLabels } from '../../data/etiquetas'
 import type { Accent, View } from '../../theme/modules'
 import type { LucideIcon } from 'lucide-react'
 
@@ -60,7 +61,11 @@ export function VistaV3Modulo({
   useEffect(() => {
     let vivo = true
     getV3Catalogo()
-      .then((c) => vivo && setCatalogo(c.queries.filter((x) => x.module === modulo)))
+      .then((c) => {
+        if (!vivo) return
+        setColumnLabels(c.column_labels) // etiquetas legibles desde el catálogo (fuente única)
+        setCatalogo(c.queries.filter((x) => x.module === modulo))
+      })
       .catch(() => vivo && setCatalogo([]))
     getV3PlantillaJson(modulo)
       .then(({ blob }) => blob.text())

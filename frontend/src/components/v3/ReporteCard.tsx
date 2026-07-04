@@ -55,7 +55,7 @@ function valorMetrica(metrica: string, valor: number): string {
 }
 
 export function ReporteCard({ reporte, accent, children }: ReporteCardProps) {
-  const { type, question, description, warning, technical_detail } = reporte
+  const { type, question, description, warning, columns_used, technical_detail } = reporte
   const m = technical_detail.metric
   // La calidad la decide el backend con los umbrales del catálogo (fuente única, ADR-0028).
   const calidad = technical_detail.quality
@@ -77,6 +77,31 @@ export function ReporteCard({ reporte, accent, children }: ReporteCardProps) {
       {/* Aviso honesto (si aplica) */}
       {warning && (
         <p className="mb-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">⚠️ {warning}</p>
+      )}
+
+      {/* Columnas en que se basa la predicción (transparencia + ⓘ por columna) */}
+      {columns_used && columns_used.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-medium text-slate-500">Basado en:</span>
+          {columns_used.map((col) => {
+            const esObjetivo = col.role === 'objetivo'
+            return (
+              <span
+                key={col.name}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+                  esObjetivo
+                    ? 'border-indigo-200 bg-indigo-50 font-medium text-indigo-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-600'
+                }`}
+                title={esObjetivo ? 'Lo que se predice' : undefined}
+              >
+                {esObjetivo && <span aria-hidden="true">🎯</span>}
+                {col.label}
+                {col.description && <InfoTooltip text={col.description} />}
+              </span>
+            )
+          })}
+        </div>
       )}
 
       {/* Contenido específico por tipo */}

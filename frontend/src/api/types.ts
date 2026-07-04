@@ -334,6 +334,13 @@ export interface RegressionSummary {
   magnitude: 'extensiva' | 'intensiva'
 }
 
+export interface ColumnUsed {
+  name: string
+  label: string
+  role: 'objetivo' | 'feature' | 'dimension'
+  description: string
+}
+
 export interface QueryReport {
   query_id: string
   module: string
@@ -344,6 +351,7 @@ export interface QueryReport {
   result: Record<string, unknown>
   summary?: RegressionSummary | null
   warning: string | null
+  columns_used?: ColumnUsed[]
   technical_detail: TechnicalDetail
 }
 
@@ -403,4 +411,6 @@ export interface QueryInfo {
 export interface CatalogResponse {
   total_queries: number
   queries: QueryInfo[]
+  /** Etiquetas legibles por columna (fuente única del catálogo backend). */
+  column_labels?: Record<string, string>
 }

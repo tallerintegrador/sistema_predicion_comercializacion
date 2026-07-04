@@ -629,11 +629,16 @@ def _entrenar_multiclase(
         fila.ganador = fila.modelo == mejor_nombre
 
     X_pred_s = X_te_s
+    X_pred = X_te if len(X_te) else X_va
     y_real = y_te if len(X_te) else y_va
     y_hat = mejor_modelo.predict(X_pred_s)
     proba = mejor_modelo.predict_proba(X_pred_s)
     clases_modelo = list(mejor_modelo.classes_)
     f1_test = _f1_macro(y_real, y_hat)
+
+    # Coordenadas 2D REALES para el scatter (proyección PCA), como en clustering.
+    feats = list(features_df.columns)
+    coords, ejes = _coordenadas_2d(pd.DataFrame(X_pred, columns=feats), X_pred_s, feats)
 
     id_cols = _id_cols(df_pred, config)
     predicciones: list[dict[str, Any]] = []
@@ -644,11 +649,14 @@ def _entrenar_multiclase(
             item[config.col_fecha] = _safe(fila_df[config.col_fecha])
         cls_idx = int(y_hat[pos])
         item["predicted_class"] = clases[cls_idx]
+        item["actual"] = clases[int(y_real[pos])]
         col_prob = clases_modelo.index(cls_idx) if cls_idx in clases_modelo else 0
         item["probability"] = round(float(proba[pos, col_prob]), 4)
+        item["x"] = _num2(coords[pos, 0])
+        item["y"] = _num2(coords[pos, 1])
         predicciones.append(item)
 
-    return _Entrenamiento(tabla, predicciones, mejor_nombre, f1_test, None, {"classes": clases})
+    return _Entrenamiento(tabla, predicciones, mejor_nombre, f1_test, None, {"axes": ejes, "classes": clases})
 
 
 def entrenar_clasificacion(
@@ -707,10 +715,15 @@ def entrenar_clasificacion(
         fila.ganador = fila.modelo == mejor_nombre
 
     X_pred_s = X_te_s
+    X_pred = X_te if len(X_te) else X_va
     y_real = y_te if len(X_te) else y_va
     prob_pred = _prob_positiva(mejor_modelo, X_pred_s)
     clase_pred = mejor_modelo.predict(X_pred_s)
     pr_auc_test = _pr_auc(y_real, prob_pred)
+
+    # Coordenadas 2D REALES para el scatter (proyección PCA), como en clustering.
+    feats = list(features_df.columns)
+    coords, ejes = _coordenadas_2d(pd.DataFrame(X_pred, columns=feats), X_pred_s, feats)
 
     id_cols = _id_cols(df_pred, config)
     predicciones: list[dict[str, Any]] = []
@@ -720,10 +733,13 @@ def entrenar_clasificacion(
         if config.col_fecha and config.col_fecha in df_pred.columns:
             item[config.col_fecha] = _safe(fila_df[config.col_fecha])
         item["class"] = int(clase_pred[pos])
+        item["actual"] = int(y_real[pos])
         item["probability"] = round(float(prob_pred[pos]), 4)
+        item["x"] = _num2(coords[pos, 0])
+        item["y"] = _num2(coords[pos, 1])
         predicciones.append(item)
 
-    return _Entrenamiento(tabla, predicciones, mejor_nombre, pr_auc_test, None)
+    return _Entrenamiento(tabla, predicciones, mejor_nombre, pr_auc_test, None, {"axes": ejes})
 
 
 # ==============================================================================
