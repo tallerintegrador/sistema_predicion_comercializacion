@@ -302,3 +302,115 @@ export interface ErrorBody {
 export interface ErrorEnvelope {
   error: ErrorBody
 }
+
+// --- Catálogo v3 (ADR-0028: 30 consultas predefinidas) ---
+// Contrato en inglés: claves del cuerpo y enum `type`. Los valores de negocio (question,
+// warning, label) van en español, y las columnas de datos del cliente conservan su nombre.
+export type V3Domain = 'ventas' | 'compras' | 'almacen'
+export type ReportType = 'regression' | 'classification' | 'clustering'
+
+export interface ComparisonRow {
+  model: string
+  metric: string
+  value: number
+  winner: boolean
+}
+
+export interface TechnicalDetail {
+  winner_model: string
+  metric: string
+  metric_value: number
+  quality: 'buena' | 'limitada'
+  comparison_table: ComparisonRow[]
+  trained_at: string
+  technical_note?: string | null
+}
+
+export interface RegressionSummary {
+  aggregation: 'sum' | 'mean'
+  value: number
+  label: string
+  unit: string
+  magnitude: 'extensiva' | 'intensiva'
+}
+
+export interface ColumnUsed {
+  name: string
+  label: string
+  role: 'objetivo' | 'feature' | 'dimension'
+  description: string
+}
+
+export interface QueryReport {
+  query_id: string
+  module: string
+  type: ReportType
+  question: string
+  description: string
+  unit?: string
+  result: Record<string, unknown>
+  summary?: RegressionSummary | null
+  warning: string | null
+  columns_used?: ColumnUsed[]
+  technical_detail: TechnicalDetail
+}
+
+export interface SeriesPoint {
+  date: string
+  value: number
+}
+
+export interface TrendSummary {
+  projection: number
+  change_pct: number
+  direction: 'creciente' | 'estable' | 'decreciente'
+}
+
+export interface TrendBreakdown {
+  label: string
+  history: SeriesPoint[]
+  forecast: SeriesPoint[]
+}
+
+export interface TrendAnalysis {
+  field: string
+  title: string
+  description: string
+  unit: string
+  method: string
+  horizon: number
+  history: SeriesPoint[]
+  forecast: SeriesPoint[]
+  summary?: TrendSummary | null
+  breakdowns?: TrendBreakdown[]
+}
+
+export interface DatasetInfo {
+  recognized_columns: string[]
+  missing_columns: string[]
+  rows_received: number
+  rows_discarded: number
+}
+
+export interface ModuleResponse {
+  module: string
+  reports: QueryReport[]
+  trend_analysis: TrendAnalysis
+  dataset_info?: DatasetInfo | null
+  executed_at: string
+}
+
+export interface QueryInfo {
+  id: string
+  module: string
+  type: ReportType
+  question: string
+  description: string
+}
+
+export interface CatalogResponse {
+  total_queries: number
+  queries: QueryInfo[]
+  /** Etiquetas legibles por columna (fuente única del catálogo backend). */
+  column_labels?: Record<string, string>
+}

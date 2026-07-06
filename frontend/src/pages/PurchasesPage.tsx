@@ -1,18 +1,18 @@
 import { ShoppingCart } from 'lucide-react'
-import { AnalisisV2 } from '../components/v2/AnalisisV2'
+import { VistaV3Modulo } from '../components/v3/VistaV3Modulo'
 import { SECTION_BY_ID } from '../theme/modules'
 
-/** Compras: análisis 3×3 del dominio (cantidad a pedir + entrega con retraso + segmentos de proveedor), motor /v2. */
+/** Compras: análisis catálogo v3 (10 consultas predefinidas automáticas). */
 export function PurchasesPage() {
   return (
-    <AnalisisV2
+    <VistaV3Modulo
       view="purchases"
-      dominio="compras"
+      modulo="compras"
       accent={SECTION_BY_ID.purchases.accent}
       empty={{
         icon: ShoppingCart,
         titulo: 'Aún no hay análisis',
-        mensaje: 'Corre la demo o sube tus órdenes de compra para ver la cantidad a pedir, las alertas de entrega con retraso y los segmentos de proveedor.',
+        mensaje: 'Descarga la plantilla, carga tus órdenes de compra y automáticamente verás 10 análisis: predicciones de cantidad, alertas de riesgo y segmentos de proveedor.',
       }}
     />
   )

@@ -1,18 +1,18 @@
 import { Package } from 'lucide-react'
-import { AnalisisV2 } from '../components/v2/AnalisisV2'
+import { VistaV3Modulo } from '../components/v3/VistaV3Modulo'
 import { SECTION_BY_ID } from '../theme/modules'
 
-/** Almacén: análisis 3×3 del dominio (demanda futura + riesgo de quiebre + segmentos ABC) con indicadores de inventario, motor /v2. */
+/** Almacén: análisis catálogo v3 (10 consultas predefinidas automáticas). */
 export function InventoryPage() {
   return (
-    <AnalisisV2
+    <VistaV3Modulo
       view="inventory"
-      dominio="almacen"
+      modulo="almacen"
       accent={SECTION_BY_ID.inventory.accent}
       empty={{
         icon: Package,
         titulo: 'Aún no hay análisis',
-        mensaje: 'Corre la demo o sube tu inventario para ver el pronóstico de demanda, el riesgo de quiebre y los segmentos ABC.',
+        mensaje: 'Descarga la plantilla, carga tus datos de inventario y automáticamente verás 10 análisis: demanda prevista, alertas de quiebre y segmentación ABC.',
       }}
     />
   )

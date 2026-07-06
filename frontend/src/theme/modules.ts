@@ -113,7 +113,7 @@ export const SECTIONS: SectionDef[] = [
     path: '/sales',
     label: 'Ventas',
     blurb:
-      'Calcula cuánto vas a vender en los próximos días, semanas o meses, por tienda y producto, para que planifiques tu demanda.',
+      'Estima las ventas esperadas según los factores de tu negocio (precio, promoción, calendario). La evolución en el tiempo está en Análisis / Tendencia.',
     icon: BarChart3,
     perms: ['module:sales'],
     accent: ACCENTS.sales,
@@ -123,7 +123,7 @@ export const SECTIONS: SectionDef[] = [
     path: '/purchases',
     label: 'Compras',
     blurb:
-      'Te dice cuánto y cuándo reponer cada producto para no quedarte sin existencias ni comprar de más.',
+      'Estima cuánto reponer de cada producto según proveedor, categoría y tiempo de entrega, para no quedarte corto ni comprar de más.',
     icon: ShoppingCart,
     perms: ['module:purchases'],
     accent: ACCENTS.purchases,

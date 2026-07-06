@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from spc import config
-from spc.api.schemas.agnostico import (
+from spc.service.esquemas_agnostico import (
     AutoInventoryRequest,
     AutoPurchasesRequest,
     AutoSalesRequest,

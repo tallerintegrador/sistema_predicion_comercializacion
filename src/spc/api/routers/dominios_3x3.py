@@ -35,7 +35,9 @@ from spc.utils.logging import get_logger
 
 log = get_logger("api.dominios_3x3")
 
-router = APIRouter(prefix="/v2", tags=["3X3"])
+# /v2 queda como wrapper heredado: la UI activa usa el catálogo v3 (ADR-0028). Se marca
+# `deprecated` en OpenAPI; sigue funcionando para reentrenamiento/persistencia (ADR-0027).
+router = APIRouter(prefix="/v2", tags=["3X3"], deprecated=True)
 
 ClientIdDep = Annotated[str, Depends(obtener_client_id)]
 CorpusOpcDep = Annotated[RepositorioCorpus | None, Depends(obtener_corpus_opcional)]

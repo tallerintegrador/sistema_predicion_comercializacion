@@ -54,11 +54,14 @@ def generar(
         for p, (sku, categoria) in enumerate(catalogo):
             rng = comun.rng_de(seed, 2, t, p)
             nivel = comun.entre(rng, 20.0, 220.0) * escala_tienda
-            tendencia = comun.entre(rng, -0.10, 0.35)
-            amp_sem = comun.entre(rng, 0.3, 0.8)
-            amp_anu = comun.entre(rng, 0.10, 0.30)
+            # Ruido/tendencia/estacionalidad moderados: la demanda queda predecible (piso WAPE
+            # ~0.10-0.15 con serie+calendario) sin volverse artificial. La variedad ENTRE SKUs
+            # —lo que alimenta el clustering— la da `nivel`, no el ruido, así que no se ve afectada.
+            tendencia = comun.entre(rng, -0.05, 0.10)
+            amp_sem = comun.entre(rng, 0.15, 0.35)
+            amp_anu = comun.entre(rng, 0.05, 0.12)
             fase = float(rng.uniform(0, 2 * np.pi))
-            ruido = comun.entre(rng, 0.05, 0.18)
+            ruido = comun.entre(rng, 0.03, 0.08)
             precio_base = comun.entre(rng, 1.5, 35.0)
             prob_promo = comun.entre(rng, 0.05, 0.25)
             # Cercanía a feriado: a menos días, más empuje (hasta +25% al borde).

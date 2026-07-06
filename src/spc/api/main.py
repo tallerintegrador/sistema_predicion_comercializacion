@@ -11,7 +11,9 @@ repositorio de auth ya abierto (lo usan los tests) sin tocar el disco real.
 
 El motor agnóstico ``/auto/*`` (ADR-0023) se **archivó** en ``legacy/auto_api/``: su capa
 de API ya no se expone. Su maquinaria interna reutilizada por el 3×3 (``service.agnostico``,
-``schemas.agnostico``, ``models.automl``) permanece en ``spc`` a propósito.
+``service.esquemas_agnostico``, ``models.automl``) permanece en ``spc`` a propósito. Los
+esquemas viven en la capa neutral ``service.esquemas_agnostico`` (el servicio no depende de la
+API); ``api.schemas.agnostico`` los re-exporta para el contrato HTTP (auditoría 2026-07-03).
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from spc.api.errors import registrar_manejadores
 from spc.api.routers import (
     auth,
     dominios_3x3,
+    catalogo_v3,
 )
 from spc.config import (
     auth_enabled,
@@ -161,6 +164,7 @@ def crear_app(
     registrar_manejadores(app)
     app.include_router(auth.router)
     app.include_router(dominios_3x3.router)
+    app.include_router(catalogo_v3.router)
 
     @app.get("/health", tags=["status"], summary="Salud del servicio")
     def salud() -> dict[str, str]:
