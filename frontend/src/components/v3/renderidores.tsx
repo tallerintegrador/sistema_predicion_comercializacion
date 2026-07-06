@@ -428,6 +428,10 @@ export function RenderidorClustering({ reporte }: RenderidorProps) {
     ? (resultado.predictions as Array<Record<string, unknown>>)
     : []
   const ejes = (resultado.axes as { x?: string; y?: string }) ?? {}
+  // K y cómo se eligió (transparencia: "cuánto K se usa"). El backend lo emite en result.
+  const k = Number(resultado.k) || 0
+  const rangoK = Array.isArray(resultado.rango_k) ? (resultado.rango_k as number[]) : []
+  const criterioK = String(resultado.criterio_k ?? '')
 
   const grupos = useMemo(() => {
     const m = new Map<string, { entidades: string[]; grupo: number }>()
@@ -456,8 +460,25 @@ export function RenderidorClustering({ reporte }: RenderidorProps) {
   if (grupos.length === 0)
     return <p className="text-sm text-slate-500 italic">Sin segmentos identificados con estos datos.</p>
 
+  const explicaK =
+    criterioK === 'k_fijo'
+      ? 'número de grupos fijado por criterio de negocio (interpretación A/B/C).'
+      : rangoK.length === 2
+        ? `elegido automáticamente por mayor silueta, probando k de ${rangoK[0]} a ${rangoK[1]}.`
+        : 'elegido automáticamente por mayor silueta.'
+
   return (
     <div className="space-y-3">
+      {/* K usado + criterio (transparencia del clustering) */}
+      {k > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+            K = {k} grupos
+          </span>
+          <span className="text-slate-500">{explicaK}</span>
+        </div>
+      )}
+
       {/* Tarjetas por grupo (primario) */}
       <div className="grid gap-2 sm:grid-cols-2">
         {grupos.map(([etiqueta, { entidades, grupo }]) => (

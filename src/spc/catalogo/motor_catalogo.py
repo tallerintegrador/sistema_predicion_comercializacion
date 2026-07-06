@@ -965,7 +965,15 @@ def entrenar_clustering(df: pd.DataFrame, config: ConfigConsulta) -> _Entrenamie
     if mejor_sil < u.silhouette_aviso:
         avisos.append("Grupos poco definidos: la separación entre segmentos es débil (referencial).")
     adv = " ".join(avisos) or None
-    return _Entrenamiento(tabla, predicciones, mejor_algo or "kmeans", mejor_sil, adv, {"axes": ejes})
+    # K y cómo se eligió: se surface al frontend para transparencia (el profesor pregunta "cuánto K").
+    # k_fijo → el catálogo lo impone; si no, K = el de mayor silueta en el rango probado.
+    meta = {
+        "axes": ejes,
+        "k": mejor_k,
+        "rango_k": [int(min(k_values)), int(max(k_values))],
+        "criterio_k": "k_fijo" if config.k_fijo else "mayor_silueta",
+    }
+    return _Entrenamiento(tabla, predicciones, mejor_algo or "kmeans", mejor_sil, adv, meta)
 
 
 # ==============================================================================
