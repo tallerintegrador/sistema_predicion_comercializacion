@@ -54,7 +54,10 @@ def _perfil_continuo(rng: np.random.Generator, pv: int) -> PerfilProveedor:
     lead_medio = float(np.clip(np.interp(q, [0.0, 1.0], [19.0, 4.0]) + rng.normal(0.0, 2.6), 2.0, 24.0))
     factor_costo = float(np.clip(np.interp(q, [0.0, 1.0], [0.80, 1.28]) + rng.normal(0.0, 0.07), 0.70, 1.40))
     cumpl_medio = float(np.clip(np.interp(q, [0.0, 1.0], [0.86, 0.99]) + rng.normal(0.0, 0.02), 0.60, 1.0))
-    lead_sigma = float(np.clip(0.25 * lead_medio + rng.uniform(0.0, 1.5), 1.0, 6.0))
+    # Variabilidad por orden moderada: el lead time es sobre todo característica del proveedor
+    # (predecible con su identidad), con dispersión chica orden-a-orden. La señal de "entrega con
+    # retraso" vive en el RANGO de lead_medio ENTRE proveedores, no en el ruido por orden.
+    lead_sigma = float(np.clip(0.10 * lead_medio + rng.uniform(0.0, 0.8), 0.5, 3.0))
     return PerfilProveedor(f"prov-{pv:02d}", factor_costo, lead_medio, lead_sigma, cumpl_medio)
 
 
@@ -104,7 +107,10 @@ def generar(
                 descuento_volumen = round(min(15.0, cantidad / 100.0) * comun.entre(rng, 0.5, 1.0), 2)
 
                 lead = int(max(1, round(rng.normal(lead_medio, perfil.lead_sigma))))
-                cumplimiento = float(np.clip(rng.normal(cumpl_medio, 0.04), 0.5, 1.0))
+                # Dispersión por orden algo mayor (0.04→0.06): el cumplimiento no es constante por
+                # proveedor, así que su regresión tiene error creíble (~0.05) en vez de ~0, sin
+                # ensuciar de más la clasificación cumplimiento_alto (com-c2).
+                cumplimiento = float(np.clip(rng.normal(cumpl_medio, 0.06), 0.5, 1.0))
                 recibida = float(round(cantidad * cumplimiento))
 
                 filas.append({

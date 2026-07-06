@@ -343,6 +343,33 @@ def construir_features(
     if len(categorical_cols) > 0:
         features = pd.get_dummies(features, columns=categorical_cols, drop_first=False)
     features = features.astype("float64", errors="ignore")
+
+    # Identidad de serie: cada (tienda×sku)/(proveedor×sku) tiene su propio NIVEL, y ese nivel
+    # es el mayor componente de varianza de la demanda. Codificar las claves POR SEPARADO (sku
+    # y tienda aditivos) no representa los N niveles independientes; se combinan en UNA clave y
+    # se codifica. Leak-safe: son identificadores conocidos, no derivan del objetivo. Se limita
+    # a datasets con pocas series (con miles, la señal por serie deja de ser fiable y explotaría
+    # la dimensionalidad; ahí mandan los atributos declarados).
+    claves = [c for c in (config.cols_serie or []) if c in df.columns]
+    if claves:
+        serie = df[claves].astype(str).agg("|".join, axis=1)
+        if 2 <= serie.nunique() <= 600:
+            serie_ohe = pd.get_dummies(serie, prefix="serie").astype("float64")
+            features = pd.concat([features, serie_ohe], axis=1)
+
+    # Calendario leak-safe derivado de la fecha (conocido a futuro): día de semana y mes en
+    # codificación cíclica sin/cos —para que hasta los modelos lineales capten la periodicidad—
+    # más el día del mes. Da a la regresión la estacionalidad semanal/anual que sí existe en los
+    # datos y que el objetivo puntual no revela (no es fuga: la fecha se conoce de antemano).
+    if config.col_fecha and config.col_fecha in df.columns:
+        fechas = pd.to_datetime(df[config.col_fecha])
+        dow = fechas.dt.dayofweek.to_numpy(dtype="float64")
+        mes = fechas.dt.month.to_numpy(dtype="float64")
+        features["cal_dow_sin"] = np.sin(2 * np.pi * dow / 7.0)
+        features["cal_dow_cos"] = np.cos(2 * np.pi * dow / 7.0)
+        features["cal_mes_sin"] = np.sin(2 * np.pi * (mes - 1.0) / 12.0)
+        features["cal_mes_cos"] = np.cos(2 * np.pi * (mes - 1.0) / 12.0)
+        features["cal_dia_mes"] = fechas.dt.day.to_numpy(dtype="float64")
     return features
 
 
