@@ -414,3 +414,37 @@ export interface CatalogResponse {
   /** Etiquetas legibles por columna (fuente única del catálogo backend). */
   column_labels?: Record<string, string>
 }
+
+// --- Historial de predicciones (GET /v3/{modulo}/historial, /v3/historial/{id}) ---
+export interface HistorialItem {
+  id: number
+  module: string
+  created_at: string
+  rows: number
+  reports: number
+}
+
+export interface HistorialResponse {
+  module?: string | null
+  total: number
+  items: HistorialItem[]
+}
+
+export interface HistorialDetalle {
+  id: number
+  module: string
+  created_at: string
+  request?: Record<string, unknown> | null
+  response?: {
+    n_reportes: number
+    reports: Array<{
+      query_id: string
+      type: string
+      question: string
+      unit?: string
+      winner_model?: string | null
+      predictions: Array<Record<string, unknown>>
+      n_predictions: number
+    }>
+  } | null
+}

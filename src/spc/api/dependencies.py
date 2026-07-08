@@ -53,6 +53,11 @@ def obtener_modelos(request: Request) -> RepositorioModelos:
     return modelos
 
 
+def obtener_modelos_opcional(request: Request) -> RepositorioModelos | None:
+    """Registro de modelos si está disponible, o ``None`` (enganche best-effort del historial)."""
+    return getattr(request.app.state, "modelos", None)
+
+
 def obtener_client_id(
     sesion: Annotated[SessionUser | None, Depends(usuario_opcional)],
     x_client_id: Annotated[str | None, Header(alias="X-Client-Id")] = None,

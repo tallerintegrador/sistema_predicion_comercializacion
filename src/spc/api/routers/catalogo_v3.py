@@ -20,7 +20,11 @@ import pandas as pd
 from fastapi import APIRouter, Depends, Query, HTTPException, File, UploadFile
 from fastapi.responses import FileResponse
 
-from spc.api.dependencies import obtener_client_id, obtener_corpus_opcional
+from spc.api.dependencies import (
+    obtener_client_id,
+    obtener_corpus_opcional,
+    obtener_modelos_opcional,
+)
 from spc.api.schemas.catalogo_v3 import (
     ModuleResponse,
     QueryReport,
@@ -36,6 +40,9 @@ from spc.api.schemas.catalogo_v3 import (
     CatalogResponse,
     QueryInfo,
     ModuleAnalysisRequest,
+    PrediccionHistorialItem,
+    HistorialResponse,
+    PrediccionDetalle,
 )
 from spc.catalogo.config import (
     obtener_catalogo,
@@ -46,6 +53,7 @@ from spc.catalogo.config import (
 from spc.catalogo.motor_catalogo import ejecutar_consulta, calcular_tendencia
 from spc.catalogo.plantillas import generar_plantilla_excel, generar_plantilla_json
 from spc.service.errores import SolicitudInvalida
+from spc.service.repositorio_modelos import RepositorioModelos
 from spc.utils.logging import get_logger
 
 log = get_logger("api.catalogo_v3")
@@ -53,6 +61,10 @@ log = get_logger("api.catalogo_v3")
 router = APIRouter(prefix="/v3", tags=["Catálogo"])
 
 ClientIdDep = Annotated[str, Depends(obtener_client_id)]
+ModelosOpcDep = Annotated[RepositorioModelos | None, Depends(obtener_modelos_opcional)]
+
+# Tope de filas de predicción a guardar por reporte (el historial es un resumen, no un dump).
+_MAX_FILAS_HISTORIAL = 500
 
 # El motor usa tipos internos en español; el contrato los expone en inglés (ADR-0028).
 _TIPO_EN = {"regresion": "regression", "clasificacion": "classification", "clustering": "clustering"}
@@ -317,6 +329,7 @@ def analizar_modulo(
     modulo: str,
     solicitud: ModuleAnalysisRequest,
     client_id: ClientIdDep,
+    modelos: ModelosOpcDep = None,
 ) -> ModuleResponse:
     """Ejecuta automáticamente las 10 consultas del módulo.
 
@@ -350,7 +363,9 @@ def analizar_modulo(
 
     # Ejecutar análisis (con retroalimentación de validación, A8)
     info = _construir_dataset_info(modulo_config, df, len(solicitud.rows))
-    return _ejecutar_analisis_interno(modulo, df, info)
+    respuesta = _ejecutar_analisis_interno(modulo, df, info)
+    _auditar_v3(modelos, modulo_config.dominio, client_id, len(df), respuesta)
+    return respuesta
 
 
 def _construir_dataset_info(modulo_config: Any, df: pd.DataFrame, filas_recibidas: int) -> DatasetInfo:
@@ -363,6 +378,61 @@ def _construir_dataset_info(modulo_config: Any, df: pd.DataFrame, filas_recibida
         rows_received=int(filas_recibidas),
         rows_discarded=int(max(0, filas_recibidas - len(df))),
     )
+
+
+# ==============================================================================
+# Historial de predicciones — persistencia (best-effort) y lectura
+# ==============================================================================
+def _resumen_para_historial(respuesta: ModuleResponse, filas: int) -> tuple[dict, dict]:
+    """Construye el ``request``/``response`` resumido que se guarda en la tabla ``predictions``.
+
+    Guarda metadatos + los **valores predichos** de cada reporte (acotados a
+    ``_MAX_FILAS_HISTORIAL`` filas), para poder re-ver los resultados sin re-ejecutar el modelo.
+    """
+    request_resumen = {
+        "n_filas": int(filas),
+        "columnas": list(respuesta.dataset_info.recognized_columns) if respuesta.dataset_info else [],
+    }
+    reportes_resumen = []
+    for r in respuesta.reports:
+        predicciones = (r.result or {}).get("predictions") or []
+        reportes_resumen.append(
+            {
+                "query_id": r.query_id,
+                "type": r.type,
+                "question": r.question,
+                "unit": r.unit,
+                "winner_model": r.technical_detail.winner_model if r.technical_detail else None,
+                "predictions": predicciones[:_MAX_FILAS_HISTORIAL],
+                "n_predictions": len(predicciones),
+            }
+        )
+    response_resumen = {"n_reportes": len(respuesta.reports), "reports": reportes_resumen}
+    return request_resumen, response_resumen
+
+
+def _auditar_v3(
+    modelos: RepositorioModelos | None,
+    modulo: str,
+    client_id: str,
+    filas: int,
+    respuesta: ModuleResponse,
+) -> None:
+    """Guarda el análisis en el historial. **Best-effort**: un fallo no rompe la respuesta."""
+    if modelos is None:
+        return
+    try:
+        request_resumen, response_resumen = _resumen_para_historial(respuesta, filas)
+        modelos.registrar_prediccion(
+            tenant_id=client_id,
+            domain=modulo,
+            model_id=None,  # /v3 entrena al vuelo, no sirve una versión persistida
+            horizon=respuesta.trend_analysis.horizon if respuesta.trend_analysis else None,
+            request=request_resumen,
+            response=response_resumen,
+        )
+    except Exception as e:  # noqa: BLE001 — auditoría nunca debe tumbar el análisis
+        log.warning(f"No se pudo registrar el historial de {modulo}: {e}")
 
 
 # ==============================================================================
@@ -405,6 +475,7 @@ async def analizar_desde_archivo(
     modulo: str,
     file: UploadFile,
     client_id: ClientIdDep,
+    modelos: ModelosOpcDep = None,
 ) -> ModuleResponse:
     """Procesa un archivo Excel o JSON y ejecuta el análisis.
 
@@ -455,7 +526,66 @@ async def analizar_desde_archivo(
         )
 
     info = _construir_dataset_info(modulo_config, df, filas_crudas)
-    return _ejecutar_analisis_interno(modulo, df, info)
+    respuesta = _ejecutar_analisis_interno(modulo, df, info)
+    _auditar_v3(modelos, modulo_config.dominio, client_id, len(df), respuesta)
+    return respuesta
+
+
+# ==============================================================================
+# GET /v3/{modulo}/historial — Historial de análisis del cliente por categoría
+# ==============================================================================
+@router.get("/{modulo}/historial", response_model=HistorialResponse, summary="Historial de análisis")
+def historial_modulo(
+    modulo: str,
+    client_id: ClientIdDep,
+    modelos: ModelosOpcDep = None,
+    limite: int = Query(50, ge=1, le=500, description="Máximo de entradas a devolver"),
+) -> HistorialResponse:
+    """Lista los análisis pasados del cliente para el módulo (más recientes primero).
+
+    El módulo ``todos`` (o cualquiera fuera de ventas/compras/almacen) devuelve el historial
+    de todas las categorías.
+    """
+    if modelos is None:
+        raise HTTPException(status_code=503, detail="El historial no está disponible.")
+    dominio = modulo if modulo in ("ventas", "compras", "almacen") else None
+    filas = modelos.listar_predicciones(tenant_id=client_id, domain=dominio, limite=limite)
+    items = [
+        PrediccionHistorialItem(
+            id=p.id,
+            module=p.domain,
+            created_at=p.created_at,
+            rows=int((p.request or {}).get("n_filas", 0)),
+            reports=int((p.response or {}).get("n_reportes", 0)),
+        )
+        for p in filas
+    ]
+    return HistorialResponse(module=dominio, total=len(items), items=items)
+
+
+# ==============================================================================
+# GET /v3/historial/{id} — Detalle de un análisis pasado (valores predichos)
+# ==============================================================================
+@router.get("/historial/{prediction_id}", response_model=PrediccionDetalle, summary="Detalle de análisis")
+def detalle_historial(
+    prediction_id: int,
+    client_id: ClientIdDep,
+    modelos: ModelosOpcDep = None,
+) -> PrediccionDetalle:
+    """Devuelve una entrada del historial con sus valores predichos, para re-verla."""
+    if modelos is None:
+        raise HTTPException(status_code=503, detail="El historial no está disponible.")
+    p = modelos.obtener_prediccion(prediction_id)
+    if p is None or p.tenant_id != client_id:
+        # No revelar predicciones de otros clientes: 404 tanto si no existe como si es de otro.
+        raise HTTPException(status_code=404, detail="No existe esa entrada de historial.")
+    return PrediccionDetalle(
+        id=p.id,
+        module=p.domain,
+        created_at=p.created_at,
+        request=p.request,
+        response=p.response,
+    )
 
 
 # ==============================================================================
