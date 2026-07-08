@@ -67,8 +67,9 @@ def generar(
 
             # Consumo diario (estacional, fin de semana, ruido) → diente de sierra.
             f_sem = comun.factor_estacional_semanal(fechas, amp_sem)
-            # Ruido de consumo moderado (0.2 → 0.08): demanda diaria predecible con serie+calendario.
-            consumo = np.maximum(0.0, demanda_media * f_sem * (1.0 + rng.normal(0.0, 0.08, n)))
+            # Ruido de consumo (σ=0.16): demanda diaria predecible con serie+calendario, pero con
+            # error creíble (~0.13, en la banda 0.10-0.30) en vez de ~0.07 (demasiado bueno).
+            consumo = np.maximum(0.0, demanda_media * f_sem * (1.0 + rng.normal(0.0, 0.16, n)))
 
             stock = stock_max  # arranca lleno
             stock_serie = np.empty(n, dtype="float64")
@@ -102,12 +103,12 @@ def generar(
             # Rotación anualizada aproximada: consumo medio / stock medio.
             stock_medio = max(1.0, float(np.mean(stock_serie)))
             rotacion = float(demanda_media * 365.0 / stock_medio)
-            # Ruido leve por período en columnas de política (rotación, stock máximo): son casi
+            # Ruido por período en columnas de política (rotación, stock máximo): son casi
             # constantes por serie, así que sin variación el modelo las "adivina" (WAPE ~0). Con
-            # una pizca de dispersión el error aterriza en un rango creíble (~0.10-0.15) sin dejar
-            # de ser bajo. Es ruido de reporte: la dinámica interna de stock usa los valores limpios.
-            rot_ruido = 1.0 + rng.normal(0.0, 0.12, n)
-            smax_ruido = 1.0 + rng.normal(0.0, 0.12, n)
+            # dispersión σ=0.17 el error aterriza en un rango creíble (~0.13, en la banda 0.10-0.30).
+            # Es ruido de reporte: la dinámica interna de stock usa los valores limpios.
+            rot_ruido = 1.0 + rng.normal(0.0, 0.17, n)
+            smax_ruido = 1.0 + rng.normal(0.0, 0.17, n)
 
             for i, f in enumerate(fechas):
                 filas.append({
