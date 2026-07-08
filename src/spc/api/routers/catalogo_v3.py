@@ -54,6 +54,7 @@ from spc.catalogo.motor_catalogo import ejecutar_consulta, calcular_tendencia
 from spc.catalogo.plantillas import generar_plantilla_excel, generar_plantilla_json
 from spc.service.errores import SolicitudInvalida
 from spc.service.repositorio_modelos import RepositorioModelos
+from spc.service.validacion_tipos import validar_tipos
 from spc.utils.logging import get_logger
 
 log = get_logger("api.catalogo_v3")
@@ -361,6 +362,10 @@ def analizar_modulo(
             detail=f"Faltan columnas del módulo {modulo}: {sorted(faltan)}",
         )
 
+    # Validar tipos por columna (fecha que sea fecha, numérica que sea número).
+    # Rechaza con detalle por columna/fila antes de entrar al motor (evita coerción silenciosa).
+    validar_tipos(df, modulo_config.dominio)
+
     # Ejecutar análisis (con retroalimentación de validación, A8)
     info = _construir_dataset_info(modulo_config, df, len(solicitud.rows))
     respuesta = _ejecutar_analisis_interno(modulo, df, info)
@@ -524,6 +529,9 @@ async def analizar_desde_archivo(
             status_code=422,
             detail=f"Al archivo le faltan columnas del módulo {modulo}: {sorted(faltan)}",
         )
+
+    # Validar tipos por columna (mismo criterio que el canal JSON).
+    validar_tipos(df, modulo_config.dominio)
 
     info = _construir_dataset_info(modulo_config, df, filas_crudas)
     respuesta = _ejecutar_analisis_interno(modulo, df, info)

@@ -80,8 +80,18 @@ async def _manejar_validacion(_: Request, exc: RequestValidationError) -> JSONRe
 
 
 async def _manejar_solicitud_invalida(_: Request, exc: SolicitudInvalida) -> JSONResponse:
-    """Regla de negocio incumplida → 400 con mensaje claro."""
-    return _json_error(400, "invalid_request", str(exc))
+    """Regla de negocio incumplida → 400 con mensaje claro.
+
+    Si la excepción trae ``detalles`` (p. ej. errores de tipo por columna de
+    ``validacion_tipos``), se adjuntan al cuerpo como detalle por campo.
+    """
+    crudos = getattr(exc, "detalles", None)
+    detalles = (
+        [DetalleError(field=d.get("field", ""), problem=d.get("problem", "")) for d in crudos]
+        if crudos
+        else None
+    )
+    return _json_error(400, "invalid_request", str(exc), detalles)
 
 
 async def _manejar_archivo_grande(_: Request, exc: ArchivoDemasiadoGrande) -> JSONResponse:
