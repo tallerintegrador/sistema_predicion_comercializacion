@@ -5,6 +5,7 @@ import { useSeccionesVisibles } from './hooks/useSeccionesVisibles'
 import { useAuth } from './auth/useAuth'
 import type { View } from './theme/modules'
 import { LoginPage } from './pages/LoginPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { HomePage } from './pages/HomePage'
 import { AboutPage } from './pages/AboutPage'
@@ -61,6 +62,9 @@ export default function App() {
       </div>
     )
   }
+
+  // Enlace de restablecimiento (`/reset?token=...`): accesible sin sesión, antes del login.
+  if (window.location.pathname === '/reset') return <ResetPasswordPage />
 
   if (status === 'anon' || !user) return <LoginPage />
 

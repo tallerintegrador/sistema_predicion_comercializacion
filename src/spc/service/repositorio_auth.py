@@ -44,6 +44,14 @@ def _ahora_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _normalizar_email(email: str | None) -> str | None:
+    """Normaliza un correo a minúsculas sin espacios; cadena vacía → ``None`` (lo borra)."""
+    if email is None:
+        return None
+    correo = email.strip().lower()
+    return correo or None
+
+
 # ---------------------------------------------------------------------------
 # Vistas de solo lectura (sin la contraseña; lo que sale hacia la API)
 # ---------------------------------------------------------------------------
@@ -67,6 +75,7 @@ class Usuario:
     is_active: bool
     onboarding_done: bool
     created_at: str
+    email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -269,6 +278,15 @@ class RepositorioAuth:
         with self._sesion() as s:
             return s.scalar(select(User.password_hash).where(User.user_id == user_id))
 
+    def obtener_usuario_por_email(self, email: str) -> Usuario | None:
+        """Busca una cuenta por su correo (para el restablecimiento). ``None`` si no hay."""
+        correo = (email or "").strip().lower()
+        if not correo:
+            return None
+        with self._sesion() as s:
+            u = s.scalar(select(User).where(func.lower(User.email) == correo))
+            return self._usuario_desde_orm(u) if u else None
+
     @staticmethod
     def _usuario_desde_orm(u: User) -> Usuario:
         return Usuario(
@@ -278,10 +296,17 @@ class RepositorioAuth:
             is_active=bool(u.is_active),
             onboarding_done=bool(u.onboarding_done),
             created_at=u.created_at,
+            email=u.email,
         )
 
     def crear_usuario(
-        self, *, user_id: str, password: str, role_id: int, client_id: str | None = None
+        self,
+        *,
+        user_id: str,
+        password: str,
+        role_id: int,
+        client_id: str | None = None,
+        email: str | None = None,
     ) -> Usuario:
         """Crea una cuenta con la contraseña HASHEADA. ``client_id`` deriva del id si falta."""
         cid = client_id or slug_cliente(user_id)
@@ -292,6 +317,7 @@ class RepositorioAuth:
                     password_hash=hash_password(password),
                     role_id=role_id,
                     client_id=cid,
+                    email=_normalizar_email(email),
                     is_active=True,
                     onboarding_done=False,
                     created_at=_ahora_iso(),
@@ -307,6 +333,7 @@ class RepositorioAuth:
         password: str | None = None,
         is_active: bool | None = None,
         onboarding_done: bool | None = None,
+        email: str | None = None,
     ) -> Usuario | None:
         with self._lock, self._sesion() as s:
             u = s.get(User, user_id)
@@ -320,6 +347,8 @@ class RepositorioAuth:
                 u.is_active = bool(is_active)
             if onboarding_done is not None:
                 u.onboarding_done = bool(onboarding_done)
+            if email is not None:
+                u.email = _normalizar_email(email)
         return self.obtener_usuario(user_id)
 
     # -- Perfil de cliente (onboarding) -----------------------------------

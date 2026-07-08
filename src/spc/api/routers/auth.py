@@ -30,6 +30,8 @@ from spc.api.schemas.auth import (
     REGIONES,
     SECTORES,
     TAMANOS,
+    ForgotRequest,
+    ForgotResponse,
     LoginRequest,
     LoginResponse,
     PermissionCatalog,
@@ -37,6 +39,8 @@ from spc.api.schemas.auth import (
     ProfileOptions,
     ProfileOut,
     ProfileUpdate,
+    ResetRequest,
+    ResetResponse,
     RoleCreate,
     RoleOut,
     RoleUpdate,
@@ -52,11 +56,18 @@ from spc.api.seguridad import (
     requiere,
     sesion_actual,
 )
-from spc.config import auth_secret, auth_token_ttl
+from spc.config import auth_reset_ttl, auth_secret, auth_token_ttl
 from spc.service import permisos
+from spc.service.email import enviar_email_reset
 from spc.service.errores import SolicitudInvalida
 from spc.service.repositorio_auth import NOMBRE_ROL_ADMIN, RepositorioAuth, Rol, Usuario
-from spc.service.seguridad import crear_token, verify_password
+from spc.service.seguridad import (
+    crear_token,
+    crear_token_reset,
+    verificar_token,
+    verificar_token_reset,
+    verify_password,
+)
 
 router = APIRouter(tags=["auth"])
 
@@ -75,6 +86,7 @@ def _user_out(repo: RepositorioAuth, usuario: Usuario) -> UserOut:
         role_id=usuario.role_id,
         role=rol.name if rol else "",
         client_id=usuario.client_id,
+        email=usuario.email,
         is_active=usuario.is_active,
         onboarding_done=usuario.onboarding_done,
         created_at=usuario.created_at,
@@ -116,6 +128,64 @@ def login(body: LoginRequest, repo: RepoDep) -> LoginResponse:
     ttl = auth_token_ttl()
     token = crear_token(subject=usuario.user_id, secret=auth_secret(), ttl_segundos=ttl)
     return LoginResponse(token=token, expires_in=ttl, user=construir_sesion(repo, usuario))
+
+
+# ---------------------------------------------------------------------------
+# Restablecimiento de contraseña (público, sin sesión)
+# ---------------------------------------------------------------------------
+@router.post(
+    "/auth/forgot",
+    response_model=ForgotResponse,
+    summary="Iniciar restablecimiento de contraseña (envía enlace por correo)",
+)
+def forgot_password(body: ForgotRequest, repo: RepoDep) -> ForgotResponse:
+    """Envía un enlace de restablecimiento al correo de la cuenta, si existe y está activa.
+
+    **Respuesta siempre genérica** (no revela si el correo existe): evita enumerar cuentas.
+    El token va ligado a la contraseña actual, así que es de un solo uso y caduca pronto.
+    """
+    usuario = repo.obtener_usuario_por_email(body.email)
+    if usuario is not None and usuario.is_active and usuario.email:
+        almacenado = repo.obtener_password_hash(usuario.user_id)
+        if almacenado:
+            token = crear_token_reset(
+                subject=usuario.user_id,
+                password_hash=almacenado,
+                secret=auth_secret(),
+                ttl_segundos=auth_reset_ttl(),
+            )
+            enviar_email_reset(usuario.email, token)  # best-effort (log si no hay SMTP)
+    return ForgotResponse()
+
+
+@router.post(
+    "/auth/reset",
+    response_model=ResetResponse,
+    summary="Confirmar restablecimiento con el token del correo",
+    responses={400: {"model": ErrorResponse, "description": "Token inválido, expirado o ya usado"}},
+)
+def reset_password(body: ResetRequest, repo: RepoDep) -> ResetResponse:
+    """Fija la nueva contraseña si el token es válido para la cuenta.
+
+    El token queda invalidado al cambiar la contraseña (huella ligada al hash): reusarlo
+    o usar uno caducado devuelve 400.
+    """
+    # El ``sub`` (id de usuario) va firmado dentro del token: lo leemos para cargar el hash
+    # actual de esa cuenta y así verificar la huella de un solo uso contra la contraseña vigente.
+    cuerpo = verificar_token(body.token, auth_secret())
+    sub = str(cuerpo.get("sub")) if cuerpo else None
+    almacenado = repo.obtener_password_hash(sub) if sub else None
+    user_id = (
+        verificar_token_reset(body.token, password_hash=almacenado, secret=auth_secret())
+        if almacenado
+        else None
+    )
+    if user_id is None:
+        raise SolicitudInvalida(
+            "El enlace de restablecimiento no es válido o ya expiró. Solicita uno nuevo."
+        )
+    repo.actualizar_usuario(user_id, password=body.new_password)
+    return ResetResponse()
 
 
 @router.get(
@@ -245,7 +315,7 @@ def crear_usuario(body: UserCreate, _: AdminDep, repo: RepoDep) -> UserOut:
         raise ConflictoRecurso(f"Ya existe un usuario con el id '{body.user_id}'.")
     try:
         usuario = repo.crear_usuario(
-            user_id=body.user_id, password=body.password, role_id=body.role_id
+            user_id=body.user_id, password=body.password, role_id=body.role_id, email=body.email
         )
     except sqlite3.IntegrityError as exc:  # carrera contra la PK de user_id
         raise ConflictoRecurso(f"Ya existe un usuario con el id '{body.user_id}'.") from exc
@@ -264,7 +334,11 @@ def actualizar_usuario(user_id: str, body: UserUpdate, _: AdminDep, repo: RepoDe
     if body.role_id is not None and repo.obtener_rol(body.role_id) is None:
         raise RecursoNoEncontrado(f"No existe el rol con id {body.role_id}.")
     usuario = repo.actualizar_usuario(
-        user_id, role_id=body.role_id, password=body.password, is_active=body.is_active
+        user_id,
+        role_id=body.role_id,
+        password=body.password,
+        is_active=body.is_active,
+        email=body.email,
     )
     return _user_out(repo, usuario)  # type: ignore[arg-type]
 

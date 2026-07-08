@@ -135,6 +135,7 @@ class UserOut(BaseModel):
     role_id: int
     role: str = Field(description="Nombre del rol asignado.")
     client_id: str
+    email: str | None = Field(default=None, description="Correo de contacto (para reset de contraseña).")
     is_active: bool
     onboarding_done: bool
     created_at: str
@@ -148,16 +149,52 @@ class UserCreate(BaseModel):
     user_id: str = Field(min_length=1, max_length=60, description="Id de inicio de sesión.")
     password: str = Field(min_length=4, max_length=128, description="Contraseña inicial.")
     role_id: int = Field(description="Rol a asignar.")
+    email: str | None = Field(default=None, max_length=255, description="Correo de contacto (opcional).")
 
 
 class UserUpdate(BaseModel):
-    """Edición de una cuenta (rol, contraseña o estado)."""
+    """Edición de una cuenta (rol, contraseña, correo o estado)."""
 
     model_config = ConfigDict(extra="forbid")
 
     role_id: int | None = None
     password: str | None = Field(default=None, min_length=4, max_length=128)
     is_active: bool | None = None
+    email: str | None = Field(default=None, max_length=255, description="Correo de contacto.")
+
+
+# ---------------------------------------------------------------------------
+# Restablecimiento de contraseña
+# ---------------------------------------------------------------------------
+class ForgotRequest(BaseModel):
+    """Solicitud de restablecimiento: el usuario indica su correo de contacto."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=255, description="Correo de la cuenta a recuperar.")
+
+
+class ForgotResponse(BaseModel):
+    """Respuesta genérica del inicio de reset (no revela si la cuenta existe)."""
+
+    message: str = Field(
+        default="Si la cuenta existe, te enviamos un correo con instrucciones."
+    )
+
+
+class ResetRequest(BaseModel):
+    """Confirmación del reset: token recibido por correo + nueva contraseña."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, description="Token de restablecimiento recibido por correo.")
+    new_password: str = Field(min_length=4, max_length=128, description="Nueva contraseña.")
+
+
+class ResetResponse(BaseModel):
+    """Confirmación de que la contraseña se cambió."""
+
+    message: str = Field(default="Tu contraseña se actualizó. Ya puedes iniciar sesión.")
 
 
 # ---------------------------------------------------------------------------
