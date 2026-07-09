@@ -32,7 +32,10 @@ WORKDIR /app
 # Dependencias primero: capa cacheable. Mientras requirements-api.txt no cambie,
 # Docker reutiliza esta capa y el build es rapido.
 COPY requirements-api.txt ./
-RUN pip install -r requirements-api.txt
+# --timeout / --retries: algunas ruedas son grandes (p.ej. libs CUDA transitivas de
+# xgboost) y files.pythonhosted.org corta la descarga con read timeout. Subimos el
+# tope y reintentamos para que un corte transitorio no rompa el build.
+RUN pip install --timeout=300 --retries=10 -r requirements-api.txt
 
 # Codigo de la app + artefactos del motor. models/ se hornea en la imagen: el
 # servicio arranca sin volumenes, sin descargas externas y sin reentrenar.
