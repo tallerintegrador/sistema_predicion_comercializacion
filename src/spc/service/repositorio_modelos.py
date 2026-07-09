@@ -59,6 +59,20 @@ class ModeloInfo:
     trained_at: str
 
 
+@dataclass(frozen=True)
+class PrediccionInfo:
+    """Vista de solo lectura de una fila del historial de predicciones (tabla ``predictions``)."""
+
+    id: int
+    tenant_id: str
+    domain: str
+    model_id: int | None
+    horizon: int | None
+    request: dict | None
+    response: dict | None
+    created_at: str
+
+
 def _ahora_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -241,7 +255,43 @@ class RepositorioModelos:
             s.flush()
             return int(fila.id)
 
+    # -- Lectura del historial de predicciones -----------------------------
+    def listar_predicciones(
+        self, *, tenant_id: str, domain: str | None = None, limite: int = 50
+    ) -> list[PrediccionInfo]:
+        """Historial de predicciones de un cliente (más recientes primero).
+
+        Si ``domain`` se indica, filtra por categoría (ventas/compras/almacen). ``limite``
+        acota cuántas filas devolver. Devuelve solo metadatos + resumen (no el payload
+        completo, que se obtiene con :meth:`obtener_prediccion`).
+        """
+        with self._Session() as s:
+            q = select(Prediction).where(Prediction.tenant_id == tenant_id)
+            if domain is not None:
+                q = q.where(Prediction.domain == domain)
+            q = q.order_by(Prediction.created_at.desc(), Prediction.id.desc()).limit(limite)
+            return [self._info_prediccion(p) for p in s.scalars(q).all()]
+
+    def obtener_prediccion(self, prediction_id: int) -> PrediccionInfo | None:
+        """Devuelve una predicción por id con su payload completo (``request``/``response``)."""
+        with self._Session() as s:
+            fila = s.get(Prediction, prediction_id)
+            return self._info_prediccion(fila) if fila is not None else None
+
     # -- Internos ----------------------------------------------------------
+    @staticmethod
+    def _info_prediccion(p: Prediction) -> PrediccionInfo:
+        return PrediccionInfo(
+            id=int(p.id),
+            tenant_id=p.tenant_id,
+            domain=p.domain,
+            model_id=int(p.model_id) if p.model_id is not None else None,
+            horizon=int(p.horizon) if p.horizon is not None else None,
+            request=p.request,
+            response=p.response,
+            created_at=p.created_at,
+        )
+
     @staticmethod
     def _siguiente_version(s: Session, tenant_id: str, domain: str, task: str) -> int:
         maxv = s.scalar(

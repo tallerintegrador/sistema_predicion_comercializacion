@@ -46,6 +46,7 @@ export interface UserOut {
   role_id: number
   role: string
   client_id: string
+  email?: string | null
   is_active: boolean
   onboarding_done: boolean
   created_at: string
@@ -127,6 +128,7 @@ export async function createUser(body: {
   user_id: string
   password: string
   role_id: number
+  email?: string | null
 }): Promise<UserOut> {
   const { data } = await postJson<UserOut>('/users', body)
   return data
@@ -134,9 +136,28 @@ export async function createUser(body: {
 
 export async function updateUser(
   userId: string,
-  body: { role_id?: number; password?: string; is_active?: boolean },
+  body: { role_id?: number; password?: string; is_active?: boolean; email?: string | null },
 ): Promise<UserOut> {
   const { data } = await patchJson<UserOut>(`/users/${userId}`, body)
+  return data
+}
+
+// --- Restablecimiento de contraseña ---
+/** Inicia el reset: pide al backend enviar un enlace al correo. Respuesta siempre genérica. */
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  const { data } = await postJson<{ message: string }>('/auth/forgot', { email })
+  return data
+}
+
+/** Confirma el reset con el token del correo y fija la nueva contraseña. */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<{ message: string }> {
+  const { data } = await postJson<{ message: string }>('/auth/reset', {
+    token,
+    new_password: newPassword,
+  })
   return data
 }
 

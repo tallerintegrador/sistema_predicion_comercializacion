@@ -130,3 +130,53 @@ def verificar_token(token: str, secret: str, *, ahora: int | None = None) -> dic
     if int(cuerpo.get("exp", 0)) < momento:
         return None
     return cuerpo
+
+
+# ---------------------------------------------------------------------------
+# Token de restablecimiento de contraseña (de un solo uso, sin almacén)
+# ---------------------------------------------------------------------------
+# El token de reset va firmado como el de sesión, pero además lleva una **huella** del hash
+# de la contraseña actual (``pv``). Al cambiar la contraseña el hash cambia, la huella deja
+# de coincidir y el token queda invalidado: es **de un solo uso** sin necesidad de guardarlo
+# en la base (encaja con el diseño stateless del proyecto).
+def _huella_password(password_hash: str, secret: str) -> str:
+    """Huella corta y estable del hash de contraseña (no reversible), para ligar el token."""
+    return _firmar(("pv:" + password_hash).encode("utf-8"), secret)[:16]
+
+
+def crear_token_reset(
+    *, subject: str, password_hash: str, secret: str, ttl_segundos: int, ahora: int | None = None
+) -> str:
+    """Emite un token de restablecimiento para ``subject``, ligado a su contraseña actual.
+
+    Válido ``ttl_segundos``. Deja de servir en cuanto la contraseña cambia (huella ``pv``).
+    """
+    emitido = int(time.time()) if ahora is None else ahora
+    cuerpo = {
+        "sub": subject,
+        "iat": emitido,
+        "exp": emitido + ttl_segundos,
+        "purpose": "pwd_reset",
+        "pv": _huella_password(password_hash, secret),
+    }
+    cuerpo_b64 = _b64e(json.dumps(cuerpo, separators=(",", ":")).encode("utf-8"))
+    firma_b64 = _firmar(cuerpo_b64.encode("ascii"), secret)
+    return f"{cuerpo_b64}.{firma_b64}"
+
+
+def verificar_token_reset(
+    token: str, *, password_hash: str, secret: str, ahora: int | None = None
+) -> str | None:
+    """Verifica un token de reset. Devuelve el ``sub`` (id de usuario) o ``None``.
+
+    ``None`` ante: firma inválida, expiración, propósito distinto, o huella ``pv`` que no
+    coincide con la contraseña actual (token ya usado / contraseña ya cambiada).
+    """
+    cuerpo = verificar_token(token, secret, ahora=ahora)
+    if cuerpo is None or cuerpo.get("purpose") != "pwd_reset":
+        return None
+    esperada = _huella_password(password_hash, secret)
+    if not hmac.compare_digest(str(cuerpo.get("pv", "")), esperada):
+        return None
+    sub = cuerpo.get("sub")
+    return str(sub) if sub else None

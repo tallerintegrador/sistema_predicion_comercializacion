@@ -53,7 +53,9 @@ def _perfil_continuo(rng: np.random.Generator, pv: int) -> PerfilProveedor:
     q = float(rng.uniform(0.0, 1.0))
     lead_medio = float(np.clip(np.interp(q, [0.0, 1.0], [19.0, 4.0]) + rng.normal(0.0, 2.6), 2.0, 24.0))
     factor_costo = float(np.clip(np.interp(q, [0.0, 1.0], [0.80, 1.28]) + rng.normal(0.0, 0.07), 0.70, 1.40))
-    cumpl_medio = float(np.clip(np.interp(q, [0.0, 1.0], [0.86, 0.99]) + rng.normal(0.0, 0.02), 0.60, 1.0))
+    # Techo 0.95 (antes 0.99): deja aire al clip(0.5,1.0) del cumplimiento por orden para que la
+    # varianza intra-proveedor se exprese (no se apile en 1.0) y com-r4 aterrice en la banda 0.10-0.30.
+    cumpl_medio = float(np.clip(np.interp(q, [0.0, 1.0], [0.82, 0.95]) + rng.normal(0.0, 0.02), 0.60, 1.0))
     # Variabilidad por orden moderada: el lead time es sobre todo característica del proveedor
     # (predecible con su identidad), con dispersión chica orden-a-orden. La señal de "entrega con
     # retraso" vive en el RANGO de lead_medio ENTRE proveedores, no en el ruido por orden.
@@ -100,17 +102,18 @@ def generar(
             for o in range(n_ordenes_por_serie):
                 fecha_orden = f0 + timedelta(days=o * dias_entre_ordenes)
                 frac = o / max(1, n_ordenes_por_serie - 1)
-                cantidad = base_pedido * (1.0 + tendencia * frac) * comun.entre(rng, 0.8, 1.2)
+                cantidad = base_pedido * (1.0 + tendencia * frac) * comun.entre(rng, 0.72, 1.28)
                 cantidad = float(max(1.0, round(cantidad)))
 
                 precio = round(precio_base * comun.entre(rng, 0.95, 1.08), 2)
                 descuento_volumen = round(min(15.0, cantidad / 100.0) * comun.entre(rng, 0.5, 1.0), 2)
 
                 lead = int(max(1, round(rng.normal(lead_medio, perfil.lead_sigma))))
-                # Dispersión por orden algo mayor (0.04→0.06): el cumplimiento no es constante por
-                # proveedor, así que su regresión tiene error creíble (~0.05) en vez de ~0, sin
-                # ensuciar de más la clasificación cumplimiento_alto (com-c2).
-                cumplimiento = float(np.clip(rng.normal(cumpl_medio, 0.06), 0.5, 1.0))
+                # Dispersión por orden (σ=0.13): el cumplimiento no es constante por proveedor,
+                # así que su regresión aterriza en un error creíble (~0.13, en la banda 0.10-0.30)
+                # en vez de ~0.05. El clip(0.5,1.0) recorta la cola alta, sin ensuciar de más la
+                # clasificación cumplimiento_alto (com-c2).
+                cumplimiento = float(np.clip(rng.normal(cumpl_medio, 0.13), 0.5, 1.0))
                 recibida = float(round(cantidad * cumplimiento))
 
                 filas.append({

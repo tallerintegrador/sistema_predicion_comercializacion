@@ -173,3 +173,34 @@ class ModuleAnalysisRequest(BaseModel):
     """Solicitud de POST /v3/{modulo} — datos a analizar."""
 
     rows: list[dict[str, Any]] = Field(min_length=1, description="Filas de datos del módulo")
+
+
+# ---------------------------------------------------------------------------
+# Historial de predicciones (GET /v3/{modulo}/historial, GET /v3/historial/{id})
+# ---------------------------------------------------------------------------
+class PrediccionHistorialItem(BaseModel):
+    """Una entrada del historial: metadatos de un análisis ejecutado (sin el payload pesado)."""
+
+    id: int
+    module: str = Field(description="Categoría: ventas | compras | almacen")
+    created_at: str = Field(description="Marca de tiempo ISO de cuándo se ejecutó el análisis")
+    rows: int = Field(default=0, description="Nº de filas de datos analizadas")
+    reports: int = Field(default=0, description="Nº de reportes generados")
+
+
+class HistorialResponse(BaseModel):
+    """Respuesta de GET /v3/{modulo}/historial — lista paginable de análisis pasados."""
+
+    module: str | None = None
+    total: int = 0
+    items: list[PrediccionHistorialItem] = Field(default_factory=list)
+
+
+class PrediccionDetalle(BaseModel):
+    """Detalle completo de una predicción del historial (para re-ver los valores pronosticados)."""
+
+    id: int
+    module: str
+    created_at: str
+    request: dict[str, Any] | None = None
+    response: dict[str, Any] | None = None

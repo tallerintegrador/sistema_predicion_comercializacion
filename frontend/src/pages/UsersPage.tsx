@@ -187,13 +187,20 @@ function UsuariosCard({
 }) {
   const [userId, setUserId] = useState('')
   const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
   const [roleId, setRoleId] = useState<number | ''>('')
 
   const crear = onChange(async () => {
     if (roleId === '') return
-    await createUser({ user_id: userId.trim(), password, role_id: roleId })
+    await createUser({
+      user_id: userId.trim(),
+      password,
+      role_id: roleId,
+      email: email.trim() || null,
+    })
     setUserId('')
     setPassword('')
+    setEmail('')
     setRoleId('')
   })
 
@@ -206,6 +213,7 @@ function UsuariosCard({
           <thead>
             <tr>
               <th className="th">Id</th>
+              <th className="th">Correo</th>
               <th className="th">Rol</th>
               <th className="th">Estado</th>
               <th className="th">Acciones</th>
@@ -215,6 +223,13 @@ function UsuariosCard({
             {usuarios.map((u) => (
               <tr key={u.user_id} className="border-t border-slate-100">
                 <td className="td font-medium">{u.user_id}</td>
+                <td className="td">
+                  {u.email ? (
+                    <span className="text-slate-700">{u.email}</span>
+                  ) : (
+                    <span className="text-xs text-slate-400">Sin correo</span>
+                  )}
+                </td>
                 <td className="td">
                   <select
                     className="input py-1"
@@ -236,14 +251,26 @@ function UsuariosCard({
                   </span>
                 </td>
                 <td className="td">
-                  <button
-                    className="btn-ghost text-xs"
-                    onClick={onChange(async () => {
-                      await updateUser(u.user_id, { is_active: !u.is_active })
-                    })}
-                  >
-                    {u.is_active ? 'Desactivar' : 'Activar'}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="btn-ghost text-xs"
+                      onClick={onChange(async () => {
+                        const nuevo = window.prompt('Correo de contacto del usuario:', u.email ?? '')
+                        if (nuevo === null) return
+                        await updateUser(u.user_id, { email: nuevo.trim() })
+                      })}
+                    >
+                      Editar correo
+                    </button>
+                    <button
+                      className="btn-ghost text-xs"
+                      onClick={onChange(async () => {
+                        await updateUser(u.user_id, { is_active: !u.is_active })
+                      })}
+                    >
+                      {u.is_active ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -253,7 +280,7 @@ function UsuariosCard({
 
       <details className="rounded-lg border border-slate-200 p-3">
         <summary className="cursor-pointer text-sm font-medium text-slate-700">Crear un usuario</summary>
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-5">
           <input className="input" placeholder="Id" value={userId} onChange={(e) => setUserId(e.target.value)} />
           <input
             className="input"
@@ -261,6 +288,13 @@ function UsuariosCard({
             placeholder="Contraseña inicial"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+          />
+          <input
+            className="input"
+            type="email"
+            placeholder="Correo (opcional)"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
           <select className="input" value={roleId} onChange={(e) => setRoleId(e.target.value === '' ? '' : Number(e.target.value))}>
             <option value="">Rol…</option>
@@ -272,6 +306,7 @@ function UsuariosCard({
             Crear
           </button>
         </div>
+        <p className="help mt-2">El correo es necesario para que el usuario pueda restablecer su contraseña.</p>
       </details>
     </section>
   )

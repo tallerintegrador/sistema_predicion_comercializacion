@@ -80,6 +80,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
     client_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Correo de contacto: canal para el restablecimiento de contraseña. Nullable porque las
+    # cuentas antiguas (y las de demo) no lo tienen; indexado para buscar por correo.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     onboarding_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)

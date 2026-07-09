@@ -108,6 +108,8 @@ AUTH_SECRET_DEFAULT = "spc-dev-secret-NO-USAR-EN-PRODUCCION"
 # usuario debe volver a iniciar sesión (el token es autocontenido; no hay almacén de
 # sesión externo, lo que respeta el despliegue de un solo worker).
 AUTH_TOKEN_TTL_DEFAULT = 8 * 3600
+# Vida útil del token de restablecimiento de contraseña: corta a propósito (30 min).
+AUTH_RESET_TTL_DEFAULT = 30 * 60
 # Cuentas administrador de DEMOSTRACIÓN que se siembran al arranque (ADR-0014). La
 # contraseña inicial es IGUAL al id y se almacena HASHEADA. NO son credenciales de
 # producción: se documentan como demo en el README y deben rotarse en un despliegue real.
@@ -318,6 +320,39 @@ def auth_secret_es_default() -> bool:
 def auth_token_ttl() -> int:
     """Vida útil del token de sesión en segundos (``SPC_AUTH_TOKEN_TTL`` o 8 h)."""
     return _entero_positivo_env("SPC_AUTH_TOKEN_TTL", AUTH_TOKEN_TTL_DEFAULT)
+
+
+def auth_reset_ttl() -> int:
+    """Vida útil del token de restablecimiento de contraseña (``SPC_AUTH_RESET_TTL`` o 30 min)."""
+    return _entero_positivo_env("SPC_AUTH_RESET_TTL", AUTH_RESET_TTL_DEFAULT)
+
+
+# ---------------------------------------------------------------------------
+# Envío de correo (restablecimiento de contraseña)
+# ---------------------------------------------------------------------------
+def app_base_url() -> str:
+    """URL base del frontend para construir enlaces (``SPC_APP_BASE_URL`` o localhost:5173)."""
+    return os.getenv("SPC_APP_BASE_URL", "http://localhost:5173").strip().rstrip("/")
+
+
+def smtp_config() -> dict[str, str | int]:
+    """Configuración SMTP leída del entorno (host/port/user/password/from).
+
+    Si ``SPC_SMTP_HOST`` está vacío, el envío está **deshabilitado**: el servicio de correo
+    registra el enlace en el log en vez de enviarlo (modo desarrollo, sin romper el flujo).
+    """
+    return {
+        "host": os.getenv("SPC_SMTP_HOST", "").strip(),
+        "port": _entero_positivo_env("SPC_SMTP_PORT", 587),
+        "user": os.getenv("SPC_SMTP_USER", "").strip(),
+        "password": os.getenv("SPC_SMTP_PASSWORD", ""),
+        "remitente": os.getenv("SPC_SMTP_FROM", "no-reply@spc.local").strip(),
+    }
+
+
+def smtp_habilitado() -> bool:
+    """True si hay un host SMTP configurado (envío real de correos)."""
+    return bool(os.getenv("SPC_SMTP_HOST", "").strip())
 
 
 # ---------------------------------------------------------------------------

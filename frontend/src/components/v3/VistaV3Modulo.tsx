@@ -21,6 +21,7 @@ import { ErrorPanel } from '../ErrorPanel'
 import { SeccionReportes } from './SeccionReportes'
 import { BloqueTendencia } from './BloqueTendencia'
 import { ValidacionCarga } from './ValidacionCarga'
+import { HistorialV3 } from './HistorialV3'
 import { TIPOS_REPORTE, ORDEN_TIPO, INFO_POR_TIPO } from '../../data/tiposReporte'
 import { setColumnLabels } from '../../data/etiquetas'
 import type { Accent, View } from '../../theme/modules'
@@ -273,6 +274,16 @@ export function VistaV3Modulo({
             {aviso}
           </p>
         )}
+      </StepSection>
+
+      {/* PASO 4 — Historial de análisis por categoría */}
+      <StepSection
+        step={4}
+        title="Historial de análisis"
+        accentChip={accent.chip}
+        description="Revisa los análisis que hiciste antes en esta categoría y vuelve a ver sus resultados."
+      >
+        <HistorialV3 modulo={modulo} refrescar={data?.executed_at} />
       </StepSection>
 
       {error && <ErrorPanel error={error} />}

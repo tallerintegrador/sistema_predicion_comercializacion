@@ -17,6 +17,8 @@ import type {
   V3Domain,
   CatalogResponse,
   ModuleResponse,
+  HistorialResponse,
+  HistorialDetalle,
 } from './types'
 
 // --- 3×3 por dominio (ADR-0024/0025) ---
@@ -75,3 +77,11 @@ export const postV3Analisis = (modulo: V3Domain, rows: AutoRow[]) =>
 /** Obtiene datos de ejemplo del módulo para demostración. */
 export const getV3Demo = (modulo: V3Domain) =>
   getJson<ModuleResponse>(`/v3/${modulo}/demo`).then((r) => r.data)
+
+/** Historial de análisis del cliente para el módulo (más recientes primero). */
+export const getV3Historial = (modulo: V3Domain, limite = 50) =>
+  getJson<HistorialResponse>(`/v3/${modulo}/historial?limite=${limite}`).then((r) => r.data)
+
+/** Detalle de un análisis pasado, con sus valores predichos. */
+export const getV3Prediccion = (id: number) =>
+  getJson<HistorialDetalle>(`/v3/historial/${id}`).then((r) => r.data)
