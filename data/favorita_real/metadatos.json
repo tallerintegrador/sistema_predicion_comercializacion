@@ -1,0 +1,34 @@
+{
+  "fuente": "data_smote (Kaggle Corporación Favorita)",
+  "submuestra": {
+    "fecha_ini": "2017-01-01",
+    "fecha_fin": "2017-08-15",
+    "tiendas": [
+      1,
+      2,
+      9,
+      10,
+      11,
+      12,
+      28,
+      29,
+      44,
+      45
+    ],
+    "tiendas_por_tipo": 2,
+    "n_filas_train": 4713306,
+    "n_skus": 3995,
+    "criterio": "TIENDAS_POR_TIPO tiendas por cada type (A-E) + ventana temporal reciente; semilla 42"
+  },
+  "cortes": {
+    "train": "<= 2017-07-14",
+    "valid": "2017-07-15 .. 2017-07-30",
+    "test": "2017-07-31 .. 2017-08-15"
+  },
+  "estrategia_desbalance_elegida": "sin_remuestreo",
+  "archivos": [
+    "ventas_favorita.csv",
+    "almacen_favorita.csv",
+    "compras_favorita.csv"
+  ]
+}
