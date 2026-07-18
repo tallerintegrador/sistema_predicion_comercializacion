@@ -52,3 +52,8 @@ models/*.meta.json
 Thumbs.db
 
 data/raw/train.csv
+
+# Datasets Favorita transformados (grandes, regenerables con notebooks/favorita_datos_reales.ipynb).
+# Se versionan solo el MANIFIESTO y los metadatos (pequeños, documentan la procedencia).
+data/favorita_real/*_favorita.csv
+data/favorita_real/*.zip
