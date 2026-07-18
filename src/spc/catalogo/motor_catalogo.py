@@ -23,6 +23,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from sklearn.cluster import AgglomerativeClustering, KMeans
+from sklearn.decomposition import PCA
+from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import (
     ExtraTreesRegressor,
     HistGradientBoostingClassifier,
@@ -31,11 +34,8 @@ from sklearn.ensemble import (
     RandomForestRegressor,
 )
 from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.dummy import DummyClassifier, DummyRegressor
-from sklearn.cluster import AgglomerativeClustering, KMeans
-from sklearn.decomposition import PCA
-from sklearn.metrics import average_precision_score, silhouette_score, f1_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import average_precision_score, f1_score, silhouette_score
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from spc.catalogo.config import (
     ConfigConsulta,
@@ -45,7 +45,9 @@ from spc.catalogo.config import (
     obtener_umbrales,
     obtener_unidades,
 )
+from spc.models.desbalance import TOL_PRAUC, seleccionar_umbral
 from spc.utils.logging import get_logger
+from spc.utils.metrics import classification_metrics_min
 
 log = get_logger("catalogo.motor_catalogo")
 
@@ -373,6 +375,47 @@ def construir_features(
     return features
 
 
+def construir_features_clasificacion_mixtas(
+    df: pd.DataFrame, config: ConfigConsulta, modulo_config: Any
+) -> pd.DataFrame:
+    """Features sin one-hot para que SMOTENC vea las categoricas originales.
+
+    El one-hot se ajusta despues del corte temporal y despues del remuestreo. Asi el
+    calculo de vecinos respeta las variables categoricas y valid/test nunca participan
+    en el ajuste del escalador, el codificador ni el sampler.
+    """
+    columnas_excluir = set(modulo_config.columnas_excluir_features.keys())
+    columnas_excluir.add(config.objetivo)
+    cols_ok = [c for c in config.columnas_entrada if c not in columnas_excluir]
+    if not cols_ok:
+        raise ValueError(f"Consulta {config.id}: tras excluir anti-fuga, no quedan features.")
+    features = df[cols_ok].copy()
+
+    claves = [c for c in (config.cols_serie or []) if c in df.columns]
+    if claves:
+        serie = df[claves].astype(str).agg("|".join, axis=1)
+        if 2 <= serie.nunique() <= 600:
+            features["serie"] = serie
+
+    if config.col_fecha and config.col_fecha in df.columns:
+        fechas = pd.to_datetime(df[config.col_fecha])
+        dow = fechas.dt.dayofweek.to_numpy(dtype="float64")
+        mes = fechas.dt.month.to_numpy(dtype="float64")
+        features["cal_dow_sin"] = np.sin(2 * np.pi * dow / 7.0)
+        features["cal_dow_cos"] = np.cos(2 * np.pi * dow / 7.0)
+        features["cal_mes_sin"] = np.sin(2 * np.pi * (mes - 1.0) / 12.0)
+        features["cal_mes_cos"] = np.cos(2 * np.pi * (mes - 1.0) / 12.0)
+        features["cal_dia_mes"] = fechas.dt.day.to_numpy(dtype="float64")
+
+    for col in features.select_dtypes(include=["object", "string", "category"]).columns:
+        features[col] = features[col].astype("string").fillna("__faltante__")
+    for col in features.columns.difference(
+        features.select_dtypes(include=["object", "string", "category"]).columns
+    ):
+        features[col] = pd.to_numeric(features[col], errors="coerce")
+    return features
+
+
 def partir_temporal(
     df: pd.DataFrame, col_fecha: str
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -398,6 +441,32 @@ def _preparar_temporal(
     return df_s, X, int(0.7 * n), int(0.85 * n)
 
 
+def _orden_y_cortes_por_fecha(
+    df: pd.DataFrame, col_fecha: str | None
+) -> tuple[pd.Index, int, int]:
+    """Orden y cortes 70/15/15 sin repartir una misma fecha entre tramos."""
+    if not col_fecha or col_fecha not in df.columns:
+        order = df.index
+        n = len(order)
+        return order, int(0.7 * n), int(0.85 * n)
+
+    order = df.sort_values(col_fecha, kind="stable").index
+    fechas = pd.to_datetime(df.loc[order, col_fecha], errors="coerce").reset_index(drop=True)
+    unicas = pd.Index(fechas.dropna().unique()).sort_values()
+    if len(unicas) < 3:
+        n = len(order)
+        return order, int(0.7 * n), int(0.85 * n)
+
+    n_train_fechas = max(1, int(0.70 * len(unicas)))
+    n_valid_fechas = max(n_train_fechas + 1, int(0.85 * len(unicas)))
+    n_valid_fechas = min(n_valid_fechas, len(unicas) - 1)
+    fin_train = unicas[n_train_fechas - 1]
+    fin_valid = unicas[n_valid_fechas - 1]
+    i70 = int((fechas <= fin_train).sum())
+    i85 = int((fechas <= fin_valid).sum())
+    return order, i70, i85
+
+
 # ==============================================================================
 # Derivación de Etiquetas (Clasificación binaria)
 # ==============================================================================
@@ -413,11 +482,8 @@ def derivar_etiqueta_clasificacion(
     out = df.copy()
     etq = _nombre_etiqueta(config)
 
-    if col_fecha and col_fecha in out.columns:
-        order = out.sort_values(col_fecha, kind="stable").index
-    else:
-        order = out.index
-    i70 = max(1, int(0.7 * len(order)))
+    order, i70, _ = _orden_y_cortes_por_fecha(out, col_fecha)
+    i70 = max(1, i70)
     train = out.loc[order[:i70]]
 
     if der.tipo == "percentil":
@@ -491,15 +557,18 @@ def _construir_modelo_regresion(nombre: str, seed: int = 42) -> Any:
     raise ValueError(f"Regresor desconocido: {nombre}")
 
 
-def _construir_modelo_clasificacion(nombre: str, seed: int = 42) -> Any:
+def _construir_modelo_clasificacion(
+    nombre: str, seed: int = 42, balanceado: bool = True
+) -> Any:
+    peso = "balanced" if balanceado else None
     if nombre == "logistic_regression":
-        return LogisticRegression(class_weight="balanced", max_iter=1000, random_state=seed)
+        return LogisticRegression(class_weight=peso, max_iter=1000, random_state=seed)
     if nombre == "random_forest":
         return RandomForestClassifier(
-            n_estimators=100, max_depth=10, class_weight="balanced", random_state=seed
+            n_estimators=100, max_depth=10, class_weight=peso, random_state=seed
         )
     if nombre == "hist_gradient_boosting":
-        return HistGradientBoostingClassifier(max_depth=5, random_state=seed)
+        return HistGradientBoostingClassifier(max_depth=5, class_weight=peso, random_state=seed)
     if nombre == "baseline":  # B2: referencia (predice según la prevalencia de clases)
         return DummyClassifier(strategy="prior")
     raise ValueError(f"Clasificador desconocido: {nombre}")
@@ -609,6 +678,75 @@ def _pred_clasif_degradado(
     return filas
 
 
+@dataclass
+class _TransformadorMixto:
+    """Preprocesamiento ajustado solo con TRAIN para clasificacion binaria."""
+
+    numericas: list[str]
+    categoricas: list[str]
+    medianas: pd.Series
+    scaler: StandardScaler | None
+    encoder: OneHotEncoder | None
+
+    def preparar(self, X: pd.DataFrame, categoricas_dtype: bool = False) -> pd.DataFrame:
+        partes: dict[str, Any] = {}
+        if self.numericas:
+            nums = X[self.numericas].apply(pd.to_numeric, errors="coerce")
+            nums = nums.fillna(self.medianas)
+            escaladas = self.scaler.transform(nums) if self.scaler is not None else nums.to_numpy()
+            for pos, col in enumerate(self.numericas):
+                partes[col] = escaladas[:, pos]
+        for pos, col in enumerate(self.categoricas):
+            serie = X[col].astype("string").fillna("__faltante__").astype(str)
+            if categoricas_dtype and self.encoder is not None:
+                serie = pd.Series(
+                    pd.Categorical(serie, categories=list(self.encoder.categories_[pos])),
+                    index=X.index,
+                )
+            partes[col] = serie.to_numpy()
+        return pd.DataFrame(partes, index=X.index)
+
+    def codificar(self, X_preparada: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
+        bloques: list[np.ndarray] = []
+        nombres: list[str] = []
+        if self.numericas:
+            bloques.append(X_preparada[self.numericas].to_numpy(dtype="float64"))
+            nombres.extend(self.numericas)
+        if self.categoricas and self.encoder is not None:
+            cats = X_preparada[self.categoricas].astype("string").fillna("__faltante__")
+            bloques.append(self.encoder.transform(cats))
+            nombres.extend(self.encoder.get_feature_names_out(self.categoricas).tolist())
+        if not bloques:
+            return np.empty((len(X_preparada), 0), dtype="float64"), []
+        return np.column_stack(bloques), nombres
+
+
+def _ajustar_transformador_mixto(X_train: pd.DataFrame) -> _TransformadorMixto:
+    categoricas = list(
+        X_train.select_dtypes(include=["object", "string", "category"]).columns
+    )
+    numericas = [c for c in X_train.columns if c not in categoricas]
+    medianas = pd.Series(dtype="float64")
+    scaler: StandardScaler | None = None
+    if numericas:
+        nums = X_train[numericas].apply(pd.to_numeric, errors="coerce")
+        medianas = nums.median().fillna(0.0)
+        scaler = StandardScaler().fit(nums.fillna(medianas))
+    encoder: OneHotEncoder | None = None
+    if categoricas:
+        cats = X_train[categoricas].astype("string").fillna("__faltante__")
+        encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False, dtype=np.float64)
+        encoder.fit(cats)
+    return _TransformadorMixto(numericas, categoricas, medianas, scaler, encoder)
+
+
+def _conteos_binarios(y: np.ndarray) -> dict[str, int]:
+    valores, conteos = np.unique(np.asarray(y, dtype=int), return_counts=True)
+    salida = {"0": 0, "1": 0}
+    salida.update({str(int(v)): int(n) for v, n in zip(valores, conteos, strict=False)})
+    return salida
+
+
 def _entrenar_multiclase(
     df: pd.DataFrame, config: ConfigConsulta, features_df: pd.DataFrame
 ) -> _Entrenamiento:
@@ -695,7 +833,9 @@ def entrenar_clasificacion(
 
     df_etiq = derivar_etiqueta_clasificacion(df, config, config.col_fecha)
     etq = _nombre_etiqueta(config)
-    df_s, X, i70, i85 = _preparar_temporal(df_etiq, features_df, config.col_fecha)
+    order, i70, i85 = _orden_y_cortes_por_fecha(df_etiq, config.col_fecha)
+    df_s = df_etiq.loc[order].reset_index(drop=True)
+    features_s = features_df.loc[order].reset_index(drop=True)
     y = pd.to_numeric(df_s[etq], errors="coerce").fillna(0).astype(int).to_numpy()
     df_pred = df_s.iloc[i85:] if i85 < len(df_s) else df_s.iloc[i70:i85]
 
@@ -708,49 +848,137 @@ def entrenar_clasificacion(
         )
         return _Entrenamiento([], _pred_clasif_degradado(df_pred, config, unica), "—", 0.0, adv)
 
-    X_tr, X_va, X_te = X[:i70], X[i70:i85], X[i85:]
+    X_tr = features_s.iloc[:i70].copy()
+    X_va = features_s.iloc[i70:i85].copy()
+    X_te = features_s.iloc[i85:].copy()
     y_tr, y_va, y_te = y[:i70], y[i70:i85], y[i85:]
-    if len(X_tr) == 0 or len(X_va) == 0:
+    if len(X_tr) == 0 or len(X_va) == 0 or len(np.unique(y_tr)) < 2:
         return _Entrenamiento([], _pred_clasif_degradado(df_pred, config, int(clases_all[0])), "—", 0.0,
-                              "Datos insuficientes para entrenar (muy pocas filas).")
+                              "Datos insuficientes o una sola clase en el periodo de entrenamiento.")
 
-    scaler = StandardScaler()
-    X_tr_s = scaler.fit_transform(X_tr)
-    X_va_s = scaler.transform(X_va)
-    X_te_s = scaler.transform(X_te) if len(X_te) else X_va_s
+    transformador = _ajustar_transformador_mixto(X_tr)
+    tr_pre = transformador.preparar(X_tr, categoricas_dtype=True)
+    va_pre = transformador.preparar(X_va)
+    te_base = X_te if len(X_te) else X_va
+    te_pre = transformador.preparar(te_base)
+    X_tr_enc, nombres_features = transformador.codificar(tr_pre)
+    X_va_enc, _ = transformador.codificar(va_pre)
+    X_te_enc, _ = transformador.codificar(te_pre)
+
+    conjuntos: dict[str, tuple[np.ndarray, np.ndarray]] = {
+        "sin_remuestreo": (X_tr_enc, y_tr),
+        "costo_sensible": (X_tr_enc, y_tr),
+    }
+    conteos_antes = _conteos_binarios(y_tr)
+    conteos_smotenc = conteos_antes.copy()
+    motivo_omision: str | None = None
+    minoria = min(conteos_antes.values())
+    k_neighbors = 5
+    if minoria <= k_neighbors:
+        motivo_omision = (
+            f"SMOTENC omitido: la clase minoritaria tiene {minoria} casos en TRAIN "
+            f"y k_neighbors={k_neighbors} requiere al menos {k_neighbors + 1}."
+        )
+    elif not transformador.categoricas:
+        motivo_omision = "SMOTENC omitido: no hay características categóricas después del control anti-fuga."
+    else:
+        try:
+            from imblearn.over_sampling import SMOTENC
+
+            mascara_cat = [c in transformador.categoricas for c in tr_pre.columns]
+            sampler = SMOTENC(
+                categorical_features=mascara_cat,
+                sampling_strategy="auto",
+                random_state=42,
+                k_neighbors=k_neighbors,
+            )
+            X_sm, y_sm = sampler.fit_resample(tr_pre, y_tr)
+            if not isinstance(X_sm, pd.DataFrame):
+                X_sm = pd.DataFrame(X_sm, columns=tr_pre.columns)
+            X_sm_enc, _ = transformador.codificar(X_sm)
+            y_sm = np.asarray(y_sm, dtype=int)
+            conjuntos["smotenc"] = (X_sm_enc, y_sm)
+            conteos_smotenc = _conteos_binarios(y_sm)
+        except Exception as e:
+            motivo_omision = f"SMOTENC omitido de forma controlada: {e}"
+            log.warning(f"{config.id}: {motivo_omision}")
 
     tabla: list[FilaComparacion] = []
-    mejor_nombre, mejor_pr, mejor_modelo = None, float("-inf"), None
-    for nombre in _candidatos_con_baseline(config):  # incluye baseline (B2)
-        try:
-            if len(np.unique(y_tr)) < 2:
-                raise ValueError("el periodo de entrenamiento tiene una sola clase")
-            modelo = _construir_modelo_clasificacion(nombre)
-            modelo.fit(X_tr_s, y_tr)
-            pr_va = _pr_auc(y_va, _prob_positiva(modelo, X_va_s))
-            tabla.append(FilaComparacion(nombre, "pr_auc", pr_va))
-            if pr_va > mejor_pr:
-                mejor_pr, mejor_nombre, mejor_modelo = pr_va, nombre, modelo
-        except Exception as e:
-            log.warning(f"{config.id}: falló {nombre}: {e}")
-            tabla.append(FilaComparacion(nombre, "pr_auc", float("nan")))
+    candidatos: list[dict[str, Any]] = []
+    orden_estrategia = {"sin_remuestreo": 0, "costo_sensible": 1, "smotenc": 2}
+    orden_modelo = {nombre: pos for pos, nombre in enumerate(config.modelos_candidatos)}
+    for nombre in config.modelos_candidatos:
+        for estrategia, (X_fit, y_fit) in conjuntos.items():
+            etiqueta_modelo = f"{nombre}[{estrategia}]"
+            try:
+                modelo = _construir_modelo_clasificacion(
+                    nombre, balanceado=estrategia == "costo_sensible"
+                )
+                modelo.fit(X_fit, y_fit)
+                prob_va = _prob_positiva(modelo, X_va_enc)
+                pr_va = _pr_auc(y_va, prob_va)
+                if len(np.unique(y_va)) < 2:
+                    umbral, info_umbral = 0.5, {
+                        "criterio": "VALID tiene una sola clase; umbral conservador 0.5",
+                        "precision_floor": None,
+                        "margen_valid": None,
+                    }
+                else:
+                    umbral, info_umbral = seleccionar_umbral(y_va, prob_va)
+                tabla.append(FilaComparacion(etiqueta_modelo, "pr_auc", pr_va))
+                candidatos.append(
+                    {
+                        "nombre": nombre,
+                        "etiqueta": etiqueta_modelo,
+                        "estrategia": estrategia,
+                        "modelo": modelo,
+                        "pr_auc": pr_va,
+                        "umbral": umbral,
+                        "info_umbral": info_umbral,
+                        "conteos_despues": _conteos_binarios(y_fit),
+                    }
+                )
+            except Exception as e:
+                log.warning(f"{config.id}: falló {etiqueta_modelo}: {e}")
+                tabla.append(FilaComparacion(etiqueta_modelo, "pr_auc", float("nan")))
 
-    if mejor_modelo is None:
+    # Baseline de contexto; no participa en la elección del modelo configurado.
+    try:
+        baseline = _construir_modelo_clasificacion("baseline", balanceado=False)
+        baseline.fit(X_tr_enc, y_tr)
+        pr_base = _pr_auc(y_va, _prob_positiva(baseline, X_va_enc))
+        tabla.append(FilaComparacion("baseline[sin_remuestreo]", "pr_auc", pr_base))
+    except Exception as e:
+        log.warning(f"{config.id}: falló baseline: {e}")
+
+    if not candidatos:
         return _Entrenamiento(tabla, _pred_clasif_degradado(df_pred, config, int(clases_all[0])), "—", 0.0,
                               "Sin casos suficientes en el periodo de entrenamiento para aprender la alerta.")
+
+    mejor_pr = max(float(c["pr_auc"]) for c in candidatos)
+    empatados = [c for c in candidatos if float(c["pr_auc"]) >= mejor_pr - TOL_PRAUC]
+    elegido = min(
+        empatados,
+        key=lambda c: (
+            orden_estrategia[str(c["estrategia"])],
+            orden_modelo[str(c["nombre"])],
+        ),
+    )
+    mejor_nombre = str(elegido["etiqueta"])
+    mejor_modelo = elegido["modelo"]
+    umbral = float(elegido["umbral"])
     for fila in tabla:
         fila.ganador = fila.modelo == mejor_nombre
 
-    X_pred_s = X_te_s
-    X_pred = X_te if len(X_te) else X_va
     y_real = y_te if len(X_te) else y_va
-    prob_pred = _prob_positiva(mejor_modelo, X_pred_s)
-    clase_pred = mejor_modelo.predict(X_pred_s)
+    prob_pred = _prob_positiva(mejor_modelo, X_te_enc)
+    clase_pred = (prob_pred >= umbral).astype(int)
     pr_auc_test = _pr_auc(y_real, prob_pred)
 
     # Coordenadas 2D REALES para el scatter (proyección PCA), como en clustering.
-    feats = list(features_df.columns)
-    coords, ejes = _coordenadas_2d(pd.DataFrame(X_pred, columns=feats), X_pred_s, feats)
+    coords, ejes = _coordenadas_2d(
+        pd.DataFrame(X_te_enc, columns=nombres_features), X_te_enc, nombres_features
+    )
 
     id_cols = _id_cols(df_pred, config)
     predicciones: list[dict[str, Any]] = []
@@ -766,7 +994,34 @@ def entrenar_clasificacion(
         item["y"] = _num2(coords[pos, 1])
         predicciones.append(item)
 
-    return _Entrenamiento(tabla, predicciones, mejor_nombre, pr_auc_test, None, {"axes": ejes})
+    metricas_test = {
+        k: _safe(v) for k, v in classification_metrics_min(y_real, prob_pred, umbral).items()
+    }
+    resampling = {
+        "method": elegido["estrategia"],
+        "applied_split": "train",
+        "seed": 42,
+        "sampling_strategy": "auto" if elegido["estrategia"] == "smotenc" else None,
+        "k_neighbors": k_neighbors if elegido["estrategia"] == "smotenc" else None,
+        "threshold": round(umbral, 6),
+        "class_counts_before": conteos_antes,
+        "class_counts_after": elegido["conteos_despues"],
+        "validation_rows": int(len(X_va)),
+        "test_rows": int(len(te_base)),
+        "selection_metric": "pr_auc_validation",
+        "tie_tolerance": TOL_PRAUC,
+        "threshold_selection": elegido["info_umbral"],
+        "smotenc_counts_after": conteos_smotenc if "smotenc" in conjuntos else None,
+        "smotenc_skipped_reason": motivo_omision,
+    }
+    return _Entrenamiento(
+        tabla,
+        predicciones,
+        mejor_nombre,
+        pr_auc_test,
+        None,
+        {"axes": ejes, "resampling": resampling, "test_metrics": metricas_test},
+    )
 
 
 # ==============================================================================
@@ -1172,7 +1427,12 @@ def ejecutar_consulta(consulta_id: str, df: pd.DataFrame) -> ResultadoConsulta:
         ent = entrenar_regresion(df, config, construir_features(df, config, modulo_config))
         metrica = "wape"
     elif config.tipo == "clasificacion":
-        ent = entrenar_clasificacion(df, config, construir_features(df, config, modulo_config))
+        constructor = (
+            construir_features_clasificacion_mixtas
+            if config.derivacion_etiqueta is not None
+            else construir_features
+        )
+        ent = entrenar_clasificacion(df, config, constructor(df, config, modulo_config))
         metrica = "f1_macro" if config.derivacion_etiqueta is None else "pr_auc"
     elif config.tipo == "clustering":
         if config.estilo_etiqueta == "abc":
@@ -1210,6 +1470,16 @@ def ejecutar_consulta(consulta_id: str, df: pd.DataFrame) -> ResultadoConsulta:
         facil = _nota_objetivo_facil(config, df, u)  # A4
         if facil:
             nota = f"{nota} {facil}" if nota else facil
+
+    if ent.meta.get("resampling"):
+        rem = ent.meta["resampling"]
+        nota_remuestreo = (
+            f"Estrategia elegida en VALID: {rem['method']}; se aplicó únicamente a TRAIN. "
+            f"El umbral {rem['threshold']:.4f} también se fijó solo en VALID."
+        )
+        if rem.get("smotenc_skipped_reason"):
+            nota_remuestreo += f" {rem['smotenc_skipped_reason']}"
+        nota = f"{nota} {nota_remuestreo}" if nota else nota_remuestreo
 
     # ABC (ALM-K1): dejar claro que es una REGLA de negocio, no clustering, y su criterio de valor.
     if config.tipo == "clustering" and config.estilo_etiqueta == "abc":

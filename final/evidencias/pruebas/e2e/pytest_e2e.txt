@@ -1,0 +1,127 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.5, pytest-8.3.4, pluggy-1.6.0 -- D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\venv\Scripts\python.exe
+rootdir: D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion
+configfile: pyproject.toml
+plugins: anyio-4.13.0, cov-6.0.0
+collecting ... collected 96 items
+
+tests/api/test_auth.py::test_login_admin_sembrado PASSED                 [  1%]
+tests/api/test_auth.py::test_login_segundo_admin_sembrado PASSED         [  2%]
+tests/api/test_auth.py::test_login_password_incorrecta_es_401 PASSED     [  3%]
+tests/api/test_auth.py::test_login_usuario_inexistente_es_401 PASSED     [  4%]
+tests/api/test_auth.py::test_me_sin_token_es_401 PASSED                  [  5%]
+tests/api/test_auth.py::test_me_con_token_devuelve_identidad PASSED      [  6%]
+tests/api/test_auth.py::test_prediccion_sin_token_es_401 PASSED          [  7%]
+tests/api/test_auth.py::test_admin_puede_predecir PASSED                 [  8%]
+tests/api/test_auth.py::test_demo_sin_token_es_401 PASSED                [  9%]
+tests/api/test_auth.py::test_permisos_catalogo_para_admin PASSED         [ 10%]
+tests/api/test_auth.py::test_flujo_rol_restringido_y_autorizacion PASSED [ 11%]
+tests/api/test_auth.py::test_no_admin_no_puede_crear_roles PASSED        [ 12%]
+tests/api/test_auth.py::test_crear_rol_con_permiso_desconocido_es_400 PASSED [ 13%]
+tests/api/test_auth.py::test_crear_usuario_duplicado_es_409 PASSED       [ 14%]
+tests/api/test_auth.py::test_no_se_puede_eliminar_el_rol_admin PASSED    [ 15%]
+tests/api/test_auth.py::test_onboarding_perfil PASSED                    [ 16%]
+tests/api/test_auth.py::test_onboarding_con_opcion_invalida_es_400 PASSED [ 17%]
+tests/api/test_catalogo_v3.py::TestCatalogo::test_listar_catalogo PASSED [ 18%]
+tests/api/test_catalogo_v3.py::TestPlantillas::test_descargar_plantilla_ventas PASSED [ 19%]
+tests/api/test_catalogo_v3.py::TestPlantillas::test_descargar_plantilla_compras PASSED [ 20%]
+tests/api/test_catalogo_v3.py::TestPlantillas::test_descargar_plantilla_almacen PASSED [ 21%]
+tests/api/test_catalogo_v3.py::TestPlantillas::test_plantilla_modulo_inexistente PASSED [ 22%]
+tests/api/test_catalogo_v3.py::TestAnalisisModulos::test_analizar_ventas_10_reportes PASSED [ 23%]
+tests/api/test_catalogo_v3.py::TestAnalisisModulos::test_analizar_compras_10_reportes PASSED [ 25%]
+tests/api/test_catalogo_v3.py::TestAnalisisModulos::test_analizar_almacen_10_reportes PASSED [ 26%]
+tests/api/test_catalogo_v3.py::TestAnalisisModulos::test_respuesta_tiene_estructura_correcta PASSED [ 27%]
+tests/api/test_catalogo_v3.py::TestAnalisisModulos::test_analizar_modulo_inexistente PASSED [ 28%]
+tests/api/test_catalogo_v3.py::TestAnalisisModulos::test_analizar_sin_filas PASSED [ 29%]
+tests/api/test_catalogo_v3.py::TestAnalisisModulos::test_analizar_columnas_faltantes PASSED [ 30%]
+tests/api/test_catalogo_v3.py::TestSmokeTest30Consultas::test_todas_30_consultas_ejecutan_sin_error PASSED [ 31%]
+tests/api/test_catalogo_v3.py::TestSmokeTest30Consultas::test_clustering_no_usa_particion_temporal PASSED [ 32%]
+tests/api/test_catalogo_v3.py::TestCalidadReportes::test_reportes_no_degradados_tienen_predicciones PASSED [ 33%]
+tests/api/test_catalogo_v3.py::TestCalidadReportes::test_clasificacion_una_sola_clase_degrada_sin_romper PASSED [ 34%]
+tests/api/test_catalogo_v3.py::TestCalidadReportes::test_resumen_intensivo_no_suma PASSED [ 35%]
+tests/api/test_catalogo_v3.py::TestCalidadReportes::test_dataset_info_presente PASSED [ 36%]
+tests/api/test_catalogo_v3.py::TestCalidadReportes::test_baseline_en_comparacion PASSED [ 37%]
+tests/api/test_catalogo_v3.py::TestCalidadReportes::test_tendencia_enriquecida PASSED [ 38%]
+tests/api/test_cors.py::test_preflight_refleja_el_origen_permitido PASSED [ 39%]
+tests/api/test_cors.py::test_peticion_simple_refleja_el_origen_permitido PASSED [ 40%]
+tests/api/test_cors.py::test_origen_no_permitido_no_se_refleja PASSED    [ 41%]
+tests/api/test_dominios_3x3.py::test_analisis_3x3_tres_bloques[ventas] PASSED [ 42%]
+tests/api/test_dominios_3x3.py::test_analisis_3x3_tres_bloques[compras] PASSED [ 43%]
+tests/api/test_dominios_3x3.py::test_analisis_3x3_tres_bloques[almacen] PASSED [ 44%]
+tests/api/test_dominios_3x3.py::test_ventas_pronostica_horizonte PASSED  [ 45%]
+tests/api/test_dominios_3x3.py::test_reentrenamiento_acumula_historico_y_versiona PASSED [ 46%]
+tests/api/test_dominios_3x3.py::test_entrenar_sin_datos_da_error_controlado PASSED [ 47%]
+tests/api/test_dominios_3x3.py::test_predecir_sin_modelo_da_error PASSED [ 48%]
+tests/api/test_dominios_3x3.py::test_predecir_usa_modelo_guardado PASSED [ 50%]
+tests/api/test_dominios_3x3.py::test_elegir_version_servida_cambia_el_modelo PASSED [ 51%]
+tests/api/test_dominios_3x3.py::test_servir_version_ajena_da_error PASSED [ 52%]
+tests/api/test_dominios_3x3.py::test_predecir_audita_en_tabla_predictions PASSED [ 53%]
+tests/api/test_dominios_3x3.py::test_demo_compras PASSED                 [ 54%]
+tests/api/test_dominios_3x3.py::test_clustering_expone_caracteristicas_de_grupos PASSED [ 55%]
+tests/api/test_dominios_3x3.py::test_almacen_predice_demanda_y_muestra_indicadores PASSED [ 56%]
+tests/api/test_dominios_3x3.py::test_rows_invalidas_devuelve_error PASSED [ 57%]
+tests/api/test_dominios_3x3.py::test_rows_vacias_devuelve_422 PASSED     [ 58%]
+tests/api/test_dominios_3x3.py::test_esquema_diccionario[ventas] PASSED  [ 59%]
+tests/api/test_dominios_3x3.py::test_esquema_diccionario[compras] PASSED [ 60%]
+tests/api/test_dominios_3x3.py::test_esquema_diccionario[almacen] PASSED [ 61%]
+tests/api/test_dominios_3x3.py::test_esquema_dominio_desconocido_400 PASSED [ 62%]
+tests/api/test_dominios_3x3.py::test_plantilla_json PASSED               [ 63%]
+tests/api/test_dominios_3x3.py::test_plantilla_excel_descarga PASSED     [ 64%]
+tests/api/test_dominios_3x3.py::test_subir_excel_corre_analisis PASSED   [ 65%]
+tests/api/test_dominios_3x3.py::test_subir_excel_malo_devuelve_error PASSED [ 66%]
+tests/api/test_errores_api.py::test_swagger_documenta_los_dominios_3x3 PASSED [ 67%]
+tests/api/test_errores_api.py::test_swagger_incluye_ejemplo_del_contrato PASSED [ 68%]
+tests/api/test_errores_api.py::test_salud PASSED                         [ 69%]
+tests/api/test_errores_api.py::test_entradas_mal_formadas_no_producen_500[/v2/ventas-cuerpo0] PASSED [ 70%]
+tests/api/test_errores_api.py::test_entradas_mal_formadas_no_producen_500[/v2/compras-cuerpo1] PASSED [ 71%]
+tests/api/test_errores_api.py::test_entradas_mal_formadas_no_producen_500[/v2/almacen-cuerpo2] PASSED [ 72%]
+tests/api/test_errores_api.py::test_entradas_mal_formadas_no_producen_500[/v2/ventas-esto no es json v\xe1lido para el esquema] PASSED [ 73%]
+tests/api/test_errores_api.py::test_entradas_mal_formadas_no_producen_500[/v2/ventas-cuerpo4] PASSED [ 75%]
+tests/api/test_historial_v3.py::test_analisis_v3_queda_en_el_historial PASSED [ 76%]
+tests/api/test_historial_v3.py::test_detalle_guarda_valores_predichos PASSED [ 77%]
+tests/api/test_historial_v3.py::test_historial_aislado_por_cliente PASSED [ 78%]
+tests/api/test_historial_v3.py::test_detalle_de_otro_cliente_es_404 PASSED [ 79%]
+tests/api/test_historial_v3.py::test_filtro_por_categoria PASSED         [ 80%]
+tests/api/test_ingesta_v3_archivo.py::test_archivo_excel_valido_ejecuta_analisis PASSED [ 81%]
+tests/api/test_ingesta_v3_archivo.py::test_archivo_json_valido_equivale_al_excel PASSED [ 82%]
+tests/api/test_ingesta_v3_archivo.py::test_archivo_modulo_inexistente_400 PASSED [ 83%]
+tests/api/test_ingesta_v3_archivo.py::test_archivo_formato_no_soportado_400 PASSED [ 84%]
+tests/api/test_ingesta_v3_archivo.py::test_archivo_vacio_422 PASSED      [ 85%]
+tests/api/test_ingesta_v3_archivo.py::test_archivo_columnas_faltantes_422 PASSED [ 86%]
+tests/api/test_ingesta_v3_archivo.py::test_archivo_excel_corrupto_422 PASSED [ 87%]
+tests/api/test_ingesta_v3_archivo.py::test_demo_v3_devuelve_reportes[ventas] PASSED [ 88%]
+tests/api/test_ingesta_v3_archivo.py::test_demo_v3_devuelve_reportes[compras] PASSED [ 89%]
+tests/api/test_ingesta_v3_archivo.py::test_demo_v3_devuelve_reportes[almacen] PASSED [ 90%]
+tests/api/test_ingesta_v3_archivo.py::test_demo_v3_modulo_inexistente_400 PASSED [ 91%]
+tests/api/test_reset_password.py::test_forgot_responde_generico_para_cuenta_existente PASSED [ 92%]
+tests/api/test_reset_password.py::test_forgot_no_revela_cuenta_inexistente PASSED [ 93%]
+tests/api/test_reset_password.py::test_reset_cambia_password_y_permite_login PASSED [ 94%]
+tests/api/test_reset_password.py::test_token_de_reset_es_de_un_solo_uso PASSED [ 95%]
+tests/api/test_reset_password.py::test_token_manipulado_es_rechazado PASSED [ 96%]
+tests/api/test_validacion_v3_api.py::test_fecha_invalida_devuelve_400_con_detalle PASSED [ 97%]
+tests/api/test_validacion_v3_api.py::test_numerica_invalida_devuelve_400 PASSED [ 98%]
+tests/api/test_validacion_v3_api.py::test_dataset_valido_sigue_devolviendo_200 PASSED [100%]
+
+============================== warnings summary ===============================
+tests/api/test_dominios_3x3.py::test_reentrenamiento_acumula_historico_y_versiona
+tests/api/test_dominios_3x3.py::test_predecir_usa_modelo_guardado
+tests/api/test_dominios_3x3.py::test_elegir_version_servida_cambia_el_modelo
+tests/api/test_dominios_3x3.py::test_servir_version_ajena_da_error
+tests/api/test_dominios_3x3.py::test_predecir_audita_en_tabla_predictions
+  D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\venv\Lib\site-packages\supabase\_sync\client.py:264: DeprecationWarning: The 'timeout' parameter is deprecated. Please configure it in the http client instead.
+    return SyncStorageClient(
+
+tests/api/test_dominios_3x3.py::test_reentrenamiento_acumula_historico_y_versiona
+tests/api/test_dominios_3x3.py::test_predecir_usa_modelo_guardado
+tests/api/test_dominios_3x3.py::test_elegir_version_servida_cambia_el_modelo
+tests/api/test_dominios_3x3.py::test_servir_version_ajena_da_error
+tests/api/test_dominios_3x3.py::test_predecir_audita_en_tabla_predictions
+  D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\venv\Lib\site-packages\supabase\_sync\client.py:264: DeprecationWarning: The 'verify' parameter is deprecated. Please configure it in the http client instead.
+    return SyncStorageClient(
+
+tests/api/test_validacion_v3_api.py::test_fecha_invalida_devuelve_400_con_detalle
+  D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\src\spc\service\validacion_tipos.py:44: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+    convertido = pd.to_datetime(original, errors="coerce")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 96 passed, 11 warnings in 316.20s (0:05:16) =================

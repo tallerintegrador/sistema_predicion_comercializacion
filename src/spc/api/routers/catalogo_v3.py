@@ -277,7 +277,7 @@ def _ejecutar_analisis_interno(
                 result={
                     "predictions": resultado.predicciones,  # Filas con predicciones/alertas/segmentos
                     "unit": resultado.unidad,
-                    **resultado.meta,  # axes (clustering), classes (multiclase), etc.
+                    **{k: v for k, v in resultado.meta.items() if k != "resampling"},
                 },
                 summary=RegressionSummary(**resultado.resumen) if resultado.resumen else None,
                 warning=resultado.advertencia,
@@ -298,6 +298,7 @@ def _ejecutar_analisis_interno(
                     ],
                     trained_at=resultado.fecha_entrenamiento,
                     technical_note=resultado.nota_tecnica,
+                    resampling=resultado.meta.get("resampling"),
                 ),
             )
             reportes.append(reporte)

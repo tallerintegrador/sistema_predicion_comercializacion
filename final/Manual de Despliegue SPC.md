@@ -4,18 +4,19 @@
 
 1. Introducción
 2. Requisitos previos
-   - 2.1. Creación de la cuenta de Render
-   - 2.2. Creación del proyecto en Supabase (base de datos + almacenamiento)
-   - 2.3. Obtención de la cadena de conexión (Session pooler)
-   - 2.4. Creación de la cuenta de GitHub / repositorio
-   - 2.5. Habilitación de GitHub Pages
+   - 2.1. Creación de la cuenta de Docker Hub
+   - 2.2. Creación de la cuenta de Render
+   - 2.3. Creación del proyecto en Supabase (base de datos + almacenamiento)
+   - 2.4. Obtención de la cadena de conexión (Session pooler)
+   - 2.5. Creación de la cuenta de GitHub / repositorio
+   - 2.6. Habilitación de GitHub Pages
 3. Arquitectura general del despliegue
 4. Variables de entorno
 5. Despliegue del backend
    - 5.1. Estructura y layout del proyecto
    - 5.2. El Dockerfile del backend
    - 5.3. Construcción y prueba local del contenedor
-   - 5.4. El Blueprint de Render (`render.yaml`)
+   - 5.4. Publicación de la imagen en Docker Hub
    - 5.5. Despliegue en Render
    - 5.6. Endpoint de salud
 6. Despliegue del frontend
@@ -25,12 +26,20 @@
    - 6.4. GitHub Actions + GitHub Pages
    - 6.5. Fallback SPA (404.html)
 7. Configuración de CORS
-8. Verificación del despliegue
-9. Mantenimiento y actualización
-10. Posibles errores y soluciones
-11. Seguridad del despliegue
-12. Evidencias del despliegue
-13. Conclusión
+8. Endpoints de la API
+   - 8.1. Salud y documentación (OpenAPI/Swagger)
+   - 8.2. Autenticación y restablecimiento de contraseña
+   - 8.3. Roles, usuarios y permisos
+   - 8.4. Perfil del negocio (onboarding)
+   - 8.5. Catálogo v3 (motor actual de la interfaz)
+   - 8.6. Motor 3×3 v2 (heredado, funcional)
+   - 8.7. Convenciones (autenticación, `client_id`, errores)
+9. Verificación del despliegue
+10. Mantenimiento y actualización
+11. Posibles errores y soluciones
+12. Seguridad del despliegue
+13. Evidencias del despliegue
+14. Conclusión
 
 ---
 
@@ -41,16 +50,16 @@ Comercialización (SPC)**, compuesto por un **backend** desarrollado en **Python
 bajo una arquitectura por capas (API → servicio → motor ML), y un **frontend** desarrollado
 en **React + Vite + TypeScript** como Single-Page Application (SPA).
 
-El backend se **containeriza con Docker** y se despliega en **Render** a partir de un
-*Blueprint* (`render.yaml`) que construye la imagen desde el `Dockerfile` del repositorio. La
-persistencia (corpus de datos y registro de modelos) vive en **PostgreSQL sobre Supabase**, y
-los artefactos de los modelos entrenados (`.joblib`) se almacenan en **Supabase Storage**. El
-frontend se compila con Vite y se publica en **GitHub Pages** mediante un flujo automático de
-**GitHub Actions**.
+El backend se **containeriza con Docker**; la imagen se **publica en Docker Hub**
+(`valxux/sistema_comercializacion_v2:latest`) y se **despliega en Render** a partir de esa
+imagen (opción *Existing Image*). La persistencia (corpus de datos y registro de modelos) vive
+en **PostgreSQL sobre Supabase**, y los artefactos de los modelos entrenados (`.joblib`) se
+almacenan en **Supabase Storage**. El frontend se compila con Vite y se publica en
+**GitHub Pages** mediante un flujo automático de **GitHub Actions**.
 
-A diferencia de un despliegue clásico Java/Angular, aquí **no se usa Docker Hub ni Firebase**:
-Render construye la imagen directamente desde el repositorio (autodeploy) y el hosting del SPA
-es GitHub Pages.
+El flujo del backend es, por tanto, el patrón clásico **Docker → Docker Hub → Render**: se
+construye la imagen localmente, se sube al registro y Render la ejecuta. El hosting del SPA,
+en cambio, **no usa Firebase**: es **GitHub Pages**, publicado por GitHub Actions.
 
 **URLs de producción actuales:**
 
@@ -69,7 +78,8 @@ es GitHub Pages.
 | Backend | FastAPI | 0.137.1 |
 | Backend | Uvicorn | 0.49.0 (servidor ASGI, 1 worker) |
 | Backend | Docker | Para construir la imagen del servicio |
-| Backend | Render | Plataforma de despliegue del backend |
+| Backend | Docker Hub | Registro de la imagen del backend (`valxux/sistema_comercializacion_v2`) |
+| Backend | Render | Plataforma de despliegue del backend (Existing Image) |
 | Base de datos | PostgreSQL (Supabase) | Driver `psycopg` v3 (`postgresql+psycopg://`) |
 | Almacenamiento | Supabase Storage | Bucket `spc-modelos` para artefactos `.joblib` |
 | ORM / migraciones | SQLAlchemy 2.x + Alembic | Esquema y migraciones |
@@ -81,6 +91,7 @@ es GitHub Pages.
 
 **Además, se requiere contar con:**
 
+- Cuenta activa en **Docker Hub** (para publicar la imagen del backend).
 - Cuenta activa en **Render**.
 - Cuenta y proyecto activos en **Supabase** (Postgres + Storage).
 - Cuenta en **GitHub** con acceso al repositorio y **GitHub Pages** habilitado.
@@ -90,7 +101,23 @@ es GitHub Pages.
 
 A continuación se detallan los pasos para completar los requisitos adicionales.
 
-## 2.1. Creación de la cuenta de Render
+## 2.1. Creación de la cuenta de Docker Hub
+
+**Docker Hub** es el registro donde se publica la imagen del backend para que Render la
+descargue y ejecute.
+
+1. Ingresar a `https://hub.docker.com` y seleccionar **Sign up**.
+2. Registrarse con correo electrónico (o con una cuenta de Google/GitHub) y confirmar la
+   cuenta desde el correo de verificación.
+3. Iniciar sesión. Anotar el **nombre de usuario** (en este proyecto, `valxux`): forma parte
+   del nombre de la imagen, con la forma `<usuario>/<repositorio>:<tag>` — aquí
+   `valxux/sistema_comercializacion_v2:latest`.
+4. El repositorio de imagen `sistema_comercializacion_v2` se crea automáticamente en el primer
+   `docker push`; también puede crearse a mano desde **Repositories → Create repository**.
+
+**Figura 1.** Creación e inicio de sesión en Docker Hub.
+
+## 2.2. Creación de la cuenta de Render
 
 1. Ingresar a `https://render.com` y seleccionar **Get Started**.
 2. Registrarse con correo electrónico o directamente con la cuenta de **GitHub** (recomendado,
@@ -98,9 +125,9 @@ A continuación se detallan los pasos para completar los requisitos adicionales.
 3. Confirmar la cuenta desde el correo de verificación (**Verify your email**).
 4. Iniciar sesión. Con la cuenta creada se puede proseguir a crear el servicio.
 
-**Figura 1.** Landing page y registro en Render.
+**Figura 2.** Landing page y registro en Render.
 
-## 2.2. Creación del proyecto en Supabase (base de datos + almacenamiento)
+## 2.3. Creación del proyecto en Supabase (base de datos + almacenamiento)
 
 1. Ingresar a `https://supabase.com` y seleccionar **Start your project** / **Sign up**
    (se puede usar la cuenta de GitHub).
@@ -113,7 +140,7 @@ A continuación se detallan los pasos para completar los requisitos adicionales.
 4. Crear el bucket de almacenamiento: **Storage → New bucket**, nombre **`spc-modelos`**.
    Aquí se guardan los artefactos `.joblib` de los modelos entrenados por cliente.
 
-**Figura 2.** Dashboard del proyecto en Supabase con la base y el bucket `spc-modelos`.
+**Figura 3.** Dashboard del proyecto en Supabase con la base y el bucket `spc-modelos`.
 
 > **Nota sobre el modo degradado:** el backend funciona **sin** Supabase. Si no se
 > configuran las variables, cae automáticamente a **SQLite local** (`data/spc.db`) y guarda
@@ -121,7 +148,7 @@ A continuación se detallan los pasos para completar los requisitos adicionales.
 > (ADR-0027). Es decir, Supabase no es un requisito para *arrancar*, sino para *persistir en
 > producción*.
 
-## 2.3. Obtención de la cadena de conexión (Session pooler)
+## 2.4. Obtención de la cadena de conexión (Session pooler)
 
 El backend se conecta a Postgres mediante **SQLAlchemy** con el driver **psycopg 3**. Por eso
 la cadena debe tener el prefijo `postgresql+psycopg://` (no el `postgresql://` que copia
@@ -153,14 +180,14 @@ Supabase por defecto).
 > en el código ni en el repositorio. Se configuran únicamente en el panel de variables de
 > entorno de Render (ver §4).
 
-## 2.4. Creación de la cuenta de GitHub / repositorio
+## 2.5. Creación de la cuenta de GitHub / repositorio
 
 1. El código fuente vive en GitHub:
    `https://github.com/tallerintegrador/sistema_predicion_comercializacion`.
 2. Render se conecta a este repositorio para construir el backend, y GitHub Actions publica el
    frontend. Basta con tener permisos de lectura/escritura sobre el repo.
 
-## 2.5. Habilitación de GitHub Pages
+## 2.6. Habilitación de GitHub Pages
 
 1. En el repositorio: **Settings → Pages**.
 2. En **Build and deployment → Source**, seleccionar **GitHub Actions** (no "Deploy from a
@@ -169,7 +196,7 @@ Supabase por defecto).
    repository secret**, con nombre **`VITE_API_BASE_URL`** y valor la URL del backend en
    Render (ver §6.2).
 
-**Figura 3.** Configuración de GitHub Pages con fuente "GitHub Actions".
+**Figura 4.** Configuración de GitHub Pages con fuente "GitHub Actions".
 
 # 3. Arquitectura general del despliegue
 
@@ -179,7 +206,8 @@ El sistema se despliega separando frontend y backend en plataformas especializad
 | --- | --- | --- |
 | Frontend | React + Vite + TypeScript (SPA) | GitHub Pages |
 | Backend | Python + FastAPI (Uvicorn) | Render |
-| Contenedor backend | Docker (`Dockerfile` + `render.yaml`) | Render (build desde repo) |
+| Contenedor backend | Docker | Docker Hub (`valxux/sistema_comercializacion_v2:latest`) |
+| Despliegue backend | Imagen de Docker Hub (Existing Image) | Render |
 | Base de datos | PostgreSQL | Supabase |
 | Almacenamiento de artefactos | Supabase Storage (bucket `spc-modelos`) | Supabase |
 | Seguridad | Control de acceso por roles con token de sesión (ADR-0014) | Backend |
@@ -194,14 +222,21 @@ El frontend se publica como **SPA**. Consume los servicios REST del backend desp
 Render mediante `fetch`, resolviendo la base de la API por la variable de build
 `VITE_API_BASE_URL`.
 
-El backend se ejecuta como aplicación **FastAPI dentro de un contenedor Docker**. Render
-construye la imagen a partir del `Dockerfile` del repositorio (definido en `render.yaml`) y
-la ejecuta inyectando el puerto por `$PORT`. El servicio **entrena en el momento y predice**;
-el corpus y el registro de modelos se persisten en Supabase.
+El backend se ejecuta como aplicación **FastAPI dentro de un contenedor Docker**. La imagen se
+**construye localmente**, se **publica en Docker Hub** (`valxux/sistema_comercializacion_v2:latest`)
+y **Render la ejecuta** como *Existing Image*, inyectando el puerto por `$PORT`. El flujo de
+publicación es:
 
-> **Diferencia clave frente al despliegue Java/Angular:** aquí **no hay Docker Hub** (Render
-> construye la imagen desde el repo directamente) ni **Firebase** (el SPA vive en GitHub
-> Pages, publicado por GitHub Actions).
+```
+Dockerfile → docker build → docker push → Docker Hub → Render (Existing Image) → servicio Live
+```
+
+El servicio **entrena en el momento y predice**; el corpus y el registro de modelos se
+persisten en Supabase.
+
+> **Diferencia frente al despliegue Java/Angular:** el patrón del backend es el mismo
+> (**contenedor → Docker Hub → Render**). La única diferencia es el hosting del SPA: aquí
+> **no se usa Firebase**, sino **GitHub Pages** publicado por GitHub Actions.
 
 # 4. Variables de entorno
 
@@ -217,6 +252,21 @@ proteger información sensible. **Se configuran en el panel de Render** (Environ
 | `SPC_AUTH_SECRET` | Secreto para firmar los tokens de sesión. En prod **debe** fijarse (si se deja vacío, se usa un secreto de desarrollo y los tokens son falsificables) | Sí |
 | `SPC_AUTH_ENABLED` | Control de acceso por roles: `1` activo, `0` abierto | Recomendado `1` |
 | `SPC_CORS_ORIGINS` | Orígenes CORS permitidos (coma-separados). **Fijar al origen del frontend**, no `*` | Sí |
+
+**Correo saliente (restablecimiento de contraseña, `POST /auth/forgot`).** El envío del
+enlace de restablecimiento por correo (ver §8.2) usa SMTP. Es **opcional**: si
+`SPC_SMTP_HOST` queda vacío, el envío está deshabilitado y el enlace solo se registra en los
+logs (la respuesta al usuario es genérica en ambos casos, para no filtrar si el correo
+existe).
+
+| Variable | Descripción | Default |
+| --- | --- | --- |
+| `SPC_SMTP_HOST` | Host del servidor SMTP. Vacío → envío deshabilitado | *(vacío)* |
+| `SPC_SMTP_PORT` | Puerto SMTP (STARTTLS) | `587` |
+| `SPC_SMTP_USER` | Usuario de autenticación SMTP | *(vacío)* |
+| `SPC_SMTP_PASSWORD` | Contraseña SMTP (secreto) | *(vacío)* |
+| `SPC_SMTP_FROM` | Remitente del correo | `no-reply@spc.local` |
+| `SPC_APP_BASE_URL` | Base del frontend para construir el enlace del correo. **Fijar al origen de GitHub Pages** en producción | `http://localhost:5173` |
 
 **Knobs de política de negocio (opcionales, con defaults que reproducen la salida histórica):**
 `SPC_ONLINE_MAX_ROWS`, `SPC_EXCEL_MAX_BYTES`, `SPC_BATCH_WORKERS` (dejar en `1`),
@@ -235,7 +285,7 @@ Para el **frontend** (variables de *build*, inyectadas por GitHub Actions):
 > colocarse en el código ni en el repositorio. En Render se configuran en **Environment**; en
 > GitHub, como **Actions Secrets**.
 
-**Figura 4.** Variables de entorno configuradas en Render.
+**Figura 5.** Variables de entorno configuradas en Render.
 
 # 5. Despliegue del backend
 
@@ -249,8 +299,8 @@ El proyecto usa el layout `src/`:
 
 ```
 sistema_prediccion_comercializacion/
-├── Dockerfile                 # imagen del servicio (build en Render)
-├── render.yaml                # Blueprint de Render
+├── Dockerfile                 # imagen del servicio (build local → Docker Hub)
+├── render.yaml                # Blueprint alternativo (no usado en prod; ver §5.4)
 ├── requirements-api.txt       # deps de runtime del servicio
 ├── src/spc/                   # código (import spc gracias a PYTHONPATH=/app/src)
 │   └── api/main.py            # app factory de FastAPI (CORS, routers, /health)
@@ -310,15 +360,17 @@ Puntos clave:
   `job_id` de un proceso no sería visible para otro. Además, 1 worker entra holgado en el free
   tier de 512 MB.
 
-**Figura 5.** Archivo `Dockerfile` del backend.
+**Figura 6.** Archivo `Dockerfile` del backend.
 
 ## 5.3. Construcción y prueba local del contenedor
 
-Antes de desplegar conviene construir y probar la imagen localmente:
+Antes de publicar conviene construir y probar la imagen localmente. Se etiqueta directamente
+con el nombre del repositorio de Docker Hub (`<usuario>/<repositorio>:<tag>`) para poder
+subirla después sin re-etiquetar:
 
 ```bash
-docker build -t spc-api .
-docker run --rm -p 8000:8000 spc-api
+docker build -t valxux/sistema_comercializacion_v2:latest .
+docker run --rm -p 8000:8000 valxux/sistema_comercializacion_v2:latest
 ```
 
 Comprobar el arranque accediendo al endpoint de salud:
@@ -337,53 +389,59 @@ docker run --rm -p 8000:8000 \
   -e SUPABASE_BUCKET="spc-modelos" \
   -e SPC_AUTH_SECRET="<secreto_largo_aleatorio>" \
   -e SPC_CORS_ORIGINS="http://localhost:5173" \
-  spc-api
+  valxux/sistema_comercializacion_v2:latest
 ```
 
 > Sin variables, el contenedor arranca igual usando SQLite local: útil para una prueba de humo
 > rápida sin tocar la nube.
 
-## 5.4. El Blueprint de Render (`render.yaml`)
+## 5.4. Publicación de la imagen en Docker Hub
 
-En lugar de publicar una imagen en Docker Hub, este proyecto usa un **Blueprint** que le dice
-a Render cómo construir y ejecutar el servicio directamente desde el repositorio:
+Con la imagen construida y etiquetada (§5.3), se sube a Docker Hub. Primero se inicia sesión
+en el registro desde la terminal:
 
-```yaml
-services:
-  - type: web
-    name: spc-api
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    plan: free
-    healthCheckPath: /health
-    autoDeploy: true
-    envVars:
-      - key: SPC_CORS_ORIGINS
-        value: "*"     # cambiar al origen real del frontend en producción
+```bash
+docker login
 ```
 
-- **`runtime: docker` + `dockerfilePath`**: Render construye la imagen desde el `Dockerfile`
-  del repo. No se necesita Docker Hub.
-- **`healthCheckPath: /health`**: Render marca el servicio como sano solo si `/health`
-  responde 200.
-- **`autoDeploy: true`**: cada push a la rama conectada dispara un *redeploy* automático.
-- El resto de variables (`SPC_DATABASE_URL`, `SUPABASE_*`, `SPC_AUTH_SECRET`) se cargan desde
-  el panel de Render, **no** desde el YAML (para no versionar secretos).
+Luego se publica la imagen etiquetada:
 
-## 5.5. Despliegue en Render
+```bash
+docker push valxux/sistema_comercializacion_v2:latest
+```
 
-Proceso aplicado:
+Una vez publicada, queda disponible en Docker Hub con la referencia:
 
-1. Ingresar a Render → **New → Blueprint**.
-2. Conectar el repositorio `sistema_predicion_comercializacion`. Render detecta `render.yaml`.
-3. Confirmar la creación del servicio web (tipo **Web Service**, runtime Docker, plan Free).
-4. En **Environment**, configurar las variables sensibles:
+```
+valxux/sistema_comercializacion_v2:latest
+```
+
+Cada vez que se cambie el backend hay que **reconstruir y volver a publicar** la imagen
+(`docker build` + `docker push`) y luego hacer **redeploy manual** en Render (§10).
+
+> **Nota — `render.yaml`:** el repositorio incluye un `render.yaml` (Blueprint) que permitiría
+> el flujo alternativo de "build desde el repo". **No es el que se usa en producción**: el
+> servicio real corre la imagen publicada en Docker Hub (Existing Image, §5.5).
+
+**Figura 7.** Imagen del backend publicada en Docker Hub.
+
+## 5.5. Despliegue en Render (Existing Image)
+
+El backend se despliega en Render usando la **imagen publicada en Docker Hub**. Proceso
+aplicado:
+
+1. Ingresar a Render → **New → Web Service**.
+2. Elegir como fuente **Existing Image** (imagen de un registro), no un repositorio.
+3. Indicar la imagen de Docker Hub `valxux/sistema_comercializacion_v2:latest` y conectar.
+4. Elegir el **plan Free** y la región de despliegue.
+5. Fijar el **Health Check Path** en `/health`.
+6. En **Environment**, configurar las variables sensibles:
    - `SPC_DATABASE_URL`
    - `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_BUCKET`
    - `SPC_AUTH_SECRET`, `SPC_AUTH_ENABLED=1`
    - `SPC_CORS_ORIGINS` = origen del frontend (ver §7)
-5. Ejecutar el despliegue. Render construye la imagen y arranca Uvicorn.
-6. Verificar que el servicio quede **Live** y que `/health` responda.
+7. Ejecutar **Deploy Web Service**. Render descarga la imagen y arranca Uvicorn.
+8. Verificar que el servicio quede **Live** y que `/health` responda.
 
 El backend desplegado está disponible en:
 
@@ -391,12 +449,19 @@ El backend desplegado está disponible en:
 https://sistema-comercializacion-v2-latest.onrender.com
 ```
 
+> **Despliegue no automático:** al usar una imagen externa, Render **no** se reconstruye solo
+> al hacer `git push`. Tras publicar una nueva versión de la imagen hay que hacer **redeploy
+> manual** desde Render (**Manual Deploy → Deploy latest reference**) para que tome la imagen
+> más reciente (§10).
+
+**Figura 8.** Selección de la fuente *Existing Image* con la imagen de Docker Hub en Render.
+
 > **Free tier — arranque en frío:** en el plan Free, Render **suspende** el servicio tras
 > inactividad. La primera petición tras el reposo puede tardar **~40–50 s** en responder
 > mientras el contenedor se reinicia (verificado: `/health` respondió en ~42 s tras reposo,
 > y <1 s ya "caliente"). Es esperable; no es un error.
 
-**Figura 6.** Servicio backend activo (Live) en Render.
+**Figura 9.** Servicio backend activo (Live) en Render.
 
 ## 5.6. Endpoint de salud
 
@@ -416,7 +481,7 @@ https://sistema-comercializacion-v2-latest.onrender.com/health   ->   {"status":
 https://sistema-comercializacion-v2-latest.onrender.com/docs      ->   Swagger UI
 ```
 
-**Figura 7.** Endpoint `/health` respondiendo `{"status":"ok"}` y Swagger en `/docs`.
+**Figura 10.** Endpoint `/health` respondiendo `{"status":"ok"}` y Swagger en `/docs`.
 
 # 6. Despliegue del frontend
 
@@ -528,7 +593,7 @@ Al finalizar, la aplicación queda publicada en:
 https://tallerintegrador.github.io/sistema_predicion_comercializacion/
 ```
 
-**Figura 8.** Ejecución exitosa del workflow en la pestaña **Actions**.
+**Figura 11.** Ejecución exitosa del workflow en la pestaña **Actions**.
 
 ## 6.5. Fallback SPA (404.html)
 
@@ -594,9 +659,139 @@ SPC_CORS_ORIGINS = http://localhost:5173,https://tallerintegrador.github.io
 > HttpOnly), por eso `allow_credentials=False`. El token se guarda en memoria + `localStorage`
 > y se envía por header en cada petición (`frontend/src/api/client.ts`).
 
-**Figura 9.** Variable `SPC_CORS_ORIGINS` configurada en Render.
+**Figura 12.** Variable `SPC_CORS_ORIGINS` configurada en Render.
 
-# 8. Verificación del despliegue
+# 8. Endpoints de la API
+
+Esta sección documenta la superficie REST del backend desplegado en Render. Todas las rutas
+son **relativas a la URL base** del servicio:
+
+```
+https://sistema-comercializacion-v2-latest.onrender.com
+```
+
+La documentación interactiva **siempre está sincronizada con el código** (se genera desde el
+propio FastAPI): consultar `**/docs**` (Swagger UI) o `**/openapi.json**` es la referencia
+autoritativa. Las tablas siguientes resumen los endpoints por familia, con su método, ruta,
+requisito de acceso y propósito.
+
+Convenciones de la columna **Acceso**:
+
+- **Público** — no requiere token.
+- **Sesión** — requiere el header `Authorization: Bearer <token>` de un login válido.
+- **Sesión + `action:users_manage`** — además, el rol debe tener ese permiso (administración).
+- **Sesión + permiso de módulo** — el rol debe tener `module:{sales|purchases|inventory}` +
+  `action:forecast` según el dominio (solo en el motor v2; ver §8.6 y §8.7).
+
+## 8.1. Salud y documentación (OpenAPI/Swagger)
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| GET | `/health` | Público | *Liveness*: responde `{"status":"ok"}`. Lo usa el `healthCheckPath` de Render. |
+| GET | `/docs` | Público | Swagger UI (documentación interactiva). |
+| GET | `/redoc` | Público | Documentación ReDoc (alternativa a Swagger). |
+| GET | `/openapi.json` | Público | Contrato OpenAPI completo (fuente de verdad de todos los endpoints). |
+
+## 8.2. Autenticación y restablecimiento de contraseña
+
+Control de acceso por roles con **token de sesión firmado** (ADR-0014). El token viaja en el
+header `Authorization: Bearer <token>` en cada petición autenticada.
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| POST | `/auth/login` | Público | Verifica id + contraseña y devuelve `{token, expires_in, user}`. Mensaje genérico ante fallo (no revela si el id existe). |
+| POST | `/auth/forgot` | Público | Inicia el restablecimiento: envía un enlace al correo de la cuenta (vía SMTP, §4). Respuesta **siempre genérica** (no enumera cuentas). |
+| POST | `/auth/reset` | Público | Confirma el restablecimiento con el token del correo y fija la nueva contraseña. El token es de un solo uso y caduca pronto. |
+| GET | `/auth/me` | Sesión | Devuelve la identidad efectiva (id, rol, permisos, `client_id`) del token vigente. |
+
+## 8.3. Roles, usuarios y permisos
+
+Administración del control de acceso. La autorización se valida **en el backend**; ocultar
+elementos en la interfaz no basta.
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| GET | `/permissions` | Sesión + `action:users_manage` | Catálogo de permisos (módulos + acciones) para construir/editar roles. |
+| GET | `/roles` | Sesión + `action:users_manage` | Lista los roles con sus permisos. |
+| POST | `/roles` | Sesión + `action:users_manage` | Crea un rol. `409` si el nombre ya existe. |
+| PATCH | `/roles/{role_id}` | Sesión + `action:users_manage` | Edita descripción y/o permisos. No permite tocar los permisos del rol administrador. |
+| DELETE | `/roles/{role_id}` | Sesión + `action:users_manage` | Elimina un rol. Rechaza el rol administrador o roles con usuarios asignados. |
+| GET | `/users` | Sesión + `action:users_manage` | Lista las cuentas. |
+| POST | `/users` | Sesión + `action:users_manage` | Crea una cuenta y le asigna un rol. `409` si el id ya existe. |
+| PATCH | `/users/{user_id}` | Sesión + `action:users_manage` | Edita rol, contraseña, correo o estado (activo/inactivo). |
+
+## 8.4. Perfil del negocio (onboarding)
+
+Perfil ligado al `client_id` del usuario (sector, tamaño, región, moneda).
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| GET | `/profile/options` | Sesión | Conjuntos de opciones (sector/tamaño/región/moneda) para poblar el formulario. |
+| GET | `/profile` | Sesión | Perfil del negocio del cliente. `404` si el onboarding no se ha completado. |
+| PUT | `/profile` | Sesión | Guarda el onboarding y marca la cuenta como `onboarding_done`. |
+
+## 8.5. Catálogo v3 (motor actual de la interfaz)
+
+**Es el motor que usa el frontend en producción (ADR-0028).** Cada módulo
+(`ventas`, `compras`, `almacen`) ejecuta automáticamente **10 consultas predefinidas**
+(4 regresión → 3 clasificación → 3 clustering) entrenadas en el momento, y devuelve 10
+reportes + un bloque de tendencia. No exige permiso de módulo: deriva el `client_id` del
+token si está presente (ver §8.7).
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| GET | `/v3/catalogo` | Sesión | Lista informativa de las 30 consultas (10 por módulo) y las etiquetas de columnas. |
+| POST | `/v3/{modulo}` | Sesión | Ejecuta las 10 consultas del módulo sobre las filas enviadas (`{rows: [...]}`). Devuelve 10 reportes + tendencia. |
+| POST | `/v3/{modulo}/archivo` | Sesión | Igual que el anterior, pero subiendo un archivo `.xlsx`/`.xls`/`.json` (detecta la hoja de datos por sus encabezados). |
+| GET | `/v3/{modulo}/plantilla` | Sesión | Descarga la plantilla del módulo (`formato=excel` por defecto, o `formato=json`). |
+| GET | `/v3/{modulo}/demo` | Sesión | Corre el análisis con datos sintéticos del sistema (para verlo funcionar sin aportar datos). |
+| GET | `/v3/{modulo}/historial` | Sesión | Historial de análisis del cliente para el módulo (`limite` configurable). `modulo=todos` devuelve todas las categorías. |
+| GET | `/v3/historial/{prediction_id}` | Sesión | Detalle de un análisis pasado con sus valores predichos (para re-verlo sin re-ejecutar). |
+
+`{modulo}` ∈ `{ventas, compras, almacen}` (para el historial también `todos`).
+
+## 8.6. Motor 3×3 v2 (heredado, funcional)
+
+Motor **anterior** (rediseño 3×3, ADR-0024/0025): un formato fijo por dominio que alimenta
+**tres modelos** (regresión + clasificación + clustering) en una sola respuesta. Sigue
+**operativo** y se usa para el reentrenamiento y la persistencia de modelos por cliente
+(ADR-0027), pero está marcado como **`deprecated`** en OpenAPI: la interfaz activa migró al
+catálogo v3 (§8.5). A diferencia de v3, **sí exige permiso de módulo**.
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| POST | `/v2/{dominio}` | Sesión + permiso de módulo | Entrena al vuelo y devuelve los tres modelos sobre las filas enviadas (`{rows, horizon}`). |
+| GET | `/v2/{dominio}/demo` | Sesión + permiso de módulo | Análisis 3×3 sobre datos sintéticos (`horizon` opcional). |
+| GET | `/v2/{dominio}/esquema` | Sesión + permiso de módulo | Diccionario de variables del dominio: qué columnas pedir y qué predice cada modelo. |
+| GET | `/v2/{dominio}/plantilla` | Sesión + permiso de módulo | Plantilla/ejemplo del dominio (`formato=excel|json`, `contenido=basica|rica`). |
+| POST | `/v2/{dominio}/excel` | Sesión + permiso de módulo | Sube un `.xlsx` con los datos y corre el análisis 3×3. |
+| POST | `/v2/{dominio}/entrenar` | Sesión + permiso de módulo | Reentrena con **todo** el corpus acumulado + lo nuevo, versiona los modelos en el registro y marca la versión servida. |
+| POST | `/v2/{dominio}/predecir` | Sesión + permiso de módulo | Predice con el modelo **guardado** del cliente (sin reentrenar). `400` si aún no entrenó. |
+| GET | `/v2/{dominio}/modelos` | Sesión + permiso de módulo | Lista las versiones de modelos entrenadas del cliente para el dominio (métricas, cuál se sirve). |
+| POST | `/v2/{dominio}/modelos/{model_id}/servir` | Sesión + permiso de módulo | Elige qué versión se sirve para el dominio. |
+
+`{dominio}` ∈ `{ventas, compras, almacen}`. Permiso requerido por dominio: `ventas` →
+`module:sales`, `compras` → `module:purchases`, `almacen` → `module:inventory`, todos con
+`action:forecast`.
+
+## 8.7. Convenciones (autenticación, `client_id`, errores)
+
+- **Autenticación.** Los endpoints marcados «Sesión» esperan `Authorization: Bearer <token>`.
+  El token se obtiene de `POST /auth/login`, se guarda en el frontend (memoria + `localStorage`)
+  y se envía en cada petición. No se usan cookies (por eso `allow_credentials=False`, §7).
+- **Identidad del cliente (`client_id`).** Con el control de acceso activo, el backend
+  **deriva el `client_id` del token** para separar corpus y modelos por cuenta. El header
+  `X-Client-Id` es solo respaldo para desarrollo/pruebas sin sesión (cae a `default`).
+- **Diferencia v2 vs v3.** El motor **v2** exige el permiso de módulo del dominio; el motor
+  **v3** no exige permiso de módulo (solo aprovecha el `client_id` del token si está
+  presente). La interfaz de producción consume **v3**.
+- **Errores uniformes.** Las entradas mal formadas devuelven `422`; los datos inválidos o
+  insuficientes para entrenar, `400`; sin permiso, `403`; sin token en un endpoint de sesión,
+  `401`. El cuerpo de error sigue un formato uniforme (`ErrorResponse`).
+- **Documentación viva.** Ante cualquier duda, `**/docs**` y `**/openapi.json**` reflejan el
+  estado exacto del servicio desplegado (métodos, parámetros, esquemas de request/response).
+
+# 9. Verificación del despliegue
 
 Tras desplegar, ejecutar las siguientes verificaciones:
 
@@ -607,39 +802,37 @@ Tras desplegar, ejecutar las siguientes verificaciones:
 | 3 | `GET /health` del backend | Responde `{"status":"ok"}` (puede tardar ~40 s en frío) |
 | 4 | Abrir `/docs` (Swagger) | Renderiza y documenta los endpoints |
 | 5 | Iniciar sesión desde el frontend (`POST /auth/login`) | El usuario accede al sistema |
-| 6 | Consumir un dominio (p. ej. `POST /v2/ventas` o `/v2/ventas/demo`) | El frontend recibe predicciones desde Render |
+| 6 | Consumir un dominio desde el frontend (motor v3: `POST /v3/ventas` o `GET /v3/ventas/demo`) | El frontend recibe los 10 reportes desde Render |
 | 7 | Revisar la consola del navegador | Sin errores de CORS |
 | 8 | Revisar los logs en Render | Sin errores críticos; arranque de Uvicorn correcto |
 | 9 | Verificar persistencia en Supabase | El corpus y los modelos se registran en Postgres/Storage |
 | 10 | Probar los módulos principales | Ventas, Compras y Almacén funcionan |
 
-Endpoints reales expuestos (de `/openapi.json`): `/health`, `/docs`, `/auth/login`, `/auth/me`,
-`/users`, `/roles`, `/permissions`, `/profile`, y por dominio
-`/v2/{ventas|compras|almacen}` con sus variantes `/demo`, `/entrenar`, `/esquema`, `/excel`,
-`/plantilla`, `/predecir`, `/modelos` y `/modelos/{id}/servir`.
+La referencia completa de endpoints (salud/docs, autenticación y restablecimiento, roles y
+usuarios, perfil, catálogo **v3** y motor **v2**) está en la **§8**. En vivo, `**/openapi.json**`
+y `**/docs**` reflejan el estado exacto del servicio desplegado.
 
-**Figura 10.** `/health` respondiendo OK y **Figura 11.** inicio de sesión exitoso desde el SPA.
+**Figura 13.** `/health` respondiendo OK e inicio de sesión exitoso desde el SPA.
 
-# 9. Mantenimiento y actualización
+# 10. Mantenimiento y actualización
 
 **Actualización del backend:**
 
-El despliegue es **automático** (`autoDeploy: true` en `render.yaml`). Basta con hacer push a
-la rama conectada:
+Como Render sirve una **imagen externa de Docker Hub**, la actualización **no es automática**:
+hay que reconstruir la imagen, volver a publicarla y hacer un redeploy manual. Desde la raíz
+del proyecto:
 
 ```bash
-git add .
-git commit -m "feat: cambios del backend"
-git push
+docker build -t valxux/sistema_comercializacion_v2:latest .
+docker push valxux/sistema_comercializacion_v2:latest
 ```
 
-Render detecta el push, reconstruye la imagen desde el `Dockerfile` y hace el redeploy. Si se
-requiere un redeploy manual (p. ej. tras cambiar variables de entorno), usar en Render
-**Manual Deploy → Deploy latest commit** (o **Clear build cache & deploy** si se sospecha de
-la caché).
+Después, en Render: **Manual Deploy → Deploy latest reference** para que el servicio tome la
+imagen recién publicada. Los cambios de **dependencias** (`requirements-api.txt`) o
+**artefactos** (`models/`) quedan incluidos al reconstruir la imagen.
 
-Si cambian las **dependencias** (`requirements-api.txt`) o los **artefactos** (`models/`), el
-redeploy los toma automáticamente al reconstruir la imagen.
+> Como el tag es `:latest`, Render descarga esa referencia en cada redeploy manual. No hace
+> falta cambiar el nombre de la imagen en Render entre versiones.
 
 **Actualización del frontend:**
 
@@ -658,7 +851,7 @@ Ante cambios de esquema, aplicar las migraciones contra Supabase antes/después 
 alembic upgrade head
 ```
 
-# 10. Posibles errores y soluciones
+# 11. Posibles errores y soluciones
 
 | Error | Posible causa | Solución |
 | --- | --- | --- |
@@ -667,6 +860,8 @@ alembic upgrade head
 | El frontend consume `localhost` | `VITE_API_BASE_URL` no configurada en el build | Definir el secreto en GitHub Actions y re-ejecutar el workflow |
 | Primera petición muy lenta (~40 s) | Arranque en frío del free tier de Render | Comportamiento esperado; considerar un plan de pago o un *ping* periódico |
 | `libgomp.so.1: cannot open shared object file` | Falta `libgomp1` en la imagen | Ya incluido en el `Dockerfile`; verificar que no se removió |
+| La imagen no se actualiza en Render | Despliegue no automático (Existing Image) | Tras `docker push`, hacer **Manual Deploy → Deploy latest reference** en Render |
+| `docker push` rechazado (denied) | Sin `docker login` o nombre de imagen ajeno | `docker login` y usar tu usuario: `valxux/sistema_comercializacion_v2:latest` |
 | Backend no arranca en Render | Variables de entorno incompletas/incorrectas | Revisar `SPC_DATABASE_URL`, `SUPABASE_*`, `SPC_AUTH_SECRET` en el panel |
 | Error de conexión a la base | Prefijo de la cadena o pooler incorrecto | Usar `postgresql+psycopg://` y la cadena del **Session pooler** |
 | Modelos no se guardan en la nube | `SUPABASE_KEY` es la `anon` en vez de `service_role` | Usar la **service role key** (sube/borra artefactos) |
@@ -674,7 +869,7 @@ alembic upgrade head
 | `job_id` no encontrado en lote | Más de 1 worker de Uvicorn | Mantener **1 worker** (almacén de lote in-process, ADR-0008) |
 | Workflow de Pages falla en `deploy-pages` | GitHub Pages no configurado como "GitHub Actions" | Settings → Pages → Source = GitHub Actions |
 
-# 11. Seguridad del despliegue
+# 12. Seguridad del despliegue
 
 El sistema aplica medidas básicas de seguridad en el despliegue y la ejecución:
 
@@ -700,33 +895,34 @@ El sistema aplica medidas básicas de seguridad en el despliegue y la ejecución
 - Configurar CORS solo para dominios permitidos.
 - Usar variables de entorno para todo dato sensible.
 
-**Figura 12.** Configuración de seguridad (usuario no-root en el `Dockerfile`, variables en
+**Figura 14.** Configuración de seguridad (usuario no-root en el `Dockerfile`, variables en
 Render).
 
-# 12. Evidencias del despliegue
+# 13. Evidencias del despliegue
 
 Se recomienda adjuntar como evidencia:
 
-- **12.1.** Archivo `Dockerfile` del backend.
-- **12.2.** Archivo `render.yaml` (Blueprint) en el repositorio.
-- **12.3.** Servicio backend en estado **Live** en Render.
-- **12.4.** Variables de entorno configuradas en Render.
-- **12.5.** Logs del backend (arranque de Uvicorn correcto).
-- **12.6.** Endpoint de salud: `/health → {"status":"ok"}`.
-- **12.7.** Swagger UI en `/docs`.
-- **12.8.** Ejecución exitosa del workflow en la pestaña **Actions**.
-- **12.9.** Configuración de GitHub Pages (Source = GitHub Actions).
-- **12.10.** Aplicación publicada en `https://tallerintegrador.github.io/sistema_predicion_comercializacion/`.
-- **12.11.** Inicio de sesión exitoso desde el frontend.
-- **12.12.** Proyecto Supabase con la base Postgres y el bucket `spc-modelos`.
+- **13.1.** Archivo `Dockerfile` del backend.
+- **13.2.** Imagen del backend publicada en Docker Hub (`valxux/sistema_comercializacion_v2:latest`).
+- **13.3.** Servicio backend en Render con fuente **Existing Image** (imagen de Docker Hub).
+- **13.4.** Servicio backend en estado **Live** en Render.
+- **13.5.** Variables de entorno configuradas en Render.
+- **13.6.** Logs del backend (arranque de Uvicorn correcto).
+- **13.7.** Endpoint de salud: `/health → {"status":"ok"}`.
+- **13.8.** Swagger UI en `/docs` (referencia viva de los endpoints, §8).
+- **13.9.** Ejecución exitosa del workflow en la pestaña **Actions**.
+- **13.10.** Configuración de GitHub Pages (Source = GitHub Actions).
+- **13.11.** Aplicación publicada en `https://tallerintegrador.github.io/sistema_predicion_comercializacion/`.
+- **13.12.** Inicio de sesión exitoso desde el frontend.
+- **13.13.** Proyecto Supabase con la base Postgres y el bucket `spc-modelos`.
 
-# 13. Conclusión
+# 14. Conclusión
 
 El despliegue del SPC separa frontend y backend en plataformas especializadas. El backend
-**FastAPI** se containeriza con **Docker** y se ejecuta en **Render**, construido directamente
-desde el repositorio mediante un *Blueprint* (`render.yaml`) —sin Docker Hub—. La persistencia
-vive en **PostgreSQL y Storage sobre Supabase**. El frontend **React + Vite** se publica en
-**GitHub Pages** de forma automática con **GitHub Actions** —sin Firebase—.
+**FastAPI** se containeriza con **Docker**, la imagen se **publica en Docker Hub**
+(`valxux/sistema_comercializacion_v2:latest`) y se **ejecuta en Render** como *Existing Image*.
+La persistencia vive en **PostgreSQL y Storage sobre Supabase**. El frontend **React + Vite**
+se publica en **GitHub Pages** de forma automática con **GitHub Actions** —sin Firebase—.
 
 Esta estrategia mantiene una arquitectura de despliegue ordenada: el frontend consume una API
 REST pública y el backend concentra la lógica de negocio, la seguridad (token de sesión y

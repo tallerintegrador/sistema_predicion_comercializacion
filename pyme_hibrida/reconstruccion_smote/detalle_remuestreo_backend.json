@@ -1,0 +1,206 @@
+{
+  "almacen": {
+    "objetivo": {
+      "applied_split": "train",
+      "class_counts_after": {
+        "0": 9565,
+        "1": 2684
+      },
+      "class_counts_before": {
+        "0": 9565,
+        "1": 2684
+      },
+      "k_neighbors": null,
+      "method": "sin_remuestreo",
+      "sampling_strategy": null,
+      "seed": 42,
+      "selection_metric": "pr_auc_validation",
+      "smotenc_counts_after": {
+        "0": 9565,
+        "1": 9565
+      },
+      "smotenc_skipped_reason": null,
+      "test_rows": 2611,
+      "threshold": 0.45852,
+      "threshold_selection": {
+        "criterio": "max recall sujeto a precision >= 0.80 (piso de negocio REAL, no 0.50; margen +0.02 en VALID -> piso efectivo 0.82- para que el piso aguante en TEST)",
+        "margen_valid": 0.02,
+        "piso_efectivo_valid": 0.82,
+        "precision_en_umbral": 0.825,
+        "precision_floor": 0.8,
+        "recall_en_umbral": 0.0521
+      },
+      "tie_tolerance": 0.005,
+      "validation_rows": 2619
+    },
+    "reconstruido": {
+      "applied_split": "train",
+      "class_counts_after": {
+        "0": 9565,
+        "1": 2684
+      },
+      "class_counts_before": {
+        "0": 9565,
+        "1": 2684
+      },
+      "k_neighbors": null,
+      "method": "sin_remuestreo",
+      "sampling_strategy": null,
+      "seed": 42,
+      "selection_metric": "pr_auc_validation",
+      "smotenc_counts_after": {
+        "0": 9565,
+        "1": 9565
+      },
+      "smotenc_skipped_reason": null,
+      "test_rows": 2611,
+      "threshold": 0.479698,
+      "threshold_selection": {
+        "criterio": "max recall sujeto a precision >= 0.80 (piso de negocio REAL, no 0.50; margen +0.02 en VALID -> piso efectivo 0.82- para que el piso aguante en TEST)",
+        "margen_valid": 0.02,
+        "piso_efectivo_valid": 0.82,
+        "precision_en_umbral": 0.8529,
+        "precision_floor": 0.8,
+        "recall_en_umbral": 0.0458
+      },
+      "tie_tolerance": 0.005,
+      "validation_rows": 2619
+    }
+  },
+  "compras": {
+    "objetivo": {
+      "applied_split": "train",
+      "class_counts_after": {
+        "0": 4264,
+        "1": 911
+      },
+      "class_counts_before": {
+        "0": 4264,
+        "1": 911
+      },
+      "k_neighbors": null,
+      "method": "sin_remuestreo",
+      "sampling_strategy": null,
+      "seed": 42,
+      "selection_metric": "pr_auc_validation",
+      "smotenc_counts_after": {
+        "0": 4264,
+        "1": 4264
+      },
+      "smotenc_skipped_reason": null,
+      "test_rows": 1350,
+      "threshold": 0.513118,
+      "threshold_selection": {
+        "criterio": "max recall sujeto a precision >= 0.80 (piso de negocio REAL, no 0.50; margen +0.02 en VALID -> piso efectivo 0.82- para que el piso aguante en TEST)",
+        "margen_valid": 0.02,
+        "piso_efectivo_valid": 0.82,
+        "precision_en_umbral": 1.0,
+        "precision_floor": 0.8,
+        "recall_en_umbral": 0.0055
+      },
+      "tie_tolerance": 0.005,
+      "validation_rows": 1125
+    },
+    "reconstruido": {
+      "applied_split": "train",
+      "class_counts_after": {
+        "0": 4264,
+        "1": 911
+      },
+      "class_counts_before": {
+        "0": 4264,
+        "1": 911
+      },
+      "k_neighbors": null,
+      "method": "sin_remuestreo",
+      "sampling_strategy": null,
+      "seed": 42,
+      "selection_metric": "pr_auc_validation",
+      "smotenc_counts_after": {
+        "0": 4264,
+        "1": 4264
+      },
+      "smotenc_skipped_reason": null,
+      "test_rows": 1350,
+      "threshold": 0.513118,
+      "threshold_selection": {
+        "criterio": "max recall sujeto a precision >= 0.80 (piso de negocio REAL, no 0.50; margen +0.02 en VALID -> piso efectivo 0.82- para que el piso aguante en TEST)",
+        "margen_valid": 0.02,
+        "piso_efectivo_valid": 0.82,
+        "precision_en_umbral": 1.0,
+        "precision_floor": 0.8,
+        "recall_en_umbral": 0.0055
+      },
+      "tie_tolerance": 0.005,
+      "validation_rows": 1125
+    }
+  },
+  "ventas": {
+    "objetivo": {
+      "applied_split": "train",
+      "class_counts_after": {
+        "0": 9197,
+        "1": 3052
+      },
+      "class_counts_before": {
+        "0": 9197,
+        "1": 3052
+      },
+      "k_neighbors": null,
+      "method": "sin_remuestreo",
+      "sampling_strategy": null,
+      "seed": 42,
+      "selection_metric": "pr_auc_validation",
+      "smotenc_counts_after": {
+        "0": 9197,
+        "1": 9197
+      },
+      "smotenc_skipped_reason": null,
+      "test_rows": 2611,
+      "threshold": 0.361854,
+      "threshold_selection": {
+        "criterio": "max recall sujeto a precision >= 0.80 (piso de negocio REAL, no 0.50; margen +0.02 en VALID -> piso efectivo 0.82- para que el piso aguante en TEST)",
+        "margen_valid": 0.02,
+        "piso_efectivo_valid": 0.82,
+        "precision_en_umbral": 0.8259,
+        "precision_floor": 0.8,
+        "recall_en_umbral": 0.808
+      },
+      "tie_tolerance": 0.005,
+      "validation_rows": 2619
+    },
+    "reconstruido": {
+      "applied_split": "train",
+      "class_counts_after": {
+        "0": 9197,
+        "1": 3052
+      },
+      "class_counts_before": {
+        "0": 9197,
+        "1": 3052
+      },
+      "k_neighbors": null,
+      "method": "sin_remuestreo",
+      "sampling_strategy": null,
+      "seed": 42,
+      "selection_metric": "pr_auc_validation",
+      "smotenc_counts_after": {
+        "0": 9197,
+        "1": 9197
+      },
+      "smotenc_skipped_reason": null,
+      "test_rows": 2611,
+      "threshold": 0.378137,
+      "threshold_selection": {
+        "criterio": "max recall sujeto a precision >= 0.80 (piso de negocio REAL, no 0.50; margen +0.02 en VALID -> piso efectivo 0.82- para que el piso aguante en TEST)",
+        "margen_valid": 0.02,
+        "piso_efectivo_valid": 0.82,
+        "precision_en_umbral": 0.8313,
+        "precision_floor": 0.8,
+        "recall_en_umbral": 0.8063
+      },
+      "tie_tolerance": 0.005,
+      "validation_rows": 2619
+    }
+  }
+}

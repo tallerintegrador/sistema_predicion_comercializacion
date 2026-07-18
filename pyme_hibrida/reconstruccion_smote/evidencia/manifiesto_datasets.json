@@ -1,0 +1,166 @@
+{
+  "archivos": [
+    {
+      "dominio": "almacen",
+      "etapa": "crudo",
+      "formato": "csv",
+      "ruta": "crudo/almacen_crudo.csv",
+      "filas": 15466,
+      "bytes": 1431012,
+      "sha256": "4d71640f473e1b93ce2b0ebd34bf92f968a4cd3f448fa9486cd6109ecd4d8ae1"
+    },
+    {
+      "dominio": "almacen",
+      "etapa": "crudo",
+      "formato": "json",
+      "ruta": "crudo/almacen_crudo.json",
+      "filas": 15466,
+      "bytes": 4623464,
+      "sha256": "76b6c47a3f6b8e3436d0b654d28f286679aa683930b83fe16f893bcc5ea0911f"
+    },
+    {
+      "dominio": "almacen",
+      "etapa": "crudo",
+      "formato": "xlsx",
+      "ruta": "crudo/almacen_crudo.xlsx",
+      "filas": 15466,
+      "bytes": 1056223,
+      "sha256": "e6fd8c3e3db00a768df21403b6c2cfd866b2bfbda3847e1880fe8c443d3aaa30"
+    },
+    {
+      "dominio": "compras",
+      "etapa": "crudo",
+      "formato": "csv",
+      "ruta": "crudo/compras_crudo.csv",
+      "filas": 7195,
+      "bytes": 628838,
+      "sha256": "154881d2a4543f2154b1edab2afe4d09b08bc40a42f645f4febea9f9bcd73cb0"
+    },
+    {
+      "dominio": "compras",
+      "etapa": "crudo",
+      "formato": "json",
+      "ruta": "crudo/compras_crudo.json",
+      "filas": 7195,
+      "bytes": 2101803,
+      "sha256": "937a52fa7b89141e9b9f5c2628aade1b5c172698180fde847b4eadf2471abaf1"
+    },
+    {
+      "dominio": "compras",
+      "etapa": "crudo",
+      "formato": "xlsx",
+      "ruta": "crudo/compras_crudo.xlsx",
+      "filas": 7195,
+      "bytes": 497032,
+      "sha256": "5557baaa26841db92a91d370e74a734a668cbe587918533efdfb559cca1c4161"
+    },
+    {
+      "dominio": "ventas",
+      "etapa": "crudo",
+      "formato": "csv",
+      "ruta": "crudo/ventas_crudo.csv",
+      "filas": 15190,
+      "bytes": 1327525,
+      "sha256": "31533052a71dfeeda0a219a5e5f78bce93025336e2669a40bcf1eb0c69f4b387"
+    },
+    {
+      "dominio": "ventas",
+      "etapa": "crudo",
+      "formato": "json",
+      "ruta": "crudo/ventas_crudo.json",
+      "filas": 15190,
+      "bytes": 4465468,
+      "sha256": "12231c94f5c04ec3c7fd63714da3124c4da75e83299f352f4773a64821e1e885"
+    },
+    {
+      "dominio": "ventas",
+      "etapa": "crudo",
+      "formato": "xlsx",
+      "ruta": "crudo/ventas_crudo.xlsx",
+      "filas": 15190,
+      "bytes": 842566,
+      "sha256": "ac0c11338b1f1266b233e3b412f090a709709857ef93e7feeca4a88d8353493e"
+    },
+    {
+      "dominio": "almacen",
+      "etapa": "reconstruido",
+      "formato": "csv",
+      "ruta": "reconstruido/almacen_smotenc.csv",
+      "filas": 17479,
+      "bytes": 1615055,
+      "sha256": "48f9f6627eb1b6e9ef6e433f98199fa4c5fa9613079f777ba0e9db92654b727b"
+    },
+    {
+      "dominio": "almacen",
+      "etapa": "reconstruido",
+      "formato": "json",
+      "ruta": "reconstruido/almacen_smotenc.json",
+      "filas": 17479,
+      "bytes": 5224479,
+      "sha256": "c2be0f22617e7ca5124068979bbaa30f8678e5f2b7d089c22f529f2a30acdd80"
+    },
+    {
+      "dominio": "almacen",
+      "etapa": "reconstruido",
+      "formato": "xlsx",
+      "ruta": "reconstruido/almacen_smotenc.xlsx",
+      "filas": 17479,
+      "bytes": 1185720,
+      "sha256": "5a90ec69231443530e7752043848e36c69b2d6704486e74351b29f3ff942bcdc"
+    },
+    {
+      "dominio": "compras",
+      "etapa": "reconstruido",
+      "formato": "csv",
+      "ruta": "reconstruido/compras_smotenc.csv",
+      "filas": 7650,
+      "bytes": 670399,
+      "sha256": "ddc11e9c041b35d412facbab04130f1a359a80309d72c34f1a26c445c35cc7e3"
+    },
+    {
+      "dominio": "compras",
+      "etapa": "reconstruido",
+      "formato": "json",
+      "ruta": "reconstruido/compras_smotenc.json",
+      "filas": 7650,
+      "bytes": 2235508,
+      "sha256": "bb755b084c088e2520b37661e6260265662805dd84576921577db32d02a05eb7"
+    },
+    {
+      "dominio": "compras",
+      "etapa": "reconstruido",
+      "formato": "xlsx",
+      "ruta": "reconstruido/compras_smotenc.xlsx",
+      "filas": 7650,
+      "bytes": 528511,
+      "sha256": "360cd5f7fd8b6d6485b92dfd28ed9d6c294b19823dd74150d271edaefdab9b3a"
+    },
+    {
+      "dominio": "ventas",
+      "etapa": "reconstruido",
+      "formato": "csv",
+      "ruta": "reconstruido/ventas_smotenc.csv",
+      "filas": 17479,
+      "bytes": 1539709,
+      "sha256": "5562255ed5292ab5ec14aa35d2070b0ce59ed8cd0df143bfc5af99422be29683"
+    },
+    {
+      "dominio": "ventas",
+      "etapa": "reconstruido",
+      "formato": "json",
+      "ruta": "reconstruido/ventas_smotenc.json",
+      "filas": 17479,
+      "bytes": 5147115,
+      "sha256": "392fba11c5e3129c84e63e67633ec4f6ed5a0373b97b2e6bbb0ee68a6d8cf387"
+    },
+    {
+      "dominio": "ventas",
+      "etapa": "reconstruido",
+      "formato": "xlsx",
+      "ruta": "reconstruido/ventas_smotenc.xlsx",
+      "filas": 17479,
+      "bytes": 971914,
+      "sha256": "d438ed1fb1e389f39cff1ad258818af37f6535d17d993faabf497acf8bdd13a8"
+    }
+  ]
+}

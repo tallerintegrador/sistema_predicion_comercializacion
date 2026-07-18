@@ -1,0 +1,134 @@
+{
+  "cortes": {
+    "almacen": {
+      "test_ini": "2017-07-13",
+      "train_fin": "2017-06-08",
+      "valid_fin": "2017-07-12",
+      "valid_ini": "2017-06-09"
+    },
+    "compras": {
+      "test_ini": "2017-07-11",
+      "train_fin": "2017-05-30",
+      "valid_fin": "2017-07-04",
+      "valid_ini": "2017-06-06"
+    },
+    "ventas": {
+      "test_ini": "2017-07-13",
+      "train_fin": "2017-06-08",
+      "valid_fin": "2017-07-12",
+      "valid_ini": "2017-06-09"
+    }
+  },
+  "etiquetas": {
+    "almacen": {
+      "nombre": "riesgo_quiebre",
+      "umbral_global": null,
+      "umbrales_categoria": null
+    },
+    "compras": {
+      "nombre": "entrega_con_retraso",
+      "umbral_global": 10.0,
+      "umbrales_categoria": null
+    },
+    "ventas": {
+      "nombre": "demanda_alta",
+      "umbral_global": 204.0,
+      "umbrales_categoria": {
+        "BEVERAGES": 242.0,
+        "BREAD/BAKERY": 164.75,
+        "DAIRY": 143.0,
+        "GROCERY I": 95.0,
+        "MEATS": 165.2285,
+        "PRODUCE": 225.378
+      }
+    }
+  },
+  "origen_canonico": [
+    "ventas_v3.json",
+    "compras_v3.json",
+    "almacen_v3.json"
+  ],
+  "seleccion": [
+    {
+      "cumple": true,
+      "diferencia_correlacion": 0.010288,
+      "diferencia_f1": 0.0086,
+      "diferencia_pr_auc": 0.0033,
+      "diferencia_recall": 0.0158,
+      "diferencia_silhouette": 0.010712,
+      "diferencia_wape": 0.03489,
+      "dominio": "ventas",
+      "duplicados_clave": 0,
+      "filas_crudo": 15190,
+      "filas_objetivo": 17479,
+      "filas_reconstruidas": 17479,
+      "k_neighbors": 3,
+      "max_diferencia_categorica": 0.007266,
+      "metricas_modelos_cumplen": true,
+      "perdida": 0.042597,
+      "positivos_train_crudo": 763,
+      "positivos_train_objetivo": 3052,
+      "positivos_train_reconstruido": 3052,
+      "reglas_validas": true,
+      "retencion_minoria": 0.25,
+      "sinteticas_agregadas": 2289,
+      "valid_test_intactos": true,
+      "wasserstein_normalizada": 0.025043
+    },
+    {
+      "cumple": true,
+      "diferencia_correlacion": 0.004138,
+      "diferencia_f1": 0.0,
+      "diferencia_pr_auc": 0.0,
+      "diferencia_recall": 0.0,
+      "diferencia_silhouette": 0.010658,
+      "diferencia_wape": 0.036656,
+      "dominio": "compras",
+      "duplicados_clave": 0,
+      "filas_crudo": 7195,
+      "filas_objetivo": 7650,
+      "filas_reconstruidas": 7650,
+      "k_neighbors": 7,
+      "max_diferencia_categorica": 0.0,
+      "metricas_modelos_cumplen": true,
+      "perdida": 0.008277,
+      "positivos_train_crudo": 456,
+      "positivos_train_objetivo": 911,
+      "positivos_train_reconstruido": 911,
+      "reglas_validas": true,
+      "retencion_minoria": 0.5,
+      "sinteticas_agregadas": 455,
+      "valid_test_intactos": true,
+      "wasserstein_normalizada": 0.004139
+    },
+    {
+      "cumple": true,
+      "diferencia_correlacion": 0.043893,
+      "diferencia_f1": 0.002,
+      "diferencia_pr_auc": 0.0055,
+      "diferencia_recall": 0.0017,
+      "diferencia_silhouette": 0.005605,
+      "diferencia_wape": 0.001386,
+      "dominio": "almacen",
+      "duplicados_clave": 0,
+      "filas_crudo": 15466,
+      "filas_objetivo": 17479,
+      "filas_reconstruidas": 17479,
+      "k_neighbors": 5,
+      "max_diferencia_categorica": 0.0,
+      "metricas_modelos_cumplen": true,
+      "perdida": 0.061706,
+      "positivos_train_crudo": 671,
+      "positivos_train_objetivo": 2684,
+      "positivos_train_reconstruido": 2684,
+      "reglas_validas": true,
+      "retencion_minoria": 0.25,
+      "sinteticas_agregadas": 2013,
+      "valid_test_intactos": true,
+      "wasserstein_normalizada": 0.017813
+    }
+  ],
+  "semilla": 42,
+  "tipo": "reconstruccion_estadistica_inversa; no son datos historicos observados",
+  "valid_test_remuestreados": false
+}

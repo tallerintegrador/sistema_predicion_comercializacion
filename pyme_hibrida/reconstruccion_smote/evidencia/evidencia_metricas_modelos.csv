@@ -1,0 +1,16 @@
+dominio,tipo,consulta,metrica,valor_objetivo,valor_reconstruido,diferencia_absoluta,tolerancia,cumple,modelo_objetivo,modelo_reconstruido
+ventas,clasificacion,ven-c1,PR_AUC,0.8821,0.8854,0.0033,0.03,True,hist_gradient_boosting[sin_remuestreo],hist_gradient_boosting[sin_remuestreo]
+ventas,clasificacion,ven-c1,F1,0.8024,0.7938,0.0086,0.03,True,hist_gradient_boosting[sin_remuestreo],hist_gradient_boosting[sin_remuestreo]
+ventas,clasificacion,ven-c1,Recall,0.8193,0.8035,0.0158,0.03,True,hist_gradient_boosting[sin_remuestreo],hist_gradient_boosting[sin_remuestreo]
+ventas,regresion,ven-r1,wape,0.403501,0.438392,0.03489,0.05,True,hist_gradient_boosting,ridge
+ventas,clustering,ven-k1,silhouette,0.760659,0.771371,0.010712,0.05,True,kmeans,kmeans
+compras,clasificacion,com-c1,PR_AUC,0.3329,0.3329,0.0,0.03,True,logistic_regression[sin_remuestreo],logistic_regression[sin_remuestreo]
+compras,clasificacion,com-c1,F1,0.0323,0.0323,0.0,0.03,True,logistic_regression[sin_remuestreo],logistic_regression[sin_remuestreo]
+compras,clasificacion,com-c1,Recall,0.0166,0.0166,0.0,0.03,True,logistic_regression[sin_remuestreo],logistic_regression[sin_remuestreo]
+compras,regresion,com-r1,wape,0.561382,0.524726,0.036656,0.05,True,ridge,ridge
+compras,clustering,com-k1,silhouette,0.423184,0.433842,0.010658,0.05,True,kmeans,kmeans
+almacen,clasificacion,alm-c1,PR_AUC,0.3634,0.3689,0.0055,0.03,True,hist_gradient_boosting[sin_remuestreo],hist_gradient_boosting[sin_remuestreo]
+almacen,clasificacion,alm-c1,F1,0.0949,0.0929,0.002,0.03,True,hist_gradient_boosting[sin_remuestreo],hist_gradient_boosting[sin_remuestreo]
+almacen,clasificacion,alm-c1,Recall,0.051,0.0493,0.0017,0.03,True,hist_gradient_boosting[sin_remuestreo],hist_gradient_boosting[sin_remuestreo]
+almacen,regresion,alm-r1,wape,0.470152,0.471538,0.001386,0.05,True,ridge,ridge
+almacen,clustering,alm-k2,silhouette,0.69501,0.689405,0.005605,0.05,True,agglomerative,agglomerative

@@ -1,0 +1,37 @@
+{
+  "particion_temporal": {
+    "test": 0.15,
+    "train": 0.7,
+    "valid": 0.15
+  },
+  "reconstruccion_archivos": {
+    "almacen": {
+      "filas_crudo": 15466,
+      "filas_reconstruidas": 17479,
+      "k_neighbors": 5,
+      "retencion_minoria": 0.25,
+      "sinteticas_agregadas": 2013
+    },
+    "compras": {
+      "filas_crudo": 7195,
+      "filas_reconstruidas": 7650,
+      "k_neighbors": 7,
+      "retencion_minoria": 0.5,
+      "sinteticas_agregadas": 455
+    },
+    "ventas": {
+      "filas_crudo": 15190,
+      "filas_reconstruidas": 17479,
+      "k_neighbors": 3,
+      "retencion_minoria": 0.25,
+      "sinteticas_agregadas": 2289
+    }
+  },
+  "remuestreo_backend": {
+    "aplicar_en": "train",
+    "sampling_strategy": "auto (50/50)",
+    "seleccion": "PR-AUC en validación; empate absoluto <= 0.005 favorece simplicidad",
+    "umbral": "seleccionado únicamente en validación"
+  },
+  "semilla": 42
+}

@@ -1,0 +1,4 @@
+dominio,retencion_minoria,k_neighbors,filas_objetivo,filas_crudo,filas_reconstruidas,positivos_train_objetivo,positivos_train_crudo,positivos_train_reconstruido,sinteticas_agregadas,max_diferencia_categorica,wasserstein_normalizada,diferencia_correlacion,duplicados_clave,reglas_validas,valid_test_intactos,cumple,perdida,diferencia_f1,diferencia_pr_auc,diferencia_recall,diferencia_silhouette,diferencia_wape,metricas_modelos_cumplen,aceptacion_total
+ventas,0.25,3,17479,15190,17479,3052,763,3052,2289,0.007266,0.025043,0.010288,0,True,True,True,0.042597,0.0086,0.0033,0.0158,0.010712,0.03489,True,True
+compras,0.5,7,7650,7195,7650,911,456,911,455,0.0,0.004139,0.004138,0,True,True,True,0.008277,0.0,0.0,0.0,0.010658,0.036656,True,True
+almacen,0.25,5,17479,15466,17479,2684,671,2684,2013,0.0,0.017813,0.043893,0,True,True,True,0.061706,0.002,0.0055,0.0017,0.005605,0.001386,True,True

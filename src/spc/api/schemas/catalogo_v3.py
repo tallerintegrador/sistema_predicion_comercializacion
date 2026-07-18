@@ -26,6 +26,26 @@ class ComparisonRow(BaseModel):
     winner: bool = False
 
 
+class ResamplingDetail(BaseModel):
+    """Trazabilidad de desbalance; el remuestreo, si aplica, ocurre solo en TRAIN."""
+
+    method: str
+    applied_split: str = "train"
+    seed: int = 42
+    sampling_strategy: str | None = None
+    k_neighbors: int | None = None
+    threshold: float
+    class_counts_before: dict[str, int]
+    class_counts_after: dict[str, int]
+    validation_rows: int
+    test_rows: int
+    selection_metric: str = "pr_auc_validation"
+    tie_tolerance: float = 0.005
+    threshold_selection: dict[str, Any] = Field(default_factory=dict)
+    smotenc_counts_after: dict[str, int] | None = None
+    smotenc_skipped_reason: str | None = None
+
+
 class TechnicalDetail(BaseModel):
     """Información técnica de un reporte: modelo ganador, métricas, competencia."""
 
@@ -39,6 +59,10 @@ class TechnicalDetail(BaseModel):
     trained_at: datetime
     technical_note: str | None = Field(
         default=None, description="Nota honesta (p. ej. etiqueta por regla determinística)"
+    )
+    resampling: ResamplingDetail | None = Field(
+        default=None,
+        description="Estrategia de desbalance, partición, semilla, umbral y conteos de clase",
     )
 
 

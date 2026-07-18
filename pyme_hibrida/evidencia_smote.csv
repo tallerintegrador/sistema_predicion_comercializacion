@@ -1,0 +1,3 @@
+estrategia,PR_AUC,Recall_alta,Precision_alta,F1_alta
+Sin SMOTE,0.912,0.856,0.777,0.815
+Con SMOTE (SMOTENC),0.911,0.848,0.793,0.82
