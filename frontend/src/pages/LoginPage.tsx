@@ -93,18 +93,28 @@ export function LoginPage() {
             </div>
 
             {error && (
-              <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+              <p
+                className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                role="alert"
+                data-testid="login-error"
+              >
                 {error}
               </p>
             )}
 
-            <button className="btn-primary w-full" type="submit" disabled={busy || !userId.trim() || !password}>
+            <button
+              className="btn-primary w-full"
+              type="submit"
+              disabled={busy || !userId.trim() || !password}
+              data-testid="login-submit"
+            >
               {busy ? 'Ingresando…' : 'Ingresar'}
             </button>
 
             <button
               type="button"
               className="w-full text-center text-sm text-brand-600 hover:underline"
+              data-testid="login-forgot"
               onClick={() => {
                 setError(null)
                 setModo('forgot')
@@ -156,7 +166,11 @@ function ForgotView({ onVolver }: { onVolver: () => void }) {
 
           {enviado ? (
             <div className="space-y-4">
-              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+              <p
+                className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                role="status"
+                data-testid="forgot-ok"
+              >
                 Si la cuenta existe, te enviamos un correo con instrucciones. Revisa tu bandeja de entrada
                 (y la carpeta de spam).
               </p>
@@ -189,7 +203,12 @@ function ForgotView({ onVolver }: { onVolver: () => void }) {
                 </p>
               )}
 
-              <button className="btn-primary w-full" type="submit" disabled={busy || !email.trim()}>
+              <button
+                className="btn-primary w-full"
+                type="submit"
+                disabled={busy || !email.trim()}
+                data-testid="forgot-submit"
+              >
                 {busy ? 'Enviando…' : 'Enviar enlace'}
               </button>
               <button type="button" className="w-full text-center text-sm text-brand-600 hover:underline" onClick={onVolver}>

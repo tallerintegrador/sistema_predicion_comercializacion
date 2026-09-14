@@ -68,10 +68,14 @@ export function ResetPasswordPage() {
             </div>
           ) : ok ? (
             <div className="space-y-4">
-              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+              <p
+                className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                role="status"
+                data-testid="reset-ok"
+              >
                 Tu contraseña se actualizó. Ya puedes iniciar sesión con la nueva.
               </p>
-              <button type="button" className="btn-primary w-full" onClick={irALogin}>
+              <button type="button" className="btn-primary w-full" onClick={irALogin} data-testid="reset-ir-login">
                 Ir a iniciar sesión
               </button>
             </div>
@@ -114,6 +118,7 @@ export function ResetPasswordPage() {
                 className="btn-primary w-full"
                 type="submit"
                 disabled={busy || password.length < 4 || !confirmar}
+                data-testid="reset-submit"
               >
                 {busy ? 'Guardando…' : 'Guardar contraseña'}
               </button>

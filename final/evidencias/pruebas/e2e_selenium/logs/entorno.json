@@ -1,0 +1,7 @@
+{
+  "python": "3.14.5",
+  "headless": false,
+  "video": true,
+  "ffmpeg": true,
+  "fecha": "2026-07-25T08:20:44"
+}

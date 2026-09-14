@@ -1,0 +1,20 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.5, pytest-8.3.4, pluggy-1.6.0
+rootdir: D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion
+configfile: pyproject.toml
+plugins: anyio-4.13.0, cov-6.0.0
+collected 11 items
+
+tests\e2e_selenium\test_01_login.py .                                    [  9%]
+tests\e2e_selenium\test_02_recuperar_password.py .                       [ 18%]
+tests\e2e_selenium\test_03_ventas.py .                                   [ 27%]
+tests\e2e_selenium\test_04_compras.py .                                  [ 36%]
+tests\e2e_selenium\test_05_almacen.py .                                  [ 45%]
+tests\e2e_selenium\test_06_historial.py .                                [ 54%]
+tests\e2e_selenium\test_07_usuarios_roles.py .                           [ 63%]
+tests\e2e_selenium\test_08_rbac_usuario_nuevo.py .                       [ 72%]
+tests\e2e_selenium\test_09_reset_password_completo.py .                  [ 81%]
+tests\e2e_selenium\test_10_navegacion.py .                               [ 90%]
+tests\e2e_selenium\test_11_errores_carga.py .                            [100%]
+
+======================= 11 passed in 193.17s (0:03:13) ========================

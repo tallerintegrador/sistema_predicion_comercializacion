@@ -251,12 +251,13 @@ export function VistaV3Modulo({
         description="Sube tu plantilla (Excel o JSON) y automáticamente verás los 10 análisis."
       >
         <div className="flex flex-wrap items-center gap-3">
-          <label className={`btn ${accent.solid} cursor-pointer`}>
+          <label className={`btn ${accent.solid} cursor-pointer`} data-testid="btn-subir">
             {busy ? 'Analizando (~5 segundos)…' : 'Subir mi plantilla (Excel o JSON)'}
             <input
               type="file"
               accept=".xlsx,.json,application/json"
               className="hidden"
+              data-testid="input-archivo"
               disabled={busy}
               onChange={(e) => {
                 const f = e.target.files?.[0]
@@ -270,6 +271,7 @@ export function VistaV3Modulo({
           <p
             className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800"
             role="alert"
+            data-testid="aviso-carga"
           >
             {aviso}
           </p>
@@ -283,7 +285,9 @@ export function VistaV3Modulo({
         accentChip={accent.chip}
         description="Revisa los análisis que hiciste antes en esta categoría y vuelve a ver sus resultados."
       >
-        <HistorialV3 modulo={modulo} refrescar={data?.executed_at} />
+        <div data-testid="historial-v3">
+          <HistorialV3 modulo={modulo} refrescar={data?.executed_at} />
+        </div>
       </StepSection>
 
       {error && <ErrorPanel error={error} />}
@@ -294,7 +298,7 @@ export function VistaV3Modulo({
 
       {/* Skeleton de carga */}
       {busy && (
-        <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-6">
+        <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-6" data-testid="analizando">
           <div className="h-4 w-1/3 animate-pulse rounded bg-slate-200" />
           <div className="h-3 w-2/3 animate-pulse rounded bg-slate-200" />
           <p className="text-sm text-slate-500 mt-4">Analizando tus datos (~5 segundos)…</p>
@@ -303,7 +307,7 @@ export function VistaV3Modulo({
 
       {/* Resultados: 3 secciones + tendencia */}
       {data && (
-        <div className="space-y-8">
+        <div className="space-y-8" data-testid="resultados">
           {/* A8: retroalimentación de la carga */}
           {data.dataset_info && <ValidacionCarga info={data.dataset_info} />}
 

@@ -15,7 +15,7 @@ export function HomePage() {
   const modulos = visibles.filter((s) => ['sales', 'purchases', 'inventory', 'auto'].includes(s.id))
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="pagina-inicio">
       {/* Hero */}
       <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 px-6 py-8 text-white shadow-sm sm:px-8">
         <p className="text-sm font-medium text-brand-100">Hola{user?.user_id ? `, ${user.user_id}` : ''} 👋</p>

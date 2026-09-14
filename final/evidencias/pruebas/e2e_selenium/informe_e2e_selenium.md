@@ -1,0 +1,143 @@
+# Prueba E2E con Selenium — SPC
+
+**Fecha:** 2026-07-25 07:56
+**Resultado:** 11/11 flujos PASAN
+
+## Entorno
+
+- Navegador: Chrome real gobernado por Selenium WebDriver
+- Frontend (Vite): http://localhost:62224
+- Backend (uvicorn): http://127.0.0.1:62223
+- Base de datos: SQLite temporal (spc_e2e.db), aislada de la base real
+- Datos de prueba: examples/datos_excel_pyme/botica_farmasalud/{ventas,compras,almacen}.xlsx
+
+## Recorrido ejecutado
+
+```
+[07:53:54] 001 Se abre la aplicación en el navegador: pantalla de ingreso  -> capturas/001_se_abre_la_aplicaci_n_en_el_navegador_pantalla_de_ingreso.png
+[07:53:55] 002 Ingreso con contraseña incorrecta rechazado: «Usuario o contraseña incorrectos. Inténtalo de nuevo.»  -> capturas/002_ingreso_con_contrase_a_incorrecta_rechazado_usuario_o_contra.png
+[07:53:56] 003 Ingreso correcto como administrador 256370: se muestra el panel  -> capturas/003_ingreso_correcto_como_administrador_256370_se_muestra_el_pan.png
+[07:53:56] 004 El panel apunta al backend de la prueba: Servidor: http://127.0.0.1:62223  -> capturas/004_el_panel_apunta_al_backend_de_la_prueba_servidor_http_127_0.png
+[07:53:56] 005 Cierre de sesión: vuelve la pantalla de ingreso  -> capturas/005_cierre_de_sesi_n_vuelve_la_pantalla_de_ingreso.png
+[07:53:57] 006 Se abre «¿Olvidaste tu contraseña?»  -> capturas/006_se_abre_olvidaste_tu_contrase_a.png
+[07:53:57] 007 Correo inexistente → respuesta genérica: «Si la cuenta existe, te enviamos un correo con instrucciones. Revisa tu bandeja …»  -> capturas/007_correo_inexistente_respuesta_gen_rica_si_la_cuenta_existe_te.png
+[07:53:57] 008 El backend registró la solicitud de restablecimiento (1 llamada/s)  -> capturas/008_el_backend_registr_la_solicitud_de_restablecimiento_1_llamad.png
+[07:53:57] 009 Se vuelve a la pantalla de ingreso  -> capturas/009_se_vuelve_a_la_pantalla_de_ingreso.png
+[07:53:58] 010 Módulo Ventas abierto (3 pasos guiados + historial)  -> capturas/010_m_dulo_ventas_abierto_3_pasos_guiados_historial.png
+[07:54:39] 011 Se sube ventas.xlsx y el sistema entrena y devuelve 10 análisis  -> capturas/011_se_sube_ventas_xlsx_y_el_sistema_entrena_y_devuelve_10_an_li.png
+[07:54:39] 012 Retroalimentación de la carga: ✓ 13 columnas reconocidas  -> capturas/012_retroalimentaci_n_de_la_carga_13_columnas_reconocidas.png
+[07:54:39] 013 Los tres tipos de análisis están presentes: ['classification', 'clustering', 'regression']  -> capturas/013_los_tres_tipos_de_an_lisis_est_n_presentes_classification_cl.png
+[07:54:40] 014 Se abre el detalle técnico de un reporte (modelo y métrica)  -> capturas/014_se_abre_el_detalle_t_cnico_de_un_reporte_modelo_y_m_trica.png
+[07:54:40] 015 Módulo Compras abierto  -> capturas/015_m_dulo_compras_abierto.png
+[07:55:28] 016 Se sube compras.xlsx y llegan 10 análisis de compras  -> capturas/016_se_sube_compras_xlsx_y_llegan_10_an_lisis_de_compras.png
+[07:55:29] 017 Primera pregunta respondida: «Unidades a pedir»  -> capturas/017_primera_pregunta_respondida_unidades_a_pedir.png
+[07:55:29] 018 Módulo Almacén abierto  -> capturas/018_m_dulo_almac_n_abierto.png
+[07:56:04] 019 Se sube almacen.xlsx y llegan 10 análisis de almacén  -> capturas/019_se_sube_almacen_xlsx_y_llegan_10_an_lisis_de_almac_n.png
+[07:56:05] 020 Se generaron 3 segmentaciones (agrupación de productos)  -> capturas/020_se_generaron_3_segmentaciones_agrupaci_n_de_productos.png
+[07:56:05] 021 El historial de Ventas lista 1 análisis guardados  -> capturas/021_el_historial_de_ventas_lista_1_an_lisis_guardados.png
+[07:56:05] 022 Se reabre un análisis del historial y se ven sus resultados guardados  -> capturas/022_se_reabre_un_an_lisis_del_historial_y_se_ven_sus_resultados.png
+[07:56:06] 023 Sección «Usuarios y permisos» abierta (solo visible para el administrador)  -> capturas/023_secci_n_usuarios_y_permisos_abierta_solo_visible_para_el_adm.png
+[07:56:07] 024 Se crea el rol «e2e_rol» con 4 permisos (sin administrar usuarios)  -> capturas/024_se_crea_el_rol_e2e_rol_con_4_permisos_sin_administrar_usuari.png
+[07:56:07] 025 El rol «e2e_rol» aparece en la tabla de roles  -> capturas/025_el_rol_e2e_rol_aparece_en_la_tabla_de_roles.png
+[07:56:08] 026 Se crea el usuario «e2e_test» con el rol «e2e_rol» y correo de contacto  -> capturas/026_se_crea_el_usuario_e2e_test_con_el_rol_e2e_rol_y_correo_de_c.png
+[07:56:09] 027 El usuario aparece en la tabla: e2e_test e2e.test@ejemplo.com · e2e.test@ejemplo.com  -> capturas/027_el_usuario_aparece_en_la_tabla_e2e_test_e2e_test_ejemplo_com.png
+[07:56:09] 028 Ingreso como «e2e_test» (primer ingreso: pide configurar el negocio)  -> capturas/028_ingreso_como_e2e_test_primer_ingreso_pide_configurar_el_nego.png
+[07:56:10] 029 Onboarding completado para «Botica Farmasalud» (sector, tamaño, región y moneda)  -> capturas/029_onboarding_completado_para_botica_farmasalud_sector_tama_o_r.png
+[07:56:10] 030 Secciones visibles para su rol: ['home', 'sales', 'purchases', 'inventory', 'about']  -> capturas/030_secciones_visibles_para_su_rol_home_sales_purchases_inventor.png
+[07:56:11] 031 Escribir /users a mano no da acceso: la app redirige a su sección permitida  -> capturas/031_escribir_users_a_mano_no_da_acceso_la_app_redirige_a_su_secc.png
+[07:56:11] 032 El historial de la cuenta nueva está vacío: los datos de cada cliente son suyos  -> capturas/032_el_historial_de_la_cuenta_nueva_est_vac_o_los_datos_de_cada.png
+[07:56:47] 033 La cuenta nueva genera su propio pronóstico: 10 análisis  -> capturas/033_la_cuenta_nueva_genera_su_propio_pron_stico_10_an_lisis.png
+[07:56:48] 034 Se solicita el enlace de restablecimiento para e2e.test@ejemplo.com  -> capturas/034_se_solicita_el_enlace_de_restablecimiento_para_e2e_test_ejem.png
+[07:56:48] 035 El backend emitió el enlace de un solo uso: http://localhost:62224/reset?token=eyJzdWIiOiJlMmVfdGVzdCIsI…
+[07:56:49] 036 Se fija la nueva contraseña desde el enlace del correo  -> capturas/036_se_fija_la_nueva_contrase_a_desde_el_enlace_del_correo.png
+[07:56:50] 037 Reutilizar el enlace se rechaza: «El enlace de restablecimiento no es válido o ya expiró. Solicita uno n…»  -> capturas/037_reutilizar_el_enlace_se_rechaza_el_enlace_de_restablecimient.png
+[07:56:51] 038 «e2e_test» entra con la contraseña nueva  -> capturas/038_e2e_test_entra_con_la_contrase_a_nueva.png
+[07:56:52] 039 El administrador ve todas las secciones: ['home', 'sales', 'purchases', 'inventory', 'users', 'about']  -> capturas/039_el_administrador_ve_todas_las_secciones_home_sales_purchases.png
+[07:56:52] 040 Sección «home» carga contenido (1060 caracteres)  -> capturas/040_secci_n_home_carga_contenido_1060_caracteres.png
+[07:56:52] 041 Sección «sales» carga contenido (2391 caracteres)  -> capturas/041_secci_n_sales_carga_contenido_2391_caracteres.png
+[07:56:52] 042 Sección «purchases» carga contenido (2388 caracteres)  -> capturas/042_secci_n_purchases_carga_contenido_2388_caracteres.png
+[07:56:53] 043 Sección «inventory» carga contenido (2388 caracteres)  -> capturas/043_secci_n_inventory_carga_contenido_2388_caracteres.png
+[07:56:53] 044 Sección «users» carga contenido (511 caracteres)  -> capturas/044_secci_n_users_carga_contenido_511_caracteres.png
+[07:56:53] 045 Sección «about» carga contenido (921 caracteres)  -> capturas/045_secci_n_about_carga_contenido_921_caracteres.png
+[07:56:53] 046 «Acerca del sistema» explica cómo funciona y su exactitud  -> capturas/046_acerca_del_sistema_explica_c_mo_funciona_y_su_exactitud.png
+[07:56:53] 047 Consola del navegador sin errores de la aplicación (0 severos)  -> capturas/047_consola_del_navegador_sin_errores_de_la_aplicaci_n_0_severos.png
+[07:56:54] 048 Archivo .txt rechazado por la interfaz: «Sube un archivo .xlsx (Excel) o .json.»  -> capturas/048_archivo_txt_rechazado_por_la_interfaz_sube_un_archivo_xlsx_e.png
+[07:56:54] 049 Excel corrupto: error controlado del servidor · http_error  -> capturas/049_excel_corrupto_error_controlado_del_servidor_http_error.png
+[07:56:54] 050 La aplicación sigue operativa tras los errores (sin pantalla en blanco)  -> capturas/050_la_aplicaci_n_sigue_operativa_tras_los_errores_sin_pantalla.png
+```
+
+## Log del backend (últimas líneas)
+
+```
+INFO:     127.0.0.1:55306 - "GET /auth/me HTTP/1.1" 200 OK
+
+INFO:     127.0.0.1:50353 - "GET /v3/catalogo HTTP/1.1" 200 OK
+
+INFO:     127.0.0.1:58819 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+
+INFO:     127.0.0.1:50353 - "GET /v3/catalogo HTTP/1.1" 200 OK
+
+INFO:     127.0.0.1:59316 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+
+INFO:     127.0.0.1:55306 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+
+INFO:     127.0.0.1:55306 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+
+Error leyendo archivo roto.xlsx: Excel file format cannot be determined, you must specify an engine manually.
+
+Traceback (most recent call last):
+
+  File "D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\src\spc\api\routers\catalogo_v3.py", line 505, in analizar_desde_archivo
+
+    rows, filas_crudas = _leer_excel_datos(contenido, modulo_config)
+
+                         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\src\spc\api\routers\catalogo_v3.py", line 455, in _leer_excel_datos
+
+    xls = pd.ExcelFile(io.BytesIO(contenido))
+
+  File "D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\venv\Lib\site-packages\pandas\io\excel\_base.py", line 1608, in __init__
+
+    raise ValueError(
+
+    ...<2 lines>...
+
+    )
+
+ValueError: Excel file format cannot be determined, you must specify an engine manually.
+
+INFO:     127.0.0.1:55306 - "POST /v3/ventas/archivo HTTP/1.1" 422 Unprocessable Content
+
+```
+
+## Log del frontend (últimas líneas)
+
+```
+[2m7:56:44 a.m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m7:56:44 a.m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m7:56:44 a.m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m7:56:44 a.m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[2m7:56:44 a.m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mThe width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+```
+
+## Evidencia
+
+- `e2e_selenium.mp4` — video de la corrida + fotogramas con los logs
+- `capturas/` — captura por paso
+- `logs/` — backend, frontend, consola del navegador, bitácora de pasos

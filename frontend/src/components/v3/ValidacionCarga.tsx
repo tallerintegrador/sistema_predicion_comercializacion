@@ -10,7 +10,10 @@ export function ValidacionCarga({ info }: { info: DatasetInfo }) {
   const validas = rows_received - rows_discarded
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+    <div
+      className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+      data-testid="validacion-carga"
+    >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <span className="text-emerald-700">
           ✓ {recognized_columns.length} columnas reconocidas

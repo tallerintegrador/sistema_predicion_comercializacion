@@ -181,7 +181,12 @@ export function OnboardingPage() {
             </p>
           )}
 
-          <button className="btn-primary w-full" type="submit" disabled={busy || !completo}>
+          <button
+            className="btn-primary w-full"
+            type="submit"
+            disabled={busy || !completo}
+            data-testid="onboarding-submit"
+          >
             {busy ? 'Guardando…' : 'Guardar y continuar'}
           </button>
         </form>

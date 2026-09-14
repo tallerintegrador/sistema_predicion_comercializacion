@@ -1,0 +1,176 @@
+INFO:     Started server process [40204]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:62223 (Press CTRL+C to quit)
+INFO:     127.0.0.1:62226 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56795 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56795 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:56795 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56795 - "OPTIONS /auth/forgot HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49924 - "POST /auth/forgot HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49924 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49924 - "OPTIONS /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56795 - "OPTIONS /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49479 - "OPTIONS /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "OPTIONS /v3/ventas/archivo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49924 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56795 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49479 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49924 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56795 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52201 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "POST /v3/ventas/archivo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52300 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "OPTIONS /v3/compras/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52300 - "OPTIONS /v3/compras/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52948 - "OPTIONS /v3/compras/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56428 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52948 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "GET /v3/compras/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52300 - "GET /v3/compras/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52948 - "GET /v3/compras/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52300 - "GET /v3/compras/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52300 - "OPTIONS /v3/compras/archivo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52300 - "POST /v3/compras/archivo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52300 - "GET /v3/compras/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63942 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63942 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63942 - "OPTIONS /v3/almacen/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58517 - "OPTIONS /v3/almacen/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59814 - "OPTIONS /v3/almacen/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63942 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58517 - "GET /v3/almacen/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63942 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62282 - "GET /v3/almacen/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59814 - "GET /v3/almacen/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51688 - "GET /v3/almacen/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51688 - "OPTIONS /v3/almacen/archivo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51688 - "POST /v3/almacen/archivo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /v3/almacen/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57997 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57997 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "OPTIONS /v3/historial/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /v3/historial/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "OPTIONS /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "OPTIONS /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "OPTIONS /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57997 - "OPTIONS /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57315 - "OPTIONS /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "OPTIONS /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "OPTIONS /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "POST /roles HTTP/1.1" 201 Created
+INFO:     127.0.0.1:61139 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "OPTIONS /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "POST /users HTTP/1.1" 201 Created
+INFO:     127.0.0.1:53970 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61139 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57315 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "OPTIONS /profile/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "OPTIONS /profile/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /profile/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /profile/options HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "OPTIONS /profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "PUT /profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57315 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53970 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59858 - "POST /v3/ventas/archivo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /auth/me HTTP/1.1" 200 OK
+SMTP no configurado: enlace de reset para e2e.test@ejemplo.com (solo log, no se envi�): http://localhost:62224/reset?token=eyJzdWIiOiJlMmVfdGVzdCIsImlhdCI6MTc4NDk4NDIwOCwiZXhwIjoxNzg0OTg2MDA4LCJwdXJwb3NlIjoicHdkX3Jlc2V0IiwicHYiOiJwSjFxcjc2M2ZvWkFXSjR2In0.yi_9V0DpwjvOjqxF2FinLeAYLyZ6fMV2Da0jrhwc5IU
+INFO:     127.0.0.1:58819 - "POST /auth/forgot HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "OPTIONS /auth/reset HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "POST /auth/reset HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "POST /auth/reset HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:58819 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59316 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59316 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /v3/compras/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59316 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /v3/compras/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/compras/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/compras/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /v3/almacen/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59316 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /v3/almacen/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/almacen/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/almacen/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58819 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50353 - "GET /v3/catalogo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59316 - "GET /v3/ventas/plantilla?formato=json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /v3/ventas/historial?limite=50 HTTP/1.1" 200 OK
+Error leyendo archivo roto.xlsx: Excel file format cannot be determined, you must specify an engine manually.
+Traceback (most recent call last):
+  File "D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\src\spc\api\routers\catalogo_v3.py", line 505, in analizar_desde_archivo
+    rows, filas_crudas = _leer_excel_datos(contenido, modulo_config)
+                         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\src\spc\api\routers\catalogo_v3.py", line 455, in _leer_excel_datos
+    xls = pd.ExcelFile(io.BytesIO(contenido))
+  File "D:\UPAO\IX\Taller Integrador I\sistema_prediccion_comercializacion\venv\Lib\site-packages\pandas\io\excel\_base.py", line 1608, in __init__
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Excel file format cannot be determined, you must specify an engine manually.
+INFO:     127.0.0.1:55306 - "POST /v3/ventas/archivo HTTP/1.1" 422 Unprocessable Content

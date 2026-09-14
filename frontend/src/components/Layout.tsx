@@ -26,7 +26,7 @@ export function Layout() {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-2 py-3" aria-label="Secciones">
+        <nav className="flex-1 space-y-1 px-2 py-3" aria-label="Secciones" data-testid="sidebar-nav">
           {items.map((item) => {
             const Icon = item.icon
             return (
@@ -35,6 +35,7 @@ export function Layout() {
                 to={item.path}
                 end={item.path === '/'}
                 title={item.label}
+                data-testid={`nav-${item.id}`}
                 className={({ isActive }) =>
                   `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 ${
                     isActive ? item.accent.navActive : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
@@ -49,13 +50,26 @@ export function Layout() {
         </nav>
 
         <div className="border-t border-slate-200 px-3 py-3 md:px-4">
-          <p className="hidden truncate text-sm font-medium text-slate-700 md:block" title={user?.user_id}>
+          <p
+            className="hidden truncate text-sm font-medium text-slate-700 md:block"
+            title={user?.user_id}
+            data-testid="usuario-actual"
+          >
             {user?.user_id}
           </p>
-          <p className="mb-2 hidden truncate text-xs text-slate-400 md:block" title={user?.role}>
+          <p
+            className="mb-2 hidden truncate text-xs text-slate-400 md:block"
+            title={user?.role}
+            data-testid="rol-actual"
+          >
             {user?.role}
           </p>
-          <button className="btn-ghost w-full text-xs" onClick={logout} title="Cerrar sesión">
+          <button
+            className="btn-ghost w-full text-xs"
+            onClick={logout}
+            title="Cerrar sesión"
+            data-testid="btn-logout"
+          >
             <LogOut className="h-4 w-4" aria-hidden="true" />
             <span className="hidden md:inline">Cerrar sesión</span>
           </button>

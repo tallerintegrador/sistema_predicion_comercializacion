@@ -64,7 +64,7 @@ export function HistorialV3({ modulo, refrescar }: HistorialV3Props) {
       {cargando && items.length === 0 ? (
         <p className="text-sm text-slate-500">Cargando historial…</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500" data-testid="historial-vacio">
           Aún no hay análisis guardados para esta categoría. Sube tus datos en el Paso 3 y aparecerán aquí.
         </p>
       ) : (
@@ -81,19 +81,19 @@ export function HistorialV3({ modulo, refrescar }: HistorialV3Props) {
             <tbody>
               {items.map((it) => (
                 <Fragment key={it.id}>
-                  <tr className="border-b border-slate-100 last:border-0">
+                  <tr className="border-b border-slate-100 last:border-0" data-testid="historial-fila">
                     <td className="px-3 py-2 text-slate-700">{formatearFecha(it.created_at)}</td>
                     <td className="px-3 py-2 text-slate-600">{it.rows}</td>
                     <td className="px-3 py-2 text-slate-600">{it.reports} reportes</td>
                     <td className="px-3 py-2">
-                      <button className="btn-ghost text-xs" onClick={() => abrir(it.id)}>
+                      <button className="btn-ghost text-xs" onClick={() => abrir(it.id)} data-testid="historial-ver">
                         {abierto === it.id ? 'Ocultar' : 'Ver resultados'}
                       </button>
                     </td>
                   </tr>
                   {abierto === it.id && (
                     <tr className="border-b border-slate-100">
-                      <td colSpan={4} className="bg-slate-50 px-3 py-3">
+                      <td colSpan={4} className="bg-slate-50 px-3 py-3" data-testid="historial-detalle">
                         <DetallePrediccion detalle={detalle} />
                       </td>
                     </tr>

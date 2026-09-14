@@ -98,11 +98,11 @@ function RolesCard({
   const labelOf = (key: string) => permisos.find((p) => p.key === key)?.label ?? key
 
   return (
-    <section className="card space-y-4">
+    <section className="card space-y-4" data-testid="card-roles">
       <h3 className="text-base font-semibold text-slate-800">Roles</h3>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full">
+        <table className="min-w-full" data-testid="tabla-roles">
           <thead>
             <tr>
               <th className="th">Rol</th>
@@ -111,7 +111,7 @@ function RolesCard({
           </thead>
           <tbody>
             {roles.map((r) => (
-              <tr key={r.id} className="border-t border-slate-100">
+              <tr key={r.id} className="border-t border-slate-100" data-testid={`fila-rol-${r.name}`}>
                 <td className="td font-medium">{r.name}</td>
                 <td className="td">
                   {r.permissions.length === 0 ? (
@@ -133,11 +133,13 @@ function RolesCard({
       </div>
 
       <details className="rounded-lg border border-slate-200 p-3">
-        <summary className="cursor-pointer text-sm font-medium text-slate-700">Crear un rol</summary>
+        <summary className="cursor-pointer text-sm font-medium text-slate-700" data-testid="abrir-crear-rol">
+          Crear un rol
+        </summary>
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input className="input" placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-            <input className="input" placeholder="Descripción (opcional)" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+            <input className="input" placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} data-testid="rol-nombre" />
+            <input className="input" placeholder="Descripción (opcional)" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} data-testid="rol-descripcion" />
           </div>
 
           <fieldset>
@@ -157,7 +159,9 @@ function RolesCard({
             </div>
           </fieldset>
 
-          <button className="btn-primary" onClick={crear} disabled={!nombre.trim()}>Crear rol</button>
+          <button className="btn-primary" onClick={crear} disabled={!nombre.trim()} data-testid="btn-crear-rol">
+            Crear rol
+          </button>
         </div>
       </details>
     </section>
@@ -167,7 +171,7 @@ function RolesCard({
 function Casilla({ p, checked, onToggle }: { p: PermissionOut; checked: boolean; onToggle: () => void }) {
   return (
     <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-      <input type="checkbox" checked={checked} onChange={onToggle} />
+      <input type="checkbox" checked={checked} onChange={onToggle} data-testid={`permiso-${p.key}`} />
       {p.label}
     </label>
   )
@@ -205,11 +209,11 @@ function UsuariosCard({
   })
 
   return (
-    <section className="card space-y-4">
+    <section className="card space-y-4" data-testid="card-usuarios">
       <h3 className="text-base font-semibold text-slate-800">Usuarios</h3>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full">
+        <table className="min-w-full" data-testid="tabla-usuarios">
           <thead>
             <tr>
               <th className="th">Id</th>
@@ -221,7 +225,7 @@ function UsuariosCard({
           </thead>
           <tbody>
             {usuarios.map((u) => (
-              <tr key={u.user_id} className="border-t border-slate-100">
+              <tr key={u.user_id} className="border-t border-slate-100" data-testid={`fila-usuario-${u.user_id}`}>
                 <td className="td font-medium">{u.user_id}</td>
                 <td className="td">
                   {u.email ? (
@@ -279,15 +283,18 @@ function UsuariosCard({
       </div>
 
       <details className="rounded-lg border border-slate-200 p-3">
-        <summary className="cursor-pointer text-sm font-medium text-slate-700">Crear un usuario</summary>
+        <summary className="cursor-pointer text-sm font-medium text-slate-700" data-testid="abrir-crear-usuario">
+          Crear un usuario
+        </summary>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-5">
-          <input className="input" placeholder="Id" value={userId} onChange={(e) => setUserId(e.target.value)} />
+          <input className="input" placeholder="Id" value={userId} onChange={(e) => setUserId(e.target.value)} data-testid="usuario-id" />
           <input
             className="input"
             type="password"
             placeholder="Contraseña inicial"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            data-testid="usuario-password"
           />
           <input
             className="input"
@@ -295,14 +302,25 @@ function UsuariosCard({
             placeholder="Correo (opcional)"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            data-testid="usuario-email"
           />
-          <select className="input" value={roleId} onChange={(e) => setRoleId(e.target.value === '' ? '' : Number(e.target.value))}>
+          <select
+            className="input"
+            value={roleId}
+            onChange={(e) => setRoleId(e.target.value === '' ? '' : Number(e.target.value))}
+            data-testid="usuario-rol"
+          >
             <option value="">Rol…</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
-          <button className="btn-primary" onClick={crear} disabled={!userId.trim() || password.length < 4 || roleId === ''}>
+          <button
+            className="btn-primary"
+            onClick={crear}
+            disabled={!userId.trim() || password.length < 4 || roleId === ''}
+            data-testid="btn-crear-usuario"
+          >
             Crear
           </button>
         </div>

@@ -9,7 +9,7 @@ import { TechnicalDetails } from '../components/ui/TechnicalDetails'
  */
 export function AboutPage() {
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-testid="pagina-acerca">
       <ModuleHeader view="about" />
 
       <section className="card space-y-3">

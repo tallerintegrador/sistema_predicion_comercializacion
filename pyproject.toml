@@ -48,6 +48,13 @@ dev = [
     "mypy==1.14.1",
     "pandas-stubs",
 ]
+# Pruebas End to End con navegador real (Chrome vía Selenium WebDriver). La suite
+# `tests/e2e_selenium/` levanta backend (uvicorn) y frontend (Vite) por sí misma, graba el
+# video de la corrida con ffmpeg y guarda los logs de ambos servidores como evidencia.
+e2e = [
+    "selenium>=4.27",
+    "pillow>=10",  # rótulos y frames de logs que se anexan al video de evidencia
+]
 # Deps del código archivado en `legacy/` (EDA Favorita + entrenamiento retail offline).
 # No participan en el servicio en vivo; instalar solo si se revive el pipeline legacy.
 legacy = [
@@ -91,10 +98,13 @@ no_implicit_optional = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# La suite de navegador (Selenium) se excluye de la batería normal: levanta servidores y
+# abre Chrome. Se corre a propósito con `-m selenium` (ver tests/e2e_selenium/README.md).
+addopts = "-q -m 'not selenium'"
 pythonpath = ["src", "tests"]
 markers = [
     "slow: prueba que entrena modelos reales o migra la base (lenta); omitir con -m 'not slow'",
+    "selenium: prueba End to End con navegador real (Chrome); requiere Chrome instalado y levanta servidores",
 ]
 filterwarnings = [
     # El TestClient de Starlette aún usa httpx (deprecación aguas arriba, inofensiva).
